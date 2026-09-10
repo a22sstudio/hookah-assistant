@@ -1,0 +1,172 @@
+// Hookah Master Assistant — Prisma schema (PostgreSQL variant)
+// Учёт табака для старшего кальянного мастера
+//
+// Эта schema использует PostgreSQL (для продакшена).
+// Для деплоя скопируй этот файл в prisma/schema.prisma:
+//   cp prisma/schema.postgres.prisma prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Справочник табаков (гибрид: мастер задаёт + бот добавляет новые с накладных)
+model Tobacco {
+  id              String      @id @default(cuid())
+  brand           String      // Darkside, Tangiers, Musthave, etc.
+  line            String      // Supernova, Core, Medium, etc.
+  flavor          String      // вкус: Cola, Ice Grape, etc.
+  defaultJarGrams Int         @default(250) // вес полной банки по умолчанию
+  thresholdGrams  Int         @default(70)  // порог "мало" — ниже этого идёт в заявку
+  notes           String?
+  active          Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  stock           StockItem?
+  operations      Operation[]
+  orderRequests   OrderRequest[]
+
+  @@unique([brand, line, flavor])
+}
+
+// Текущий остаток по позиции (одна запись на табак)
+model StockItem {
+  id            String   @id @default(cuid())
+  tobaccoId     String   @unique
+  currentGrams  Int      @default(0)
+  updatedAt     DateTime @updatedAt
+  tobacco       Tobacco @relation(fields: [tobaccoId], references: [id], onDelete: Cascade)
+}
+
+// История всех операций (приход, корректировка, заявка)
+model Operation {
+  id            String   @id @default(cuid())
+  tobaccoId     String
+  type          String   // INCOMING | ADJUSTMENT | ORDER | CORRECTION
+  gramsBefore   Int
+  gramsAfter    Int
+  delta         Int      // gramsAfter - gramsBefore
+  source        String   // VOICE | PHOTO | MANUAL | TEXT | SYSTEM
+  note          String?
+  rawInput      String?  // что именно сказал/прислал мастер
+  createdAt     DateTime @default(now())
+  tobacco       Tobacco @relation(fields: [tobaccoId], references: [id], onDelete: Cascade)
+
+  @@index([tobaccoId])
+  @@index([createdAt])
+}
+
+// Заявка на закуп (то, чего мало)
+model OrderRequest {
+  id              String   @id @default(cuid())
+  tobaccoId       String
+  gramsRequested  Int      // сколько нужно заказать
+  status          String   @default("PENDING") // PENDING | ORDERED | RECEIVED
+  note            String?
+  createdAt       DateTime @default(now())
+  resolvedAt      DateTime?
+  tobacco         Tobacco @relation(fields: [tobaccoId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+// История чата (для контекста LLM и просто лог диалога)
+model ChatMessage {
+  id          String   @id @default(cuid())
+  role        String   // USER | ASSISTANT | TOOL
+  content     String
+  attachments String?  // JSON: [{type: "photo", url}, {type: "voice", duration}]
+  toolName    String?
+  toolResult  String?  // JSON результат tool call
+  masterId    String?  // кто писал
+  master      Master?  @relation(fields: [masterId], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// ============================================
+// Система мастеров и смен
+// ============================================
+
+// Мастер кальянной (старший или обычный)
+model Master {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  pin         String   @unique  // 4-значный PIN-код для входа в веб
+  telegramId  String?  @unique // Telegram user ID для бота (null = не привязан)
+  role        String   @default("REGULAR") // SENIOR | REGULAR
+  color       String   @default("emerald") // цвет аватара
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  shifts        Shift[]
+  wishes        Wish[]
+  requests      MasterRequest[]
+  notifications Notification[]
+  chatMessages  ChatMessage[]
+}
+
+// Смена мастера
+model Shift {
+  id           String    @id @default(cuid())
+  masterId     String
+  status       String    @default("OPEN") // OPEN | CLOSED
+  openedAt     DateTime  @default(now())
+  closedAt     DateTime?
+  hookahCount  Int       @default(0) // сколько кальянов сделал за смену
+  note         String?
+  master       Master    @relation(fields: [masterId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([masterId])
+  @@index([openedAt])
+}
+
+// Хотелка мастера (пожелание, не срочная заявка)
+model Wish {
+  id        String   @id @default(cuid())
+  masterId  String
+  text      String
+  status    String   @default("PENDING") // PENDING | DONE
+  createdAt DateTime @default(now())
+  master    Master   @relation(fields: [masterId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Заявка на закуп от мастера (свободная форма + опциональная привязка к табаку)
+model MasterRequest {
+  id        String   @id @default(cuid())
+  masterId  String
+  text      String   // "BlackBurn Energy 2 банки"
+  tobaccoId String?  // опциональная привязка к справочнику
+  grams     Int?
+  status    String   @default("PENDING") // PENDING | ORDERED | DONE
+  createdAt DateTime @default(now())
+  master    Master   @relation(fields: [masterId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Уведомления для старшего мастера (авто-пуши)
+model Notification {
+  id        String   @id @default(cuid())
+  type      String   // REQUEST | FINISHED | WISH | SHIFT_OPEN | SHIFT_CLOSE | LOW_STOCK
+  message   String
+  masterId  String?  // кто инициировал
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  master    Master?  @relation(fields: [masterId], references: [id], onDelete: SetNull)
+
+  @@index([read])
+  @@index([createdAt])
+}

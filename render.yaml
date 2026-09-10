@@ -1,0 +1,36 @@
+# ─── Render конфигурация ───
+# Альтернатива Railway. Задаётся в Render dashboard: New → Blueprint
+# и выбираешь этот файл.
+
+services:
+  - type: web
+    name: hookah-assistant
+    runtime: docker
+    plan: free  # или starter для production
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/auth/me
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: USE_POLLING
+        value: "0"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hookah-db
+          property: connectionString
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false  # задаётся вручную в dashboard
+      - key: BOT_SECRET
+        generateValue: true  # Render сгенерит случайный
+      - key: NEXT_API_URL
+        value: https://hookah-assistant.onrender.com  # замени на свой URL
+      - key: WEBHOOK_URL
+        value: https://hookah-assistant.onrender.com
+
+databases:
+  - name: hookah-db
+    plan: free
+    ipAllowList: []  # доступ только из Render

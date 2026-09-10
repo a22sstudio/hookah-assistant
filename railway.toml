@@ -1,0 +1,25 @@
+# ─── Railway конфиг ───
+# Railway автоматически определит Next.js приложение.
+# Этот файл уточняет как собирать и запускать.
+
+[build]
+# Railway использует Nixpacks по умолчанию, но можно указать Dockerfile
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Railway выдаст публичный URL автоматически (тикет: https://docs.railway.app/deploy/expose)
+healthcheckPath = "/api/auth/me"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+
+# ─── Переменные окружения (задаются в Railway dashboard) ───
+# Скопируй из .env.example и подставь реальные значения:
+#
+# DATABASE_URL=postgresql://... (Railway PostgreSQL plugin выдаст автоматически)
+# TELEGRAM_BOT_TOKEN=8818...
+# BOT_SECRET=любая-случайная-строка
+# NEXT_API_URL=https://твой-апп.up.railway.app
+# WEBHOOK_URL=https://твой-апп.up.railway.app
+# USE_POLLING=0  (для webhook режима в продакшене)

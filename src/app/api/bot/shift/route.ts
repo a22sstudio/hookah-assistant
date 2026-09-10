@@ -1,0 +1,123 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { checkBotSecret, findMasterByTelegram } from '@/lib/bot-auth'
+import { db } from '@/lib/db'
+
+// Часовой пояс МСК (UTC+3). Смена открывается с 12:00 МСК.
+function isAfterNoonMSK(): boolean {
+  const now = new Date()
+  const mskHour = (now.getUTCHours() + 3) % 24
+  return mskHour >= 12
+}
+
+// POST /api/bot/shift
+// body: { telegramId, action: 'open' | 'close' | 'add' | 'undo' | 'status' }
+export async function POST(req: NextRequest) {
+  const authError = checkBotSecret(req)
+  if (authError) return authError
+
+  try {
+    const { telegramId, action } = await req.json()
+    if (!telegramId || !action) {
+      return NextResponse.json({ error: 'telegramId и action обязательны' }, { status: 400 })
+    }
+
+    const master = await findMasterByTelegram(telegramId)
+    if (!master) {
+      return NextResponse.json({ error: 'Мастер не найден' }, { status: 404 })
+    }
+
+    if (action === 'status') {
+      const myShift = await db.shift.findFirst({
+        where: { masterId: master.id, status: 'OPEN' },
+      })
+      const allOpen = await db.shift.findMany({
+        where: { status: 'OPEN' },
+        include: { master: true },
+        orderBy: { openedAt: 'asc' },
+      })
+      return NextResponse.json({
+        myShift: myShift
+          ? { id: myShift.id, openedAt: myShift.openedAt, hookahCount: myShift.hookahCount }
+          : null,
+        canOpen: !myShift && isAfterNoonMSK(),
+        allOpen: allOpen.map((s) => ({
+          masterName: s.master.name,
+          masterRole: s.master.role,
+          hookahCount: s.hookahCount,
+          openedAt: s.openedAt,
+        })),
+        isAfterNoon: isAfterNoonMSK(),
+      })
+    }
+
+    if (action === 'open') {
+      if (!isAfterNoonMSK()) {
+        return NextResponse.json({ error: 'Смену можно открыть с 12:00 по МСК' }, { status: 400 })
+      }
+      const existing = await db.shift.findFirst({
+        where: { masterId: master.id, status: 'OPEN' },
+      })
+      if (existing) {
+        return NextResponse.json({ error: 'У вас уже открыта смена', shift: existing }, { status: 400 })
+      }
+      const shift = await db.shift.create({
+        data: { masterId: master.id, status: 'OPEN' },
+      })
+      if (master.role !== 'SENIOR') {
+        await db.notification.create({
+          data: {
+            type: 'SHIFT_OPEN',
+            message: `${master.name} открыл смену`,
+            masterId: master.id,
+          },
+        })
+      }
+      return NextResponse.json({ shift, message: 'Смена открыта' })
+    }
+
+    if (action === 'close') {
+      const shift = await db.shift.findFirst({
+        where: { masterId: master.id, status: 'OPEN' },
+      })
+      if (!shift) {
+        return NextResponse.json({ error: 'Нет открытой смены' }, { status: 400 })
+      }
+      const closed = await db.shift.update({
+        where: { id: shift.id },
+        data: { status: 'CLOSED', closedAt: new Date() },
+      })
+      if (master.role !== 'SENIOR') {
+        await db.notification.create({
+          data: {
+            type: 'SHIFT_CLOSE',
+            message: `${master.name} закрыл смену (${shift.hookahCount} кальянов)`,
+            masterId: master.id,
+          },
+        })
+      }
+      return NextResponse.json({ shift: closed, message: `Смена закрыта. Кальянов: ${shift.hookahCount}` })
+    }
+
+    if (action === 'add' || action === 'undo') {
+      const shift = await db.shift.findFirst({
+        where: { masterId: master.id, status: 'OPEN' },
+      })
+      if (!shift) {
+        return NextResponse.json({ error: 'Смена не открыта' }, { status: 400 })
+      }
+      const newCount = action === 'undo' ? Math.max(0, shift.hookahCount - 1) : shift.hookahCount + 1
+      const updated = await db.shift.update({
+        where: { id: shift.id },
+        data: { hookahCount: newCount },
+      })
+      return NextResponse.json({ shift: updated, count: newCount })
+    }
+
+    return NextResponse.json({ error: 'Неизвестное действие' }, { status: 400 })
+  } catch (e) {
+    return NextResponse.json(
+      { error: 'Ошибка', detail: (e as Error).message },
+      { status: 500 },
+    )
+  }
+}
