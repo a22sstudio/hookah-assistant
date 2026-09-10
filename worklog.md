@@ -371,3 +371,38 @@ Stage Summary:
 - Веб-панель: https://hookah-assistant-production.up.railway.app (PIN 1111 = Тимур, старший)
 - Telegram бот: @Defowork_bot — /start → /claim 1111 → работа.
 - Демо-аккаунты: Тимур(старший)=1111, Айрат=2222, Марат=3333.
+
+---
+Task ID: 10 — AI РАБОТАЕТ В ПРОДАКШЕНЕ (Hugging Face)
+Agent: main (Z.ai Code)
+Task: Подключить бесплатный AI-провайдер, работающий из РФ.
+
+Проблема: z-ai-web-dev-sdk использует internal-api.z.ai → 403 с Railway. Gemini не работает из РФ. OpenRouter требует пополнения счёта.
+
+Решение: Hugging Face Router (router.huggingface.co) — бесплатно, работает из РФ.
+- LLM: Qwen/Qwen3.8-27B (провайдер ovhcloud, pricing 0/0 = бесплатно)
+- Vision: inclusionAI/Ling-3.0-flash-VL (провайдер novita, бесплатно)
+- ASR: временно отключён (HF router не поддерживает аудио)
+
+Реализация (src/lib/ai.ts):
+- hfChat() — единая функция для LLM и Vision через OpenAI-compatible API
+- getHfToken() — читает HF_TOKEN из env
+- Сохранил все сигнатуры: processMasterMessage, recognizeInvoice, transcribeAudio
+- parseAIResponse устойчив к reasoning-выводу (извлекает JSON из текста)
+- System prompt идентичный (роль-aware, контекст склада + смены)
+- transcribeAudio кидает понятную ошибку «ASR временно недоступен»
+- bot-runner: voice handler красиво сообщает пользователю
+
+Тест:
+- POST /api/chat {message:"чего мало?"} как Тимур → 200 за 16.8с
+- Reply: "Тимур, мало: Burn Tobacco Energy 46г, Daily Hookah Base Watermelon Mint 8г, ..."
+- query action выполнен успешно, 7 позиций найдено
+- Тестовое сообщение отправлено пользователю в Telegram
+
+Stage Summary:
+- Бот полностью работает в продакшене: https://hookah-assistant-production.up.railway.app
+- AI: Hugging Face (бесплатно навсегда, ~1000 запросов/день)
+- Веб-панель: вход по PIN 1111
+- Telegram: @Defowork_bot → /claim 1111 → /help → «чего мало?»
+- Голосовые: временно отключены (пользователь получает понятное сообщение)
+- Фото: может работать нестабильно через HF Vision
