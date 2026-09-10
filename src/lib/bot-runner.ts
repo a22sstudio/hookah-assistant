@@ -434,14 +434,11 @@ function createBot(): Telegraf {
       } catch (asrErr) {
         stop.value = true; await typingLoop
         const msg = (asrErr as Error).message
-        if (msg.includes('недоступен') || msg.includes('ASR')) {
-          return ctx.reply('🎤 Распознавание голоса временно недоступно. Напиши текстом, пожалуйста.')
-        }
-        return ctx.reply('⚠️ Не удалось распознать речь: ' + msg)
+        return ctx.reply('🎤 Не удалось распознать речь: ' + msg + '\n\nНапиши текстом, пожалуйста.')
       }
       if (!transcribedText) {
         stop.value = true; await typingLoop
-        return ctx.reply('⚠️ Не удалось распознать речь.')
+        return ctx.reply('⚠️ Не удалось распознать речь (пустой ответ).')
       }
 
       const result = await withTimeout(

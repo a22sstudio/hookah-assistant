@@ -623,9 +623,43 @@ export async function recognizeInvoice(imageBase64: string): Promise<Array<{ bra
 }
 
 // ───────────────────────────────────────────
-// Транскрипция голоса — временно отключена
-// HF router не поддерживает ASR. Нужно подключить Groq (Whisper) позже.
+// Транскрипция голоса через HF Whisper Large V3 Turbo (бесплатно)
 // ───────────────────────────────────────────
-export async function transcribeAudio(_audioBase64: string): Promise<string> {
-  throw new Error('ASR временно недоступен. Распознавание голоса будет добавлено позже (через Groq Whisper).')
+const WHISPER_API = 'https://router.huggingface.co/hf-inference/models/openai/whisper-large-v3-turbo'
+
+export async function transcribeAudio(audioBase64: string): Promise<string> {
+  const token = getHfToken()
+
+  // Определяем формат аудио (Telegram присылает OGG/Opus)
+  let mimeType = 'audio/wav'
+  if (audioBase64.startsWith('data:')) {
+    const match = audioBase64.match(/^data:(audio\/[\w+.-]+);/)
+    if (match) {
+      mimeType = match[1]
+      audioBase64 = audioBase64.split(',')[1]
+    }
+  } else {
+    // Telegram OGG начинается с байтов 'OggS'
+    try {
+      const head = Buffer.from(audioBase64.slice(0, 8), 'base64').toString('ascii')
+      if (head.startsWith('OggS')) mimeType = 'audio/ogg'
+    } catch {}
+  }
+
+  const audioBuffer = Buffer.from(audioBase64, 'base64')
+
+  const res = await fetch(WHISPER_API, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': mimeType,
+    },
+    body: audioBuffer,
+  })
+
+  const data = (await res.json()) as { text?: string; error?: { message?: string } }
+  if (!res.ok || data.error) {
+    throw new Error(`Whisper: ${data.error?.message || res.status}`)
+  }
+  return (data.text || '').trim()
 }
