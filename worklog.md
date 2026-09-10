@@ -331,3 +331,43 @@ Stage Summary:
 - В песочнице webhook не работает (Telegram требует HTTPS, есть только HTTP). Polling работает пока жив dev-сервер.
 - После деплоя на Railway (HTTPS автоматически) бот будет стабилен 24/7.
 - Файлы для деплоя: Dockerfile, railway.toml, render.yaml, .env.example, README.md, prisma/schema.postgres.prisma, scripts/*.
+
+---
+Task ID: 9 — PRODUCTION DEPLOY SUCCESS
+Agent: main (Z.ai Code)
+Task: Деплой системы на Railway + настройка Telegram webhook.
+
+Work Log:
+- Залили проект на GitHub: github.com/a22sstudio/hookah-assistant (использовали fine-grained PAT)
+- Подключили Railway → автодеплой из GitHub репо
+- Добавили PostgreSQL плагин в Railway → DATABASE_URL автоматически
+- Итеративно фиксили Dockerfile:
+  • Убрали VOLUME (Railway не поддерживает) → build failed
+  • Перешли oven/bun:1.1 → oven/bun:1.2 (lockfile v1 не поддерживался)
+  • Убрали --frozen-lockfile
+  • Установили openssl (Prisma требует для PostgreSQL)
+  • Добавили bun install (был пропущен → prisma: command not found)
+  • Заменили bun run db:generate → bunx prisma generate
+  • Сделали ensureBotRunning неблокирующим (await getMe в layout блокировал рендер → 502)
+  • Упростили Dockerfile (убрали standalone build, перешли на next start)
+  • Добавили ARG CACHE_BUSTER для принудительной пересборки
+- КРИТИЧЕСКИЙ ФИКС: пользователь задал в Railway Start Command "bunx next start -p ${PORT:-3000}" — bash-подстановка не работала → Next.js падал с "argument is not a non-negative number". Решение: удалить Start Command из Railway Settings (использовать Dockerfile CMD).
+- Создали /api/setup endpoint для инициализации БД дефолтными мастерами + табаками
+- Создали /api/telegram/webhook endpoint — Telegram сам присылает Update, не нужен polling
+- Рефактор bot-runner: ensureBotRunning неблокирующий, USE_POLLING по env флагу
+
+Финальная проверка:
+- ✅ https://hookah-assistant-production.up.railway.app/api/auth/me → 200
+- ✅ /api/setup → инициализирована БД (3 мастера, 10 табаков)
+- ✅ Telegram webhook установлен: https://...up.railway.app/api/telegram/webhook
+- ✅ botRunning: true (бот инициализирован на Railway)
+- ✅ pending: 0 (все 4 сообщения из очереди обработаны)
+- ✅ Тестовое сообщение отправлено пользователю (tg=697853671)
+
+Stage Summary:
+- Система полностью в продакшене на Railway.
+- Бот работает 24/7 через webhook (не зависит от сессии разработки).
+- БД на PostgreSQL (Railway managed, с бэкапами).
+- Веб-панель: https://hookah-assistant-production.up.railway.app (PIN 1111 = Тимур, старший)
+- Telegram бот: @Defowork_bot — /start → /claim 1111 → работа.
+- Демо-аккаунты: Тимур(старший)=1111, Айрат=2222, Марат=3333.
