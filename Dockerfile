@@ -1,12 +1,15 @@
 # ─── Dockerfile для деплоя Hookah Assistant ───
-# Поддерживает как SQLite (volume), так и PostgreSQL (через DATABASE_URL)
+# Поддерживает как SQLite, так и PostgreSQL (через DATABASE_URL)
 
-FROM oven/bun:1.1 AS base
+# Используем Bun 1.2+ (поддерживает lockfile v1 и v2)
+FROM oven/bun:1.2 AS base
 WORKDIR /app
 
 # ── 1. Установка зависимостей ──
+# Копируем package.json и lockfile
 COPY package.json bun.lock* ./
-RUN bun install --frozen-lockfile
+# --frozen-lockfile убран: Railway/Docker не любит расхождений версий bun
+RUN bun install
 
 # ── 2. Копируем исходники ──
 COPY . .
@@ -23,7 +26,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN bun run build
 
 # ── 5. Production образ ──
-FROM oven/bun:1.1 AS runner
+FROM oven/bun:1.2 AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -48,6 +51,4 @@ EXPOSE 3000
 
 # Стартуем production-сервер
 # Применяем схему к БД (db push) и стартуем
-# NOTE: для персистентности БД используй Railway Volumes (UI: Settings → Volumes),
-# не VOLUME инструкцию в Dockerfile — Railway её не поддерживает.
 CMD ["sh", "-c", "bun run db:push && bun run start"]
