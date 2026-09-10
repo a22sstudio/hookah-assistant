@@ -368,6 +368,25 @@ function createBot(): Telegraf {
     return ctx.reply(`👥 Мастера (${masters.length}):\n\n${lines.join('\n')}`)
   })
 
+  // Хелпер: запустить AI с таймаутом 50 сек (чтобы успеть ответить до Telegram retry)
+  function withTimeout<T>(promise: Promise<T>, ms = 50000, label = 'AI'): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms)
+      promise.then(
+        (v) => { clearTimeout(timer); resolve(v) },
+        (e) => { clearTimeout(timer); reject(e) },
+      )
+    })
+  }
+
+  // Цикл "typing..." пока идёт долгая AI-обработка (каждые 4 сек, пока Telegram не сбросит)
+  async function keepTyping(ctx: { sendChatAction: (a: string) => Promise<unknown> }, stopFlag: { value: boolean }) {
+    while (!stopFlag.value) {
+      try { await ctx.sendChatAction('typing') } catch {}
+      await new Promise((r) => setTimeout(r, 4000))
+    }
+  }
+
   // Текстовые сообщения → AI
   bot.on('text', async (ctx) => {
     const master = (ctx.state as { master: SessionMaster | null }).master
@@ -383,8 +402,24 @@ function createBot(): Telegraf {
     if (text.startsWith('/')) return // команды уже обработаны
 
     await ctx.sendChatAction('typing')
-    const result = await processMasterMessage(text, { source: 'TEXT', masterId: master.id })
-    return ctx.reply(formatReply(result))
+    const stop = { value: false }
+    const typingLoop = keepTyping(ctx, stop).catch(() => {})
+
+    try {
+      const result = await withTimeout(
+        processMasterMessage(text, { source: 'TEXT', masterId: master.id }),
+        50000,
+        'processMasterMessage',
+      )
+      stop.value = true
+      await typingLoop
+      return ctx.reply(formatReply(result))
+    } catch (e) {
+      stop.value = true
+      await typingLoop
+      console.error('Text/AI error:', (e as Error).message)
+      return ctx.reply('⚠️ Не удалось обработать (AI не ответил вовремя). Попробуй ещё раз.')
+    }
   })
 
   // Голосовые → ASR → AI
@@ -399,6 +434,9 @@ function createBot(): Telegraf {
     }
 
     await ctx.sendChatAction('typing')
+    const stop = { value: false }
+    const typingLoop = keepTyping(ctx, stop).catch(() => {})
+
     try {
       const fileId = (ctx.message as { voice: { file_id: string } }).voice.file_id
       const fileLink = await bot.telegram.getFileLink(fileId)
@@ -406,20 +444,23 @@ function createBot(): Telegraf {
       const buf = Buffer.from(await res.arrayBuffer())
       const audioBase64 = buf.toString('base64')
 
-      const transcribedText = await transcribeAudio(audioBase64)
+      const transcribedText = await withTimeout(transcribeAudio(audioBase64), 30000, 'ASR')
       if (!transcribedText) {
+        stop.value = true; await typingLoop
         return ctx.reply('⚠️ Не удалось распознать речь.')
       }
 
-      const result = await processMasterMessage(transcribedText, {
-        source: 'VOICE',
-        transcribedText,
-        masterId: master.id,
-      })
+      const result = await withTimeout(
+        processMasterMessage(transcribedText, { source: 'VOICE', transcribedText, masterId: master.id }),
+        50000,
+        'processMasterMessage',
+      )
+      stop.value = true; await typingLoop
       return ctx.reply(`🎙 Распознал: «${transcribedText}»\n\n${formatReply(result)}`)
     } catch (e) {
+      stop.value = true; await typingLoop
       console.error('Voice error:', (e as Error).message)
-      return ctx.reply('⚠️ Не удалось обработать голосовое.')
+      return ctx.reply('⚠️ Не удалось обработать голосовое (таймаут или ошибка AI).')
     }
   })
 
@@ -435,6 +476,9 @@ function createBot(): Telegraf {
     }
 
     await ctx.sendChatAction('typing')
+    const stop = { value: false }
+    const typingLoop = keepTyping(ctx, stop).catch(() => {})
+
     try {
       const photos = (ctx.message as { photo: { file_id: string }[] }).photo
       const biggest = photos[photos.length - 1]
@@ -443,24 +487,27 @@ function createBot(): Telegraf {
       const buf = Buffer.from(await res.arrayBuffer())
       const imageBase64 = 'data:image/jpeg;base64,' + buf.toString('base64')
 
-      const items = await recognizeInvoice(imageBase64)
+      const items = await withTimeout(recognizeInvoice(imageBase64), 30000, 'VLM')
       if (items.length === 0) {
+        stop.value = true; await typingLoop
         return ctx.reply('⚠️ Не удалось распознать позиции на фото.')
       }
 
-      const result = await processMasterMessage('оформи приход по накладной', {
-        source: 'PHOTO',
-        invoiceItems: items,
-        masterId: master.id,
-      })
+      const result = await withTimeout(
+        processMasterMessage('оформи приход по накладной', { source: 'PHOTO', invoiceItems: items, masterId: master.id }),
+        50000,
+        'processMasterMessage',
+      )
 
       let reply = `📸 Распознал ${items.length} поз.:\n`
       for (const i of items) reply += `• ${i.brand} ${i.line} ${i.flavor} — ${i.grams}г\n`
       reply += `\n${formatReply(result)}`
+      stop.value = true; await typingLoop
       return ctx.reply(reply)
     } catch (e) {
+      stop.value = true; await typingLoop
       console.error('Photo error:', (e as Error).message)
-      return ctx.reply('⚠️ Не удалось обработать фото.')
+      return ctx.reply('⚠️ Не удалось обработать фото (таймаут или ошибка AI).')
     }
   })
 
