@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+// (Tooltip не нужен — кнопка всегда активна)
 import { ShiftsResponse } from '@/lib/types'
 import { formatHHMM, shiftDuration } from '@/lib/master-utils'
 import { Plus, Undo, Play, Square, Clock, Loader2, Cigarette } from 'lucide-react'
@@ -120,7 +120,6 @@ export function ShiftPanel({ refreshKey, onRefresh, masterName }: ShiftPanelProp
   }
 
   const myShift = data?.myShift ?? null
-  const canOpen = data?.canOpen ?? false
 
   // Нет открытой смены
   if (!myShift) {
@@ -137,37 +136,22 @@ export function ShiftPanel({ refreshKey, onRefresh, masterName }: ShiftPanelProp
             </p>
           </div>
 
-          {canOpen ? (
-            <Button
-              size="lg"
-              className="h-12 px-8 bg-emerald-600 hover:bg-emerald-700 text-base"
-              disabled={busy}
-              onClick={openShift}
-            >
-              {busy ? (
-                <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-              ) : (
-                <Play className="h-5 w-5 mr-2" />
-              )}
-              Открыть смену
-            </Button>
-          ) : (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span tabIndex={0} className="inline-block">
-                  <Button size="lg" className="h-12 px-8 text-base" disabled>
-                    <Play className="h-5 w-5 mr-2" /> Открыть смену
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>
-                Смена открывается с 12:00 МСК
-              </TooltipContent>
-            </Tooltip>
-          )}
+          <Button
+            size="lg"
+            className="h-12 px-8 bg-emerald-600 hover:bg-emerald-700 text-base"
+            disabled={busy}
+            onClick={openShift}
+          >
+            {busy ? (
+              <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+            ) : (
+              <Play className="h-5 w-5 mr-2" />
+            )}
+            Открыть смену
+          </Button>
 
           <p className="text-xs text-muted-foreground">
-            Смена доступна с 12:00 по МСК
+            Смену можно открыть в любое время
           </p>
         </CardContent>
       </Card>

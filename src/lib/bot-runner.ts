@@ -25,14 +25,6 @@ function humanDuration(openedAt: Date): string {
 function roleEmoji(role: string): string {
   return role === 'SENIOR' ? '⭐️' : '🌿'
 }
-
-// Часовой пояс МСК (UTC+3). Смена открывается с 12:00 МСК.
-function isAfterNoonMSK(): boolean {
-  const now = new Date()
-  const mskHour = (now.getUTCHours() + 3) % 24
-  return mskHour >= 12
-}
-
 function toSessionMaster(m: {
   id: string
   name: string
@@ -203,10 +195,8 @@ function createBot(): Telegraf {
     }
     if (myShift) {
       lines.push(`\n📊 Ваша смена: ${myShift.hookahCount} кальянов · ${humanDuration(myShift.openedAt)}`)
-    } else if (isAfterNoonMSK()) {
-      lines.push('\n✅ Можете открыть смену: /shift')
     } else {
-      lines.push('\n⏰ Смена открывается с 12:00 по МСК.')
+      lines.push('\n✅ Можете открыть смену: /shift')
     }
     return ctx.reply(lines.join('\n'))
   })
@@ -228,9 +218,6 @@ function createBot(): Telegraf {
         ]),
       )
     }
-    if (!isAfterNoonMSK()) {
-      return ctx.reply('⏰ Смену можно открыть с 12:00 по МСК.')
-    }
     return ctx.reply(
       'Открыть смену?',
       Markup.inlineKeyboard([
@@ -244,9 +231,6 @@ function createBot(): Telegraf {
     const master = (ctx.state as { master: SessionMaster | null }).master
     if (!master) return ctx.editMessageText('⚠️ Сессия истекла')
 
-    if (!isAfterNoonMSK()) {
-      return ctx.editMessageText('⏰ Смену можно открыть с 12:00 по МСК.')
-    }
     const existing = await db.shift.findFirst({
       where: { masterId: master.id, status: 'OPEN' },
     })
@@ -255,13 +239,13 @@ function createBot(): Telegraf {
     }
     await db.shift.create({ data: { masterId: master.id, status: 'OPEN' } })
     if (master.role !== 'SENIOR') {
+      const notifMsg = `🌿 ${master.name} открыл смену`
       await db.notification.create({
-        data: {
-          type: 'SHIFT_OPEN',
-          message: `${master.name} открыл смену`,
-          masterId: master.id,
-        },
+        data: { type: 'SHIFT_OPEN', message: notifMsg, masterId: master.id },
       })
+      // Push старшему в Telegram
+      const { pushToSeniors } = await import('@/lib/notify')
+      await pushToSeniors(notifMsg)
     }
     return ctx.editMessageText('✅ Смена открыта! Считай кальяны командой /+1 или просто "+1".')
   })

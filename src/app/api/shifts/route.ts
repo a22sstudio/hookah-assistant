@@ -3,12 +3,9 @@ import { db } from '@/lib/db'
 import { getCurrentMaster } from '@/lib/auth'
 import { pushToSeniors } from '@/lib/notify'
 
-// Часовой пояс МСК (UTC+3). Смена открывается с 12:00 МСК.
-function isAfterNoonMSK(): boolean {
-  const now = new Date()
-  // Получаем час по МСК
-  const mskHour = (now.getUTCHours() + 3) % 24
-  return mskHour >= 12
+// Смену можно открыть в любое время (форс-мажор: забыли открыть, перерыв, замена)
+function canOpenShift(): boolean {
+  return true
 }
 
 // GET /api/shifts — текущие открытые смены (+ своя, если есть)
@@ -26,7 +23,7 @@ export async function GET() {
   })
 
   const myOpenShift = openShifts.find((s) => s.masterId === me.id) ?? null
-  const canOpen = !myOpenShift && isAfterNoonMSK()
+  const canOpen = !myOpenShift && canOpenShift()
 
   return NextResponse.json({
     shifts: openShifts.map((s) => ({
@@ -48,7 +45,7 @@ export async function GET() {
         }
       : null,
     canOpen,
-    isAfterNoon: isAfterNoonMSK(),
+    isAfterNoon: true,
   })
 }
 
@@ -59,13 +56,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
   }
 
-  // Проверка времени — с 12:00 МСК
-  if (!isAfterNoonMSK()) {
-    return NextResponse.json(
-      { error: 'Смену можно открыть с 12:00 по МСК' },
-      { status: 400 },
-    )
-  }
+  // Смену можно открыть в любое время (форс-мажор: забыли открыть, перерыв, замена)
 
   // Проверка — нет ли уже открытой смены
   const existing = await db.shift.findFirst({

@@ -3,12 +3,7 @@ import { checkBotSecret, findMasterByTelegram } from '@/lib/bot-auth'
 import { db } from '@/lib/db'
 import { pushToSeniors } from '@/lib/notify'
 
-// Часовой пояс МСК (UTC+3). Смена открывается с 12:00 МСК.
-function isAfterNoonMSK(): boolean {
-  const now = new Date()
-  const mskHour = (now.getUTCHours() + 3) % 24
-  return mskHour >= 12
-}
+// Смену можно открыть в любое время (форс-мажор)
 
 // POST /api/bot/shift
 // body: { telegramId, action: 'open' | 'close' | 'add' | 'undo' | 'status' }
@@ -40,21 +35,18 @@ export async function POST(req: NextRequest) {
         myShift: myShift
           ? { id: myShift.id, openedAt: myShift.openedAt, hookahCount: myShift.hookahCount }
           : null,
-        canOpen: !myShift && isAfterNoonMSK(),
+        canOpen: !myShift,
         allOpen: allOpen.map((s) => ({
           masterName: s.master.name,
           masterRole: s.master.role,
           hookahCount: s.hookahCount,
           openedAt: s.openedAt,
         })),
-        isAfterNoon: isAfterNoonMSK(),
+        isAfterNoon: true,
       })
     }
 
     if (action === 'open') {
-      if (!isAfterNoonMSK()) {
-        return NextResponse.json({ error: 'Смену можно открыть с 12:00 по МСК' }, { status: 400 })
-      }
       const existing = await db.shift.findFirst({
         where: { masterId: master.id, status: 'OPEN' },
       })
