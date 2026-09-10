@@ -18,6 +18,12 @@ RUN bun install
 # Копируем остальной код
 COPY . .
 
+# Копируем .z-ai-config (если есть локально) — нужен z-ai-web-dev-sdk для LLM/VLM/ASR
+# ВНИМАНИЕ: этот файл содержит credentials — НЕ коммить в git (он в .gitignore)
+# В продакшене лучше задать env vars: ZAI_API_KEY, ZAI_BASE_URL, ZAI_TOKEN, ZAI_CHAT_ID, ZAI_USER_ID
+# (код создаст конфиг из env автоматически — см. src/lib/ai.ts ensureZaiConfig())
+COPY .z-ai-config* /etc/.z-ai-config
+
 # Автоматически переключаемся на PostgreSQL-схему для продакшена
 RUN if [ -f prisma/schema.postgres.prisma ]; then cp prisma/schema.postgres.prisma prisma/schema.prisma; fi
 

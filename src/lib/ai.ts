@@ -1,12 +1,39 @@
 import ZAI from 'z-ai-web-dev-sdk'
 import { db } from '@/lib/db'
 import type { SessionMaster } from '@/lib/auth'
+import fs from 'node:fs'
+import path from 'node:path'
+import os from 'node:os'
 
 // Singleton для ZAI клиента
 let zaiInstance: Awaited<ReturnType<typeof ZAI.create>> | null = null
 
+// Если заданы env vars ZAI_API_KEY/ZAI_BASE_URL — создаём временный .z-ai-config
+// (для продакшена на Railway, где нет файла /etc/.z-ai-config)
+function ensureZaiConfig() {
+  const apiKey = process.env.ZAI_API_KEY
+  const baseUrl = process.env.ZAI_BASE_URL || 'https://internal-api.z.ai/v1'
+  if (!apiKey) return // нет env — SDK будет искать файл .z-ai-config как обычно
+
+  const configPath = path.join(os.homedir(), '.z-ai-config')
+  const config = {
+    baseUrl,
+    apiKey,
+    chatId: process.env.ZAI_CHAT_ID || '',
+    userId: process.env.ZAI_USER_ID || '',
+    token: process.env.ZAI_TOKEN || '',
+  }
+  try {
+    fs.writeFileSync(configPath, JSON.stringify(config), { mode: 0o600 })
+    console.log(`✅ Z.ai config создан из env vars: ${configPath}`)
+  } catch (e) {
+    console.error('⚠️ Не удалось создать .z-ai-config из env:', (e as Error).message)
+  }
+}
+
 export async function getZAI() {
   if (!zaiInstance) {
+    ensureZaiConfig()
     zaiInstance = await ZAI.create()
   }
   return zaiInstance
