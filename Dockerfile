@@ -11,6 +11,10 @@ RUN bun install --frozen-lockfile
 # ── 2. Копируем исходники ──
 COPY . .
 
+# ── 2.5. Автоматически переключаемся на PostgreSQL-схему для продакшена ──
+# (prisma/schema.postgres.prisma — копия schema.prisma с provider="postgresql")
+RUN if [ -f prisma/schema.postgres.prisma ]; then cp prisma/schema.postgres.prisma prisma/schema.prisma; fi
+
 # ── 3. Генерируем Prisma клиент ──
 RUN bun run db:generate
 
@@ -40,11 +44,10 @@ COPY --from=base /app/tailwind.config.ts ./
 COPY --from=base /app/postcss.config.mjs ./
 COPY --from=base /app/components.json ./
 
-# Том для SQLite (если используешь SQLite — данные сохранятся между рестартами)
-VOLUME ["/app/db"]
-
 EXPOSE 3000
 
 # Стартуем production-сервер
 # Применяем схему к БД (db push) и стартуем
+# NOTE: для персистентности БД используй Railway Volumes (UI: Settings → Volumes),
+# не VOLUME инструкцию в Dockerfile — Railway её не поддерживает.
 CMD ["sh", "-c", "bun run db:push && bun run start"]

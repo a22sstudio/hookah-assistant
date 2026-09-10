@@ -1,0 +1,42 @@
+# ─── .dockerignore ───
+# Не копируем в Docker build context — ускоряет сборку и уменьшает образ
+
+node_modules
+.next
+.git
+.gitignore
+
+# Логи и БД
+*.log
+dev.log
+server.log
+bot.log
+db/*.db
+db/*.db-*
+
+# Секреты
+.env
+.env.local
+.env.production
+.env.*.local
+
+# Внутреннее
+agent-ctx
+upload
+download
+tests
+examples
+mini-services/*/node_modules
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode
+.idea
+*.swp
+
+# Кэш
+.eslintcache
+*.tsbuildinfo
