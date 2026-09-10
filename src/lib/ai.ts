@@ -1,54 +1,31 @@
-import ZAI from 'z-ai-web-dev-sdk'
+import { GoogleGenerativeAI, type GenerativeModel } from '@google/generative-ai'
 import { db } from '@/lib/db'
 import type { SessionMaster } from '@/lib/auth'
-import fs from 'node:fs'
-import path from 'node:path'
-import os from 'node:os'
 
-// Singleton для ZAI клиента
-let zaiInstance: Awaited<ReturnType<typeof ZAI.create>> | null = null
+// ───────────────────────────────────────────
+// Gemini AI клиент (singleton)
+// ───────────────────────────────────────────
+let geminiInstance: GoogleGenerativeAI | null = null
+let chatModel: GenerativeModel | null = null
+let visionModel: GenerativeModel | null = null
 
-// Если задан env var ZAI_CONFIG (полный JSON) или ZAI_API_KEY — создаём .z-ai-config
-// (для продакшена на Railway, где нет файла /etc/.z-ai-config)
-function ensureZaiConfig() {
-  const configPath = path.join(os.homedir(), '.z-ai-config')
-
-  // Вариант 1: ZAI_CONFIG = полный JSON (самый простой способ)
-  if (process.env.ZAI_CONFIG) {
-    try {
-      fs.writeFileSync(configPath, process.env.ZAI_CONFIG, { mode: 0o600 })
-      console.log(`✅ Z.ai config создан из ZAI_CONFIG env: ${configPath}`)
-      return
-    } catch (e) {
-      console.error('⚠️ Ошибка записи .z-ai-config из ZAI_CONFIG:', (e as Error).message)
-    }
+function getGemini(): GoogleGenerativeAI {
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY не задан в переменных окружения')
   }
-
-  // Вариант 2: отдельные env vars
-  const apiKey = process.env.ZAI_API_KEY
-  if (!apiKey) return // нет env — SDK будет искать файл .z-ai-config как обычно
-
-  const config = {
-    baseUrl: process.env.ZAI_BASE_URL || 'https://internal-api.z.ai/v1',
-    apiKey,
-    chatId: process.env.ZAI_CHAT_ID || '',
-    userId: process.env.ZAI_USER_ID || '',
-    token: process.env.ZAI_TOKEN || '',
+  if (!geminiInstance) {
+    geminiInstance = new GoogleGenerativeAI(apiKey)
+    // gemini-1.5-flash — быстрый и дешёвый, поддерживает текст и vision
+    chatModel = geminiInstance.getGenerativeModel({
+      model: process.env.GEMINI_CHAT_MODEL || 'gemini-1.5-flash',
+      generationConfig: { temperature: 0.3, maxOutputTokens: 1500 },
+    })
+    visionModel = geminiInstance.getGenerativeModel({
+      model: process.env.GEMINI_VISION_MODEL || 'gemini-1.5-flash',
+    })
   }
-  try {
-    fs.writeFileSync(configPath, JSON.stringify(config), { mode: 0o600 })
-    console.log(`✅ Z.ai config создан из отдельных env vars: ${configPath}`)
-  } catch (e) {
-    console.error('⚠️ Не удалось создать .z-ai-config из env:', (e as Error).message)
-  }
-}
-
-export async function getZAI() {
-  if (!zaiInstance) {
-    ensureZaiConfig()
-    zaiInstance = await ZAI.create()
-  }
-  return zaiInstance
+  return geminiInstance
 }
 
 // Типы для результата работы AI
@@ -479,8 +456,9 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
   }
 }
 
+// ───────────────────────────────────────────
 // Главная функция обработки сообщения мастера
-// masterId — опционально: если передан (например ботом), используется напрямую вместо cookie-сессии
+// ───────────────────────────────────────────
 export async function processMasterMessage(
   message: string,
   options?: { source?: 'TEXT' | 'VOICE' | 'PHOTO'; transcribedText?: string; invoiceItems?: AIResult['invoiceItems']; masterId?: string },
@@ -488,13 +466,11 @@ export async function processMasterMessage(
   let master: SessionMaster | null = null
 
   if (options?.masterId) {
-    // Прямой вызов от бота — ищем мастера по ID (db уже импортирован вверху файла)
     const m = await db.master.findFirst({ where: { id: options.masterId, active: true } })
     if (m) {
       master = { id: m.id, name: m.name, role: m.role as 'SENIOR' | 'REGULAR', color: m.color }
     }
   } else {
-    // Веб-вызов — из cookie-сессии
     const { getCurrentMaster } = await import('@/lib/auth')
     master = await getCurrentMaster()
   }
@@ -507,7 +483,6 @@ export async function processMasterMessage(
     }
   }
 
-  const zai = await getZAI()
   const stockContext = await buildStockContext()
   const shiftContext = await buildShiftContext(master)
   const systemPrompt = buildSystemPrompt(stockContext, master, shiftContext)
@@ -523,15 +498,15 @@ export async function processMasterMessage(
     userContent = `[РАСПОЗНАНО ИЗ НАКЛАДНОЙ]:\n${itemsStr}\n\nДействие мастера: ${message || 'оформи приход'}`
   }
 
-  const completion = await zai.chat.completions.create({
-    messages: [
-      { role: 'assistant', content: systemPrompt },
-      { role: 'user', content: userContent },
-    ],
-    thinking: { type: 'disabled' },
+  // Вызов Gemini
+  getGemini() // инициализирует chatModel
+  const chat = chatModel!.startChat({
+    history: [{ role: 'user', parts: [{ text: systemPrompt }] }],
   })
 
-  const content = completion.choices[0]?.message?.content ?? ''
+  const result = await chat.sendMessage(userContent)
+  const content = result.response.text()
+
   const { actions, reply } = parseAIResponse(content)
 
   const executedActions = []
@@ -567,10 +542,11 @@ export async function processMasterMessage(
   }
 }
 
-// Распознавание накладной через VLM
+// ───────────────────────────────────────────
+// Распознавание накладной через Gemini Vision
+// ───────────────────────────────────────────
 export async function recognizeInvoice(imageBase64: string): Promise<Array<{ brand: string; line: string; flavor: string; grams: number }>> {
-  const zai = await getZAI()
-
+  getGemini()
   const prompt = `Ты распознаёшь накладную на кальянный табак. Найди ВСЕ позиции табака на изображении.
 Для каждой позиции верни: brand (бренд/производитель), line (линейка, если есть), flavor (вкус), grams (вес в граммах одной банки/упаковки).
 Если вес указан в граммах — верни число. Если в банках/штуках — верни вес одной банки.
@@ -580,23 +556,16 @@ export async function recognizeInvoice(imageBase64: string): Promise<Array<{ bra
   { "brand": "Darkside", "line": "Supernova", "flavor": "Ice Grape", "grams": 250 }
 ]`
 
-  const response = await zai.chat.completions.createVision({
-    messages: [
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: prompt },
-          {
-            type: 'image_url',
-            image_url: { url: imageBase64.startsWith('data:') ? imageBase64 : `data:image/jpeg;base64,${imageBase64}` },
-          },
-        ],
-      },
-    ],
-    thinking: { type: 'disabled' },
-  })
+  // Парсим data URL
+  const isDataUrl = imageBase64.startsWith('data:')
+  const base64Data = isDataUrl ? imageBase64.split(',')[1] : imageBase64
 
-  const content = response.choices[0]?.message?.content ?? ''
+  const result = await visionModel!.generateContent([
+    { text: prompt },
+    { inlineData: { data: base64Data, mimeType: 'image/jpeg' } },
+  ])
+
+  const content = result.response.text()
   let cleaned = content.trim()
   const jsonMatch = cleaned.match(/\[[\s\S]*\]/)
   if (jsonMatch) cleaned = jsonMatch[0]
@@ -614,11 +583,15 @@ export async function recognizeInvoice(imageBase64: string): Promise<Array<{ bra
   }
 }
 
-// Транскрипция голоса через ASR
+// ───────────────────────────────────────────
+// Транскрипция голоса через Gemini (аудио multimodal)
+// ───────────────────────────────────────────
 export async function transcribeAudio(audioBase64: string): Promise<string> {
-  const zai = await getZAI()
-  const response = await zai.audio.asr.create({
-    file_base64: audioBase64,
-  })
-  return response.text ?? ''
+  getGemini()
+  // Gemini 1.5 поддерживает аудио через inlineData
+  const result = await chatModel!.generateContent([
+    { text: 'Расшифруй это голосовое сообщение. Верни только расшифрованный текст, без пояснений.' },
+    { inlineData: { data: audioBase64, mimeType: 'audio/webm' } },
+  ])
+  return result.response.text().trim()
 }
