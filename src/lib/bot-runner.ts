@@ -498,7 +498,7 @@ function formatReply(result: {
 // USE_POLLING=1 — запускать long-polling внутри процесса (для локальной разработки)
 // Иначе — webhook режим: Telegram сам присылает Update на /api/telegram/webhook,
 // обработка через handleUpdate(). Не нужен постоянный процесс.
-const USE_POLLING = process.env.USE_POLLING === '1' || process.env.NODE_ENV === 'development'
+const USE_POLLING = process.env.USE_POLLING === '1'
 
 export async function ensureBotRunning(): Promise<void> {
   if (globalForBot.__botStarted) return
@@ -508,21 +508,26 @@ export async function ensureBotRunning(): Promise<void> {
     const bot = createBot()
     globalForBot.__botInstance = bot
 
-    // Проверяем токен
-    const me = await bot.telegram.getMe()
-    console.log(`🤖 Telegram бот инициализирован: @${me.username}`)
+    // НЕ блокируем рендер страницы — getMe и launch в фоне
+    void (async () => {
+      try {
+        const me = await bot.telegram.getMe()
+        console.log(`🤖 Telegram бот инициализирован: @${me.username}`)
 
-    if (USE_POLLING) {
-      // Long-polling режим (для локальной разработки)
-      bot.launch()
-      console.log('✅ Polling активен (USE_POLLING=1).')
-      process.once('SIGINT', () => bot.stop('SIGINT'))
-      process.once('SIGTERM', () => bot.stop('SIGTERM'))
-    } else {
-      // Webhook режим — polling не запускаем, Telegram сам присылает Update
-      // setWebhook должен быть настроен через Telegram API на публичный URL/api/telegram/webhook
-      console.log('✅ Webhook режим. Ожидаем Update от Telegram на /api/telegram/webhook')
-    }
+        if (USE_POLLING) {
+          bot.launch()
+          console.log('✅ Polling активен (USE_POLLING=1).')
+          process.once('SIGINT', () => bot.stop('SIGINT'))
+          process.once('SIGTERM', () => bot.stop('SIGTERM'))
+        } else {
+          console.log('✅ Webhook режим. Ожидаем Update на /api/telegram/webhook')
+        }
+      } catch (e) {
+        console.error('⚠️ Фоновая инициализация бота не удалась:', (e as Error).message)
+      }
+    })()
+
+    console.log('🔄 Бот инициализируется в фоне (не блокирует запросы)')
   } catch (e) {
     console.error('❌ Ошибка инициализации бота:', (e as Error).message)
     globalForBot.__botStarted = false

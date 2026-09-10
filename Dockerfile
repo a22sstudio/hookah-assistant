@@ -55,7 +55,7 @@ COPY --from=base /app/components.json ./
 
 EXPOSE 3000
 
-# Стартуем production-сервер
-# Сначала применяем схему к БД (если DATABASE_URL задан), потом стартуем приложение.
-# Если DATABASE_URL не задан — пропускаем db:push с предупреждением (стартуем без БД).
-CMD ["sh", "-c", "if [ -z \"$DATABASE_URL\" ]; then echo '⚠️ DATABASE_URL не задан — пропускаю db:push. Добавь PostgreSQL в Railway и задай DATABASE_URL.'; else echo '🔄 Применяю схему к БД...'; bun run db:push || echo '⚠️ db:push не удался, стартую всё равно'; fi && bun run start"]
+# Стартуем production-сервер.
+# db:push с таймаутом 30 сек (чтобы не зависал если БД недоступна).
+# Если DATABASE_URL не задан — пропускаем.
+CMD ["sh", "-c", "if [ -z \"$DATABASE_URL\" ]; then echo '⚠️ DATABASE_URL не задан'; else echo '🔄 db:push...'; timeout 30 bun run db:push || echo '⚠️ db:push не удался/таймаут — стартую всё равно'; fi && bun run start"]
