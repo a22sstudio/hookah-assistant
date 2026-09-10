@@ -5,6 +5,9 @@
 FROM oven/bun:1.2 AS base
 WORKDIR /app
 
+# Устанавливаем OpenSSL — нужен Prisma для PostgreSQL на этапе генерации
+RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+
 # ── 1. Установка зависимостей ──
 # Копируем package.json и lockfile
 COPY package.json bun.lock* ./
@@ -29,6 +32,9 @@ RUN bun run build
 FROM oven/bun:1.2 AS runner
 WORKDIR /app
 
+# Устанавливаем OpenSSL — нужен Prisma для PostgreSQL
+RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
@@ -50,5 +56,6 @@ COPY --from=base /app/components.json ./
 EXPOSE 3000
 
 # Стартуем production-сервер
-# Применяем схему к БД (db push) и стартуем
-CMD ["sh", "-c", "bun run db:push && bun run start"]
+# Сначала применяем схему к БД (если DATABASE_URL задан), потом стартуем приложение.
+# Если DATABASE_URL не задан — пропускаем db:push с предупреждением (стартуем без БД).
+CMD ["sh", "-c", "if [ -z \"$DATABASE_URL\" ]; then echo '⚠️ DATABASE_URL не задан — пропускаю db:push. Добавь PostgreSQL в Railway и задай DATABASE_URL.'; else echo '🔄 Применяю схему к БД...'; bun run db:push || echo '⚠️ db:push не удался, стартую всё равно'; fi && bun run start"]
