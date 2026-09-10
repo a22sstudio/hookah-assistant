@@ -444,7 +444,17 @@ function createBot(): Telegraf {
       const buf = Buffer.from(await res.arrayBuffer())
       const audioBase64 = buf.toString('base64')
 
-      const transcribedText = await withTimeout(transcribeAudio(audioBase64), 30000, 'ASR')
+      let transcribedText = ''
+      try {
+        transcribedText = await withTimeout(transcribeAudio(audioBase64), 30000, 'ASR')
+      } catch (asrErr) {
+        stop.value = true; await typingLoop
+        const msg = (asrErr as Error).message
+        if (msg.includes('недоступен') || msg.includes('ASR')) {
+          return ctx.reply('🎤 Распознавание голоса временно недоступно. Напиши текстом, пожалуйста.')
+        }
+        return ctx.reply('⚠️ Не удалось распознать речь: ' + msg)
+      }
       if (!transcribedText) {
         stop.value = true; await typingLoop
         return ctx.reply('⚠️ Не удалось распознать речь.')

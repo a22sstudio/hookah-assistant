@@ -9,7 +9,7 @@ dockerfilePath = "Dockerfile"
 
 # CACHE_BUSTER заставляет Docker пересобрать все layers — обходит кеш Railway
 [build.args]
-CACHE_BUSTER = "v7-gemini-ai"
+CACHE_BUSTER = "v8-huggingface"
 
 [deploy]
 # Railway выдаст публичный URL автоматически (https://docs.railway.app/deploy/expose)

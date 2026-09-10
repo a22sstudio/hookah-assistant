@@ -1,31 +1,69 @@
-import { GoogleGenerativeAI, type GenerativeModel } from '@google/generative-ai'
 import { db } from '@/lib/db'
 import type { SessionMaster } from '@/lib/auth'
 
 // ───────────────────────────────────────────
-// Gemini AI клиент (singleton)
+// Hugging Face Router (OpenAI-compatible)
+// Бесплатные модели: Qwen/Qwen3.8-27B (LLM), inclusionAI/Ling-3.0-flash-VL (Vision)
 // ───────────────────────────────────────────
-let geminiInstance: GoogleGenerativeAI | null = null
-let chatModel: GenerativeModel | null = null
-let visionModel: GenerativeModel | null = null
+const HF_API = 'https://router.huggingface.co/v1/chat/completions'
+const LLM_MODEL = process.env.HF_LLM_MODEL || 'Qwen/Qwen3.8-27B'
+const LLM_PROVIDER = process.env.HF_LLM_PROVIDER || 'ovhcloud'
+const VISION_MODEL = process.env.HF_VISION_MODEL || 'inclusionAI/Ling-3.0-flash-VL'
+const VISION_PROVIDER = process.env.HF_VISION_PROVIDER || 'novita'
 
-function getGemini(): GoogleGenerativeAI {
-  const apiKey = process.env.GEMINI_API_KEY
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY не задан в переменных окружения')
+function getHfToken(): string {
+  const t = process.env.HF_TOKEN
+  if (!t) throw new Error('HF_TOKEN не задан в переменных окружения')
+  return t
+}
+
+interface HFChatMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: string | Array<
+    | { type: 'text'; text: string }
+    | { type: 'image_url'; image_url: { url: string } }
+  >
+}
+
+interface HFChatResponse {
+  choices?: Array<{
+    message?: { content?: string; reasoning?: string }
+    finish_reason?: string
+  }>
+  error?: { message: string }
+}
+
+async function hfChat(messages: HFChatMessage[], opts: { vision?: boolean; maxTokens?: number } = {}): Promise<string> {
+  const model = opts.vision ? VISION_MODEL : LLM_MODEL
+  const provider = opts.vision ? VISION_PROVIDER : LLM_PROVIDER
+
+  const body: Record<string, unknown> = {
+    model,
+    provider,
+    messages,
+    max_tokens: opts.maxTokens ?? 1500,
   }
-  if (!geminiInstance) {
-    geminiInstance = new GoogleGenerativeAI(apiKey)
-    // gemini-1.5-flash — быстрый и дешёвый, поддерживает текст и vision
-    chatModel = geminiInstance.getGenerativeModel({
-      model: process.env.GEMINI_CHAT_MODEL || 'gemini-1.5-flash',
-      generationConfig: { temperature: 0.3, maxOutputTokens: 1500 },
-    })
-    visionModel = geminiInstance.getGenerativeModel({
-      model: process.env.GEMINI_VISION_MODEL || 'gemini-1.5-flash',
-    })
+
+  const res = await fetch(HF_API, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${getHfToken()}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+
+  const data = (await res.json()) as HFChatResponse
+  if (!res.ok || data.error) {
+    throw new Error(data.error?.message || `HF API ${res.status}`)
   }
-  return geminiInstance
+
+  const content = data.choices?.[0]?.message?.content ?? ''
+  // Qwen3.8 возвращает reasoning вместо content для reasoning-моделей
+  if (!content && data.choices?.[0]?.message?.reasoning) {
+    return data.choices[0].message.reasoning
+  }
+  return content
 }
 
 // Типы для результата работы AI
@@ -100,8 +138,9 @@ ${allowedTools}
 - Если табака нет в базе и мастер — старший, сначала add_tobacco, потом работай с ним. Если обычный — скажи что нужно попросить старшего добавить.
 - Когда обычный мастер отмечает "закончился" (0г) или остаток стал ниже порога — это важно, старший получит автоматический пуш.
 - Отвечай кратко, по делу, по-человечески, можно с эмодзи. Обращайся к мастеру по имени.
+- ВАЖНО: отвечай ТОЛЬКО на русском языке.
 
-ФОРМАТ ОТВЕТА — СТРОГО JSON (без markdown, без пояснений):
+ФОРМАТ ОТВЕТА — СТРОГО JSON (без markdown, без пояснений, без рассуждений):
 {
   "actions": [
     { "tool": "update_stock", "args": { "brand": "Darkside", "line": "Supernova", "flavor": "Ice Grape", "grams": 125, "note": "пол банки" } }
@@ -122,23 +161,19 @@ async function findTobacco(brand: string, line: string, flavor: string) {
   const l = normalize(line)
   const f = normalize(flavor)
 
-  // 1. Точное совпадение по всем трём
   let match = all.find(
     (t) => normalize(t.brand) === b && normalize(t.line) === l && normalize(t.flavor) === f,
   )
   if (match) return match
 
-  // 2. Совпадение brand + flavor (line любая)
   match = all.find((t) => normalize(t.brand) === b && normalize(t.flavor) === f)
   if (match) return match
 
-  // 3. Совпадение brand + line (flavor пустой или любой)
   if (!flavor) {
     match = all.find((t) => normalize(t.brand) === b && normalize(t.line) === l)
     if (match) return match
   }
 
-  // 4. Partial: flavor содержит слово из flavor или наоборот
   match = all.find(
     (t) =>
       normalize(t.brand).includes(b) ||
@@ -204,7 +239,7 @@ async function buildShiftContext(master: SessionMaster): Promise<string> {
   return lines.join('\n')
 }
 
-// Парсинг JSON из ответа LLM (с защитой от markdown обёртки)
+// Парсинг JSON из ответа LLM (с защитой от markdown обёртки и reasoning)
 function parseAIResponse(content: string): { actions: AIAction[]; reply: string } {
   let cleaned = content.trim()
 
@@ -214,6 +249,12 @@ function parseAIResponse(content: string): { actions: AIAction[]; reply: string 
     cleaned = jsonMatch[1].trim()
   }
 
+  // Ищем JSON объект в тексте (модели иногда добавляют рассуждения до/после)
+  const jsonObj = cleaned.match(/\{[\s\S]*\}/)
+  if (jsonObj) {
+    cleaned = jsonObj[0]
+  }
+
   try {
     const parsed = JSON.parse(cleaned)
     return {
@@ -221,7 +262,6 @@ function parseAIResponse(content: string): { actions: AIAction[]; reply: string 
       reply: typeof parsed.reply === 'string' ? parsed.reply : 'Готово.',
     }
   } catch {
-    // Если JSON не распарсился — считаем весь ответ просто текстом
     return { actions: [], reply: content }
   }
 }
@@ -253,7 +293,6 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
             note: note ?? null,
           },
         })
-        // Авто-нотификация старшему, если обычный мастер отметил «закончился» или стало мало
         if (master.role !== 'SENIOR' && (grams === 0 || grams < tobacco.thresholdGrams)) {
           const reason = grams === 0 ? 'закончился' : `мало осталось (${grams}г)`
           await db.notification.create({
@@ -304,18 +343,14 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
 
       case 'add_tobacco': {
         const { brand, line, flavor, defaultJarGrams = 250 } = action.args
-        const existing = await db.tobacco.findFirst({
-          where: { brand, line, flavor },
-        })
+        const existing = await db.tobacco.findFirst({ where: { brand, line, flavor } })
         if (existing) {
           return { success: true, message: `Табак уже в базе`, data: { tobaccoId: existing.id } }
         }
         const tobacco = await db.tobacco.create({
           data: { brand, line, flavor, defaultJarGrams, thresholdGrams: 70 },
         })
-        await db.stockItem.create({
-          data: { tobaccoId: tobacco.id, currentGrams: 0 },
-        })
+        await db.stockItem.create({ data: { tobaccoId: tobacco.id, currentGrams: 0 } })
         return {
           success: true,
           message: `Добавлен новый табак: ${brand} ${line} ${flavor} (банка ${defaultJarGrams}г)`,
@@ -330,12 +365,7 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
           return { success: false, message: `Табак "${brand} ${line} ${flavor}" не найден` }
         }
         const order = await db.orderRequest.create({
-          data: {
-            tobaccoId: tobacco.id,
-            gramsRequested: grams,
-            status: 'PENDING',
-            note: note ?? null,
-          },
+          data: { tobaccoId: tobacco.id, gramsRequested: grams, status: 'PENDING', note: note ?? null },
         })
         return {
           success: true,
@@ -349,7 +379,6 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
         const request = await db.masterRequest.create({
           data: { masterId: master.id, text, grams: grams ?? null },
         })
-        // Нотификация старшему (если не сам старший)
         if (master.role !== 'SENIOR') {
           await db.notification.create({
             data: {
@@ -359,18 +388,12 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
             },
           })
         }
-        return {
-          success: true,
-          message: `Заявка принята: "${text}"`,
-          data: { requestId: request.id },
-        }
+        return { success: true, message: `Заявка принята: "${text}"`, data: { requestId: request.id } }
       }
 
       case 'create_wish': {
         const { text } = action.args
-        const wish = await db.wish.create({
-          data: { masterId: master.id, text },
-        })
+        const wish = await db.wish.create({ data: { masterId: master.id, text } })
         if (master.role !== 'SENIOR') {
           await db.notification.create({
             data: {
@@ -380,71 +403,31 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
             },
           })
         }
-        return {
-          success: true,
-          message: `Хотелка добавлена: "${text}"`,
-          data: { wishId: wish.id },
-        }
+        return { success: true, message: `Хотелка добавлена: "${text}"`, data: { wishId: wish.id } }
       }
 
       case 'query': {
         const { what } = action.args
         const w = String(what).toLowerCase().replace(/[\s_-]+/g, '')
         if (w.includes('low')) {
-          const low = await db.tobacco.findMany({
-            where: { active: true },
-            include: { stock: true },
-          })
+          const low = await db.tobacco.findMany({ where: { active: true }, include: { stock: true } })
           const filtered = low
             .filter((t) => (t.stock?.currentGrams ?? 0) < t.thresholdGrams)
-            .map((t) => ({
-              brand: t.brand,
-              line: t.line,
-              flavor: t.flavor,
-              current: t.stock?.currentGrams ?? 0,
-              threshold: t.thresholdGrams,
-            }))
+            .map((t) => ({ brand: t.brand, line: t.line, flavor: t.flavor, current: t.stock?.currentGrams ?? 0, threshold: t.thresholdGrams }))
           return { success: true, message: `Найдено ${filtered.length} позиций "мало"`, data: filtered }
         }
         if (w.includes('all') || w.includes('stock') || w.includes('full')) {
-          const all = await db.tobacco.findMany({
-            where: { active: true },
-            include: { stock: true },
-            orderBy: [{ brand: 'asc' }, { flavor: 'asc' }],
-          })
-          return {
-            success: true,
-            message: `Всего ${all.length} позиций`,
-            data: all.map((t) => ({
-              brand: t.brand,
-              line: t.line,
-              flavor: t.flavor,
-              current: t.stock?.currentGrams ?? 0,
-            })),
-          }
+          const all = await db.tobacco.findMany({ where: { active: true }, include: { stock: true }, orderBy: [{ brand: 'asc' }, { flavor: 'asc' }] })
+          return { success: true, message: `Всего ${all.length} позиций`, data: all.map((t) => ({ brand: t.brand, line: t.line, flavor: t.flavor, current: t.stock?.currentGrams ?? 0 })) }
         }
         if (w.includes('shift')) {
           const shiftContext = await buildShiftContext(master)
-          return {
-            success: true,
-            message: 'Контекст смены загружен',
-            data: { shiftContext },
-          }
+          return { success: true, message: 'Контекст смены загружен', data: { shiftContext } }
         }
-        // Fallback — возвращаем low_stock если ничего не подошло
-        const low = await db.tobacco.findMany({
-          where: { active: true },
-          include: { stock: true },
-        })
+        const low = await db.tobacco.findMany({ where: { active: true }, include: { stock: true } })
         const filtered = low
           .filter((t) => (t.stock?.currentGrams ?? 0) < t.thresholdGrams)
-          .map((t) => ({
-            brand: t.brand,
-            line: t.line,
-            flavor: t.flavor,
-            current: t.stock?.currentGrams ?? 0,
-            threshold: t.thresholdGrams,
-          }))
+          .map((t) => ({ brand: t.brand, line: t.line, flavor: t.flavor, current: t.stock?.currentGrams ?? 0, threshold: t.thresholdGrams }))
         return { success: true, message: `Показано ${filtered.length} позиций "мало" (fallback)`, data: filtered }
       }
 
@@ -476,11 +459,7 @@ export async function processMasterMessage(
   }
 
   if (!master) {
-    return {
-      reply: '⚠️ Вы не авторизованы. Войдите по PIN.',
-      actions: [],
-      executedActions: [],
-    }
+    return { reply: '⚠️ Вы не авторизованы. Войдите по PIN.', actions: [], executedActions: [] }
   }
 
   const stockContext = await buildStockContext()
@@ -498,14 +477,10 @@ export async function processMasterMessage(
     userContent = `[РАСПОЗНАНО ИЗ НАКЛАДНОЙ]:\n${itemsStr}\n\nДействие мастера: ${message || 'оформи приход'}`
   }
 
-  // Вызов Gemini
-  getGemini() // инициализирует chatModel
-  const chat = chatModel!.startChat({
-    history: [{ role: 'user', parts: [{ text: systemPrompt }] }],
-  })
-
-  const result = await chat.sendMessage(userContent)
-  const content = result.response.text()
+  const content = await hfChat([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userContent },
+  ])
 
   const { actions, reply } = parseAIResponse(content)
 
@@ -515,13 +490,8 @@ export async function processMasterMessage(
     executedActions.push({ tool: action.tool, ...result })
   }
 
-  // Сохраняем в историю чата
   await db.chatMessage.create({
-    data: {
-      role: 'USER',
-      content: userContent,
-      masterId: master.id,
-    },
+    data: { role: 'USER', content: userContent, masterId: master.id },
   })
   await db.chatMessage.create({
     data: {
@@ -543,10 +513,11 @@ export async function processMasterMessage(
 }
 
 // ───────────────────────────────────────────
-// Распознавание накладной через Gemini Vision
+// Распознавание накладной через HF Vision (Ling-3.0-flash-VL)
+// ВНИМАНИЕ: Vision-модель может нестабильно работать через HF router.
+// Если будет ошибка — пользователю вернётся сообщение.
 // ───────────────────────────────────────────
 export async function recognizeInvoice(imageBase64: string): Promise<Array<{ brand: string; line: string; flavor: string; grams: number }>> {
-  getGemini()
   const prompt = `Ты распознаёшь накладную на кальянный табак. Найди ВСЕ позиции табака на изображении.
 Для каждой позиции верни: brand (бренд/производитель), line (линейка, если есть), flavor (вкус), grams (вес в граммах одной банки/упаковки).
 Если вес указан в граммах — верни число. Если в банках/штуках — верни вес одной банки.
@@ -556,16 +527,20 @@ export async function recognizeInvoice(imageBase64: string): Promise<Array<{ bra
   { "brand": "Darkside", "line": "Supernova", "flavor": "Ice Grape", "grams": 250 }
 ]`
 
-  // Парсим data URL
   const isDataUrl = imageBase64.startsWith('data:')
   const base64Data = isDataUrl ? imageBase64.split(',')[1] : imageBase64
+  const mimeType = imageBase64.match(/data:(image\/[\w+]+);/)?.[1] || 'image/jpeg'
 
-  const result = await visionModel!.generateContent([
-    { text: prompt },
-    { inlineData: { data: base64Data, mimeType: 'image/jpeg' } },
-  ])
+  const content = await hfChat(
+    [
+      { role: 'user', content: [
+        { type: 'text', text: prompt },
+        { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Data}` } },
+      ] },
+    ],
+    { vision: true, maxTokens: 1000 },
+  )
 
-  const content = result.response.text()
   let cleaned = content.trim()
   const jsonMatch = cleaned.match(/\[[\s\S]*\]/)
   if (jsonMatch) cleaned = jsonMatch[0]
@@ -584,14 +559,9 @@ export async function recognizeInvoice(imageBase64: string): Promise<Array<{ bra
 }
 
 // ───────────────────────────────────────────
-// Транскрипция голоса через Gemini (аудио multimodal)
+// Транскрипция голоса — временно отключена
+// HF router не поддерживает ASR. Нужно подключить Groq (Whisper) позже.
 // ───────────────────────────────────────────
-export async function transcribeAudio(audioBase64: string): Promise<string> {
-  getGemini()
-  // Gemini 1.5 поддерживает аудио через inlineData
-  const result = await chatModel!.generateContent([
-    { text: 'Расшифруй это голосовое сообщение. Верни только расшифрованный текст, без пояснений.' },
-    { inlineData: { data: audioBase64, mimeType: 'audio/webm' } },
-  ])
-  return result.response.text().trim()
+export async function transcribeAudio(_audioBase64: string): Promise<string> {
+  throw new Error('ASR временно недоступен. Распознавание голоса будет добавлено позже (через Groq Whisper).')
 }
