@@ -9,7 +9,7 @@ dockerfilePath = "Dockerfile"
 
 # CACHE_BUSTER заставляет Docker пересобрать все layers — обходит кеш Railway
 [build.args]
-CACHE_BUSTER = "v2-cache-fix"
+CACHE_BUSTER = "v3-bun-install-fix"
 
 [deploy]
 # Railway выдаст публичный URL автоматически (https://docs.railway.app/deploy/expose)
