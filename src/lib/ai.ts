@@ -8,16 +8,28 @@ import os from 'node:os'
 // Singleton для ZAI клиента
 let zaiInstance: Awaited<ReturnType<typeof ZAI.create>> | null = null
 
-// Если заданы env vars ZAI_API_KEY/ZAI_BASE_URL — создаём временный .z-ai-config
+// Если задан env var ZAI_CONFIG (полный JSON) или ZAI_API_KEY — создаём .z-ai-config
 // (для продакшена на Railway, где нет файла /etc/.z-ai-config)
 function ensureZaiConfig() {
+  const configPath = path.join(os.homedir(), '.z-ai-config')
+
+  // Вариант 1: ZAI_CONFIG = полный JSON (самый простой способ)
+  if (process.env.ZAI_CONFIG) {
+    try {
+      fs.writeFileSync(configPath, process.env.ZAI_CONFIG, { mode: 0o600 })
+      console.log(`✅ Z.ai config создан из ZAI_CONFIG env: ${configPath}`)
+      return
+    } catch (e) {
+      console.error('⚠️ Ошибка записи .z-ai-config из ZAI_CONFIG:', (e as Error).message)
+    }
+  }
+
+  // Вариант 2: отдельные env vars
   const apiKey = process.env.ZAI_API_KEY
-  const baseUrl = process.env.ZAI_BASE_URL || 'https://internal-api.z.ai/v1'
   if (!apiKey) return // нет env — SDK будет искать файл .z-ai-config как обычно
 
-  const configPath = path.join(os.homedir(), '.z-ai-config')
   const config = {
-    baseUrl,
+    baseUrl: process.env.ZAI_BASE_URL || 'https://internal-api.z.ai/v1',
     apiKey,
     chatId: process.env.ZAI_CHAT_ID || '',
     userId: process.env.ZAI_USER_ID || '',
@@ -25,7 +37,7 @@ function ensureZaiConfig() {
   }
   try {
     fs.writeFileSync(configPath, JSON.stringify(config), { mode: 0o600 })
-    console.log(`✅ Z.ai config создан из env vars: ${configPath}`)
+    console.log(`✅ Z.ai config создан из отдельных env vars: ${configPath}`)
   } catch (e) {
     console.error('⚠️ Не удалось создать .z-ai-config из env:', (e as Error).message)
   }
