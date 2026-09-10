@@ -36,4 +36,5 @@ ENV HOSTNAME=0.0.0.0
 EXPOSE 3000
 
 # Запуск: db:push + next start
-CMD ["sh", "-c", "echo '=== Запуск ===' && bun --version && if [ -z \"$DATABASE_URL\" ]; then echo '⚠️ DATABASE_URL не задан'; else echo '🔄 db:push...'; timeout 30 bunx prisma db push --accept-data-loss || echo '⚠️ db:push не удался — стартую всё равно'; fi && PORT=${PORT:-3000} bun run start"]
+# Next.js сам читает PORT env (Railway задаёт его автоматически), дефолт 3000
+CMD ["sh", "-c", "echo '=== Запуск ===' && bun --version && echo PORT=$PORT && if [ -z \"$DATABASE_URL\" ]; then echo '⚠️ DATABASE_URL не задан'; else echo '🔄 db:push...'; timeout 30 bunx prisma db push --accept-data-loss || echo '⚠️ db:push не удался — стартую всё равно'; fi && bun run start"]
