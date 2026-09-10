@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getCurrentMaster } from '@/lib/auth'
+import { pushToSeniors } from '@/lib/notify'
 
 // Часовой пояс МСК (UTC+3). Смена открывается с 12:00 МСК.
 function isAfterNoonMSK(): boolean {
@@ -85,13 +86,11 @@ export async function POST(req: NextRequest) {
 
   // Нотификация старшему (кроме если сам старший открыл)
   if (me.role !== 'SENIOR') {
+    const notifMsg = `🌿 ${me.name} открыл смену`
     await db.notification.create({
-      data: {
-        type: 'SHIFT_OPEN',
-        message: `${me.name} открыл смену`,
-        masterId: me.id,
-      },
+      data: { type: 'SHIFT_OPEN', message: notifMsg, masterId: me.id },
     })
+    await pushToSeniors(notifMsg)
   }
 
   return NextResponse.json({ shift })
@@ -117,13 +116,11 @@ export async function PATCH() {
   })
 
   if (me.role !== 'SENIOR') {
+    const notifMsg = `🌙 ${me.name} закрыл смену (${shift.hookahCount} кальянов)`
     await db.notification.create({
-      data: {
-        type: 'SHIFT_CLOSE',
-        message: `${me.name} закрыл смену (${shift.hookahCount} кальянов)`,
-        masterId: me.id,
-      },
+      data: { type: 'SHIFT_CLOSE', message: notifMsg, masterId: me.id },
     })
+    await pushToSeniors(notifMsg)
   }
 
   return NextResponse.json({ shift: closed })

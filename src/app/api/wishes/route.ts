@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getCurrentMaster } from '@/lib/auth'
+import { pushToSeniors } from '@/lib/notify'
 
 // GET /api/wishes — список хотелок
 export async function GET(req: NextRequest) {
@@ -53,13 +54,11 @@ export async function POST(req: NextRequest) {
 
   // Нотификация старшему (если не сам старший)
   if (me.role !== 'SENIOR') {
+    const notifMsg = `💡 ${me.name}: хотелка — "${text.trim()}"`
     await db.notification.create({
-      data: {
-        type: 'WISH',
-        message: `${me.name}: хотелка — "${text.trim()}"`,
-        masterId: me.id,
-      },
+      data: { type: 'WISH', message: notifMsg, masterId: me.id },
     })
+    await pushToSeniors(notifMsg)
   }
 
   return NextResponse.json({ wish })

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkBotSecret, findMasterByTelegram } from '@/lib/bot-auth'
 import { db } from '@/lib/db'
+import { pushToSeniors } from '@/lib/notify'
 
 // Часовой пояс МСК (UTC+3). Смена открывается с 12:00 МСК.
 function isAfterNoonMSK(): boolean {
@@ -64,13 +65,11 @@ export async function POST(req: NextRequest) {
         data: { masterId: master.id, status: 'OPEN' },
       })
       if (master.role !== 'SENIOR') {
+        const notifMsg = `🌿 ${master.name} открыл смену`
         await db.notification.create({
-          data: {
-            type: 'SHIFT_OPEN',
-            message: `${master.name} открыл смену`,
-            masterId: master.id,
-          },
+          data: { type: 'SHIFT_OPEN', message: notifMsg, masterId: master.id },
         })
+        await pushToSeniors(notifMsg)
       }
       return NextResponse.json({ shift, message: 'Смена открыта' })
     }
@@ -87,13 +86,11 @@ export async function POST(req: NextRequest) {
         data: { status: 'CLOSED', closedAt: new Date() },
       })
       if (master.role !== 'SENIOR') {
+        const notifMsg = `🌙 ${master.name} закрыл смену (${shift.hookahCount} кальянов)`
         await db.notification.create({
-          data: {
-            type: 'SHIFT_CLOSE',
-            message: `${master.name} закрыл смену (${shift.hookahCount} кальянов)`,
-            masterId: master.id,
-          },
+          data: { type: 'SHIFT_CLOSE', message: notifMsg, masterId: master.id },
         })
+        await pushToSeniors(notifMsg)
       }
       return NextResponse.json({ shift: closed, message: `Смена закрыта. Кальянов: ${shift.hookahCount}` })
     }

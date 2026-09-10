@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import type { SessionMaster } from '@/lib/auth'
+import { pushToSeniors } from '@/lib/notify'
 
 // ───────────────────────────────────────────
 // Hugging Face Router (OpenAI-compatible)
@@ -131,6 +132,24 @@ ${allowedTools}
 - "покажи остатки" → query all_stock
 - "что на смене?" / "как смена?" / "кто работает?" → query shift
 
+СТРУКТУРА ТАБАКА — ВАЖНО! У каждого табака 3 поля:
+- brand — бренд/производитель (Darkside, Tangiers, Musthave, Daily Hookah, Burn, BlackBurn)
+- line — линейка/серия (Core, Supernova, Rare, Base, Original, Lucid, Medium)
+- flavor — вкус (Ice Grape, Cola, Energy, Watermelon Mint, Cane Mint, Pineapple)
+
+ПРИМЕРЫ правильного разделения:
+- "дарксайд кора кола" → brand=Darkside, line=Core, flavor=Cola
+- "дарксайд супнова айс грейп" → brand=Darkside, line=Supernova, flavor=Ice Grape
+- "танжерс лучид кейн мята" → brand=Tangiers, line=Lucid, flavor=Cane Mint
+- "мустхейв оригинал бласт" → brand=Musthave, line=Original, flavor=Blast
+- "дейли хука бейз грейпфрут" → brand=Daily Hookah, line=Base, flavor=Grapefruit
+- "блэкберн" → brand=BlackBurn, line=, flavor= (нужно уточнить линейку и вкус)
+- "дарксайд супнова" без вкуса → уточни вкус! Supernova — это линейка, не вкус.
+
+Если мастер сказал только бренд или только часть названия — УТОЧНИ что именно нужно:
+- "дарксайд" → "Какой вкус? У нас есть Darkside Core (Cola, Medium, Pineapple) и Darkside Supernova (Ice Grape, Cola)"
+- "танж" → "Какой именно? Tangiers Lucid (Cane Mint, ...) — уточни вкус"
+
 ВАЖНО:
 - update_stock УСТАНАВЛИВАЕТ остаток (абсолют), add_incoming — ПРИБАВЛЯЕТ к текущему
 - Если мастер сообщает об остатке голосом/текстом → update_stock
@@ -217,6 +236,38 @@ async function buildShiftContext(master: SessionMaster): Promise<string> {
     take: 10,
   })
 
+  const pendingWishes = await db.wish.findMany({
+    where: { status: 'PENDING' },
+    include: { master: true },
+    orderBy: { createdAt: 'desc' },
+    take: 10,
+  })
+
+  // Недавние операции за текущие смены (что мастера отметили)
+  const recentOps: string[] = []
+  if (openShifts.length > 0) {
+    const shiftMasterIds = openShifts.map((s) => s.masterId)
+    const earliestOpen = openShifts.reduce((min, s) => (s.openedAt < min ? s.openedAt : min), openShifts[0].openedAt)
+
+    const ops = await db.operation.findMany({
+      where: {
+        createdAt: { gte: earliestOpen },
+        type: 'ADJUSTMENT',
+      },
+      include: { tobacco: true },
+      orderBy: { createdAt: 'desc' },
+      take: 15,
+    })
+
+    // Группируем по мастерам (но operation не имеет masterId напрямую — берём из ChatMessage)
+    // Проще: показать все недавние операции с заметками
+    for (const op of ops) {
+      const time = new Date(op.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+      const t = op.tobacco
+      recentOps.push(`  [${time}] ${t.brand} ${t.line} ${t.flavor}: ${op.gramsBefore}г → ${op.gramsAfter}г${op.note ? ` (${op.note})` : ''}`)
+    }
+  }
+
   const lines: string[] = []
   lines.push('ТЕКУЩАЯ СМЕНА:')
   if (openShifts.length === 0) {
@@ -224,15 +275,29 @@ async function buildShiftContext(master: SessionMaster): Promise<string> {
   } else {
     for (const s of openShifts) {
       const hoursAgo = Math.floor((Date.now() - s.openedAt.getTime()) / 3600000)
+      const minsAgo = Math.floor((Date.now() - s.openedAt.getTime()) / 60000)
+      const dur = hoursAgo > 0 ? `${hoursAgo}ч` : `${minsAgo}м`
       const mine = s.masterId === master.id ? ' (ты)' : ''
-      lines.push(`- ${s.master.name}${mine} | на смене ${hoursAgo}ч | ${s.hookahCount} кальянов`)
+      lines.push(`- ${s.master.name}${mine} | на смене ${dur} | ${s.hookahCount} кальянов`)
     }
+  }
+
+  if (recentOps.length > 0) {
+    lines.push('\nНЕДАВНИЕ ОПЕРАЦИИ ПО ОСТАТКАМ (за смену):')
+    lines.push(...recentOps)
   }
 
   if (activeRequests.length > 0) {
     lines.push('\nАКТИВНЫЕ ЗАЯВКИ МАСТЕРОВ:')
     for (const r of activeRequests) {
-      lines.push(`- ${r.master.name}: ${r.text}`)
+      lines.push(`- ${r.master.name}: "${r.text}"${r.grams ? ` (${r.grams}г)` : ''}`)
+    }
+  }
+
+  if (pendingWishes.length > 0) {
+    lines.push('\nХОТЕЛКИ МАСТЕРОВ:')
+    for (const w of pendingWishes) {
+      lines.push(`- ${w.master.name}: "${w.text}"`)
     }
   }
 
@@ -295,13 +360,16 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
         })
         if (master.role !== 'SENIOR' && (grams === 0 || grams < tobacco.thresholdGrams)) {
           const reason = grams === 0 ? 'закончился' : `мало осталось (${grams}г)`
+          const notifMsg = `⚠️ ${master.name} отметил: ${reason} ${tobacco.brand} ${tobacco.line} ${tobacco.flavor}`
           await db.notification.create({
             data: {
               type: 'FINISHED',
-              message: `${master.name} отметил: ${reason} ${tobacco.brand} ${tobacco.flavor}`,
+              message: notifMsg,
               masterId: master.id,
             },
           })
+          // Push в Telegram старшему
+          await pushToSeniors(notifMsg)
         }
         return {
           success: true,
@@ -380,13 +448,11 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
           data: { masterId: master.id, text, grams: grams ?? null },
         })
         if (master.role !== 'SENIOR') {
+          const notifMsg = `📋 ${master.name}: заявка на закуп — "${text}"`
           await db.notification.create({
-            data: {
-              type: 'REQUEST',
-              message: `${master.name}: заявка на закуп — "${text}"`,
-              masterId: master.id,
-            },
+            data: { type: 'REQUEST', message: notifMsg, masterId: master.id },
           })
+          await pushToSeniors(notifMsg)
         }
         return { success: true, message: `Заявка принята: "${text}"`, data: { requestId: request.id } }
       }
@@ -395,13 +461,11 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
         const { text } = action.args
         const wish = await db.wish.create({ data: { masterId: master.id, text } })
         if (master.role !== 'SENIOR') {
+          const notifMsg = `💡 ${master.name}: хотелка — "${text}"`
           await db.notification.create({
-            data: {
-              type: 'WISH',
-              message: `${master.name}: хотелка — "${text}"`,
-              masterId: master.id,
-            },
+            data: { type: 'WISH', message: notifMsg, masterId: master.id },
           })
+          await pushToSeniors(notifMsg)
         }
         return { success: true, message: `Хотелка добавлена: "${text}"`, data: { wishId: wish.id } }
       }

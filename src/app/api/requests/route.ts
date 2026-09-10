@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getCurrentMaster } from '@/lib/auth'
+import { pushToSeniors } from '@/lib/notify'
 
 // GET /api/requests — заявки мастеров на закуп
 export async function GET(req: NextRequest) {
@@ -58,13 +59,11 @@ export async function POST(req: NextRequest) {
 
   // Нотификация старшему
   if (me.role !== 'SENIOR') {
+    const notifMsg = `📋 ${me.name}: заявка на закуп — "${text.trim()}"`
     await db.notification.create({
-      data: {
-        type: 'REQUEST',
-        message: `${me.name}: заявка на закуп — "${text.trim()}"`,
-        masterId: me.id,
-      },
+      data: { type: 'REQUEST', message: notifMsg, masterId: me.id },
     })
+    await pushToSeniors(notifMsg)
   }
 
   return NextResponse.json({ request })
