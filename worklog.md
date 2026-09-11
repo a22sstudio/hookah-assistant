@@ -406,3 +406,42 @@ Stage Summary:
 - Telegram: @Defowork_bot → /claim 1111 → /help → «чего мало?»
 - Голосовые: временно отключены (пользователь получает понятное сообщение)
 - Фото: может работать нестабильно через HF Vision
+
+---
+Task ID: 11 — ASR РАБОТАЕТ (Whisper Large V3 Turbo)
+Agent: main (Z.ai Code)
+Task: Подключить бесплатный ASR через HF.
+
+Проблема: ASR был отключён. Нужно бесплатное решение работающее из РФ.
+
+Решение: Hugging Face Inference API с openai/whisper-large-v3-turbo.
+- POST на https://router.huggingface.co/hf-inference/models/openai/whisper-large-v3-turbo
+- Content-Type: audio/ogg (для Telegram) или audio/wav
+- Ответ: { "text": "распознанный текст" }
+- 1 секунда на распознавание
+- Бесплатно, через тот же HF_TOKEN
+- Whisper Large V3 — лучшая ASR модель для русского
+
+Реализация (src/lib/ai.ts):
+- transcribeAudio() переписана: автоопределение mime (data: URL, OGG по байтам 'OggS', дефолт wav)
+- POST raw audio bytes на HF endpoint
+- Возвращает распознанный текст
+- bot-runner.ts: убрана заглушка «временно недоступно», обработка идёт через withTimeout 30с
+
+Проблемы с деплоем:
+- Railway не подхватил пуш после git pull --rebase
+- Решение: пустой коммит-триггер (a2ebc3e "trigger: redeploy") → автодеплой запустился
+
+Тест (подтверждён пользователем):
+- Тимур отправил голосовое «чего осталось мало»
+- Бот распознал за 1 сек: "Отправь мне чего осталось мало"
+- AI ответил списком из 7 позиций «мало»
+- Скорость: ответ в ту же минуту
+- Скриншот: /home/z/my-project/upload/Снимок экрана 2026—09—11 в 03.20.16.png
+
+Stage Summary:
+- ASR полностью работает в продакшене, бесплатно, стабильно.
+- Полный AI-стек через HF: LLM + Vision + ASR = $0/мес.
+- Веб-панель: https://hookah-assistant-production.up.railway.app
+- Бот: @Defowork_bot
+- Голосовые: распознаёт Whisper, отвечает Qwen, всё бесплатно.
