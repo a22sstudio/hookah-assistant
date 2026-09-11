@@ -111,6 +111,8 @@ model Master {
   requests      MasterRequest[]
   notifications Notification[]
   chatMessages  ChatMessage[]
+  scheduleEntries ScheduleEntry[]
+  dailySummaries DailySummary[]
 }
 
 // Смена мастера
@@ -160,7 +162,7 @@ model MasterRequest {
 // Уведомления для старшего мастера (авто-пуши)
 model Notification {
   id        String   @id @default(cuid())
-  type      String   // REQUEST | FINISHED | WISH | SHIFT_OPEN | SHIFT_CLOSE | LOW_STOCK
+  type      String   // REQUEST | FINISHED | WISH | SHIFT_OPEN | SHIFT_CLOSE | LOW_STOCK | DAILY_SUMMARY
   message   String
   masterId  String?  // кто инициировал
   read      Boolean  @default(false)
@@ -169,4 +171,44 @@ model Notification {
 
   @@index([read])
   @@index([createdAt])
+}
+
+// ============================================
+// График работы
+// ============================================
+
+// Смена в графике (плановая)
+model ScheduleEntry {
+  id        String   @id @default(cuid())
+  masterId  String
+  date      DateTime  // дата смены (без времени, 00:00)
+  startHour Int      @default(12)  // час начала (МСК)
+  endHour   Int      @default(23)  // час окончания (МСК)
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  master    Master   @relation(fields: [masterId], references: [id], onDelete: Cascade)
+
+  @@unique([masterId, date])
+  @@index([date])
+  @@index([masterId])
+}
+
+// Ежедневная сводка по мастеру (кешируется для быстрого получения)
+model DailySummary {
+  id              String   @id @default(cuid())
+  masterId        String
+  date            DateTime  // дата (00:00)
+  hookahCount     Int       @default(0)
+  shiftOpenedAt   DateTime?
+  shiftClosedAt   DateTime?
+  stockAdjustments Int      @default(0)  // сколько раз отметил остатки
+  requestsCreated Int       @default(0)
+  wishesCreated   Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  master          Master    @relation(fields: [masterId], references: [id], onDelete: Cascade)
+
+  @@unique([masterId, date])
+  @@index([date])
 }

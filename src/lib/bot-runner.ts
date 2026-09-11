@@ -136,8 +136,13 @@ function createBot(): Telegraf {
     return ctx.reply(
       `📋 Команды\n\n` +
         `• /shift — открыть или закрыть смену\n` +
-        `• /+1 или просто "+1" — добавить кальян\n` +
+        `• /+1 или "+1" — добавить 1 кальян\n` +
+        `• "забил 5" / "сделал 3" / "накрутил 10" — пакетно\n` +
         `• /status — кто сейчас на смене\n` +
+        `• /schedule — график на 30 дней\n` +
+        `• /schedule 23 или /schedule четверг — кто работает\n` +
+        `• /summary — сводка за сегодня\n` +
+        `• /summary вчера — сводка за другой день\n` +
         `• /whoami — кто я\n` +
         `• /help — эта справка\n\n` +
         `💬 Можно просто писать текстом:\n` +
@@ -199,6 +204,60 @@ function createBot(): Telegraf {
       lines.push('\n✅ Можете открыть смену: /shift')
     }
     return ctx.reply(lines.join('\n'))
+  })
+
+  // /schedule — график (без аргумента = на 30 дней, /schedule 23 или /schedule четверг)
+  bot.command('schedule', async (ctx) => {
+    const master = (ctx.state as { master: SessionMaster | null }).master
+    if (!master) return ctx.reply('🔒 Вы не зарегистрированы. /start')
+
+    const args = (ctx.message as { text: string }).text.split(/\s+/).slice(1)
+    const arg = args.join(' ').trim()
+    await ctx.sendChatAction('typing')
+
+    const BOT_SECRET = process.env.BOT_SECRET || ''
+    const tgId = String((ctx.from as { id?: number })?.id || '')
+
+    if (arg) {
+      // Кто работает в конкретную дату
+      const res = await fetch(`http://localhost:${process.env.PORT || 3000}/api/bot/schedule`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Bot-Secret': BOT_SECRET },
+        body: JSON.stringify({ telegramId: tgId, action: 'date', dateText: arg }),
+      })
+      const data = await res.json()
+      return ctx.reply(data.message || data.error || 'Не удалось получить график')
+    }
+
+    // График на 30 дней
+    const res = await fetch(`http://localhost:${process.env.PORT || 3000}/api/bot/schedule`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Bot-Secret': BOT_SECRET },
+      body: JSON.stringify({ telegramId: tgId, action: 'list', days: 30 }),
+    })
+    const data = await res.json()
+    return ctx.reply(data.message || data.error || 'Не удалось получить график')
+  })
+
+  // /summary — сводка дня (без аргумента = сегодня)
+  bot.command('summary', async (ctx) => {
+    const master = (ctx.state as { master: SessionMaster | null }).master
+    if (!master) return ctx.reply('🔒 Вы не зарегистрированы. /start')
+
+    const args = (ctx.message as { text: string }).text.split(/\s+/).slice(1)
+    const arg = args.join(' ').trim()
+    await ctx.sendChatAction('typing')
+
+    const BOT_SECRET = process.env.BOT_SECRET || ''
+    const tgId = String((ctx.from as { id?: number })?.id || '')
+
+    const res = await fetch(`http://localhost:${process.env.PORT || 3000}/api/bot/summary`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Bot-Secret': BOT_SECRET },
+      body: JSON.stringify({ telegramId: tgId, dateText: arg || undefined }),
+    })
+    const data = await res.json()
+    return ctx.reply(data.message || data.error || 'Не удалось получить сводку')
   })
 
   // /shift — открыть/закрыть
@@ -385,6 +444,25 @@ function createBot(): Telegraf {
     const text = (ctx.message as { text: string }).text
     if (text.startsWith('/')) return // команды уже обработаны
 
+    // Быстрый парсинг: "забил 5 кальянов", "сделал 3", "накрутил 10"
+    const { parseHookahCount } = await import('@/lib/datetime-utils')
+    const hookahCount = parseHookahCount(text)
+
+    // Если похоже на отчёт о кальянах и нет других ключевых слов AI
+    const lowerText = text.toLowerCase()
+    const hasOtherIntent = /сколько|чего|какой|какая|закажи|хочу|заканчивается|осталось|приход|накладн/.test(lowerText)
+
+    if (hookahCount !== null && hookahCount > 1 && !hasOtherIntent) {
+      // Пакетное добавление кальянов (минуя AI — быстро)
+      const shift = await db.shift.findFirst({ where: { masterId: master.id, status: 'OPEN' } })
+      if (!shift) {
+        return ctx.reply('⚠️ Смена не открыта. /shift чтобы открыть.')
+      }
+      const newCount = shift.hookahCount + hookahCount
+      await db.shift.update({ where: { id: shift.id }, data: { hookahCount: newCount } })
+      return ctx.reply(`🪔 +${hookahCount} кальянов\nВсего за смену: ${newCount}`)
+    }
+
     await ctx.sendChatAction('typing')
     const stop = { value: false }
     const typingLoop = keepTyping(ctx, stop).catch(() => {})
@@ -439,6 +517,21 @@ function createBot(): Telegraf {
       if (!transcribedText) {
         stop.value = true; await typingLoop
         return ctx.reply('⚠️ Не удалось распознать речь (пустой ответ).')
+      }
+
+      // Быстрый парсинг кальянов из распознанного голоса
+      const { parseHookahCount } = await import('@/lib/datetime-utils')
+      const hookahCount = parseHookahCount(transcribedText)
+      const hasOtherIntent = /сколько|чего|какой|какая|закажи|хочу|заканчивается|осталось|приход|накладн/.test(transcribedText.toLowerCase())
+
+      if (hookahCount !== null && hookahCount > 1 && !hasOtherIntent) {
+        const shift = await db.shift.findFirst({ where: { masterId: master.id, status: 'OPEN' } })
+        if (shift) {
+          const newCount = shift.hookahCount + hookahCount
+          await db.shift.update({ where: { id: shift.id }, data: { hookahCount: newCount } })
+          stop.value = true; await typingLoop
+          return ctx.reply(`🎙 Распознал: «${transcribedText}»\n\n🪔 +${hookahCount} кальянов\nВсего за смену: ${newCount}`)
+        }
       }
 
       const result = await withTimeout(
