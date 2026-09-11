@@ -736,3 +736,39 @@ Task: Перевести UI Hookah Assistant на новую 3-tier систем
 - src/app/page.tsx (1)
 
 Work record сохранён: /home/z/my-project/agent-ctx/redesign-3-main.md
+
+---
+Task ID: redesign-3
+Agent: main (Z.ai Code)
+Task: Прокачка дизайна до коммерческого уровня (3-tier tokens + dark mode native).
+
+Inspiration: ux-ui-agent-skills (138 design systems), Linear, shadcn.
+
+Архитектура (globals.css):
+- 3-tier: Primitive (gray/ember/green/amber/red scales) → Semantic (bg/fg/card/border) → Component
+- Dark mode NATIVE (#0a0b0d canvas, #111316 panels, semi-transparent white borders)
+- Ember ярче в dark: #ff5733 vs #dc2f02 в light
+- Motion tokens: fast 100ms, base 200ms, moderate 300ms, slow 500ms + easings
+- Shadow tokens: multi-layered (sm/md/lg/xl/2xl) — heavier в dark
+- Spacing: 4px base (0..20)
+- Radii: 6px (softened from 0 brutalist)
+- Type: Major Third 1.25 scale, Inter Variable (cv01,ss03,weight 450) + Fragment Mono
+
+ThemeToggle: Sun/Moon button в headers, useSyncExternalStore, localStorage + matchMedia.
+FOUC prevention: inline script in <head>.
+
+WCAG 2.2 AA: contrast 4.5:1, focus-visible rings, touch targets 44px, prefers-reduced-motion.
+
+Компоненты (34 файла):
+- 17 базовых shadcn (button, input, card, badge, tabs с ember underline, dialog с shadow-xl, etc.)
+- 16 hookah (login, dashboard без Card/ScrollArea, ai-chat с inverted header, shift-panel, etc.)
+- theme-toggle.tsx
+
+Визуальные баги исправлены:
+- Stock list: plain border div, page scrolls naturally
+- Header: solid bg-background, no overlap
+- Tabs: border-b-2 border-ember (underline, not bg)
+
+VLM подтверждение:
+- Light: «Минималистичный техно-люкс с элементами брутализма», grid-фон, терракотовый акцент
+- Dark: «Строгий технический dark mode в стиле терминала/CRM», высокий контраст
