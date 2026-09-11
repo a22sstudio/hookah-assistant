@@ -17,8 +17,8 @@ interface WishesPanelProps {
 }
 
 const STATUS_STYLE: Record<Wish['status'], string> = {
-  PENDING: 'border-[#dc2f02] text-[#dc2f02] bg-transparent',
-  DONE: 'border-border text-ink-faint bg-transparent',
+  PENDING: 'border-ember text-ember bg-transparent',
+  DONE: 'border-border text-muted-foreground bg-transparent',
 }
 
 export function WishesPanel({ role, refreshKey, onRefresh }: WishesPanelProps) {
@@ -117,9 +117,9 @@ export function WishesPanel({ role, refreshKey, onRefresh }: WishesPanelProps) {
 
       {/* Форма добавления (только для обычных мастеров) */}
       {!isSenior && (
-        <div className="frame p-5 space-y-3">
+        <div className="frame p-5 space-y-3 rounded-md shadow-sm-soft">
           <div className="flex items-center gap-2 label-mono">
-            <Star className="h-3.5 w-3.5 text-[#dc2f02]" />
+            <Star className="h-3.5 w-3.5 text-ember" />
             Оставить хотелку
           </div>
           <Textarea
@@ -152,19 +152,19 @@ export function WishesPanel({ role, refreshKey, onRefresh }: WishesPanelProps) {
 
       {/* Сводка для старшего */}
       {isSenior && items.length > 0 && (
-        <div className={`border ${pendingCount > 0 ? 'frame' : 'border-border'} p-4 flex items-center gap-3`}>
-          <Inbox className={`h-4 w-4 ${pendingCount > 0 ? 'text-[#dc2f02]' : 'text-ink-faint'}`} />
+        <div className={`border rounded-md p-4 flex items-center gap-3 shadow-sm-soft transition-base ${pendingCount > 0 ? 'frame-ember' : 'border-border'}`}>
+          <Inbox className={`h-4 w-4 ${pendingCount > 0 ? 'text-ember' : 'text-muted-foreground/70'}`} />
           <div>
-            <p className="text-2xl font-mono font-bold leading-none tabular-nums text-foreground">{pendingCount}</p>
+            <p className="text-2xl font-mono font-bold leading-none tabular text-foreground">{pendingCount}</p>
             <p className="label-mono mt-1">активных хотелок</p>
           </div>
         </div>
       )}
 
       {/* Список */}
-      <div className="border border-border">
+      <div className="border border-border rounded-md shadow-sm-soft">
         {loading ? (
-          <div className="p-8 text-center text-muted-foreground text-xs font-mono uppercase tracking-tight flex items-center justify-center gap-2">
+          <div className="p-8 text-center text-muted-foreground label-mono flex items-center justify-center gap-2">
             <Loader2 className="h-3 w-3 animate-spin" /> Загрузка...
           </div>
         ) : items.length === 0 ? (
@@ -173,7 +173,7 @@ export function WishesPanel({ role, refreshKey, onRefresh }: WishesPanelProps) {
           </div>
         ) : (
           <ScrollArea className="max-h-[60vh]">
-            <div>
+            <div className="stagger-children">
               {items.map((w) => (
                 <div
                   key={w.id}
@@ -184,17 +184,17 @@ export function WishesPanel({ role, refreshKey, onRefresh }: WishesPanelProps) {
                       <div
                         className={`mt-0.5 h-9 w-9 shrink-0 ${masterAvatarClass(
                           w.master.color,
-                        )} flex items-center justify-center text-[10px] font-mono font-bold uppercase text-white`}
+                        )} flex items-center justify-center text-[10px] font-mono font-bold uppercase text-white rounded-md`}
                       >
                         {initials(w.master.name)}
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
                       {isSenior && (
-                        <div className="text-[11px] font-mono uppercase tracking-tight text-ink-soft mb-1">
+                        <div className="label-mono-sm mb-1">
                           {w.master.name}
                           {w.isMine && (
-                            <span className="ml-1.5 text-[#dc2f02]">· ты</span>
+                            <span className="ml-1.5 text-ember">· ты</span>
                           )}
                         </div>
                       )}
@@ -203,7 +203,7 @@ export function WishesPanel({ role, refreshKey, onRefresh }: WishesPanelProps) {
                         <Badge variant="outline" className={STATUS_STYLE[w.status]}>
                           {WISH_STATUS_LABELS[w.status]}
                         </Badge>
-                        <span className="text-[10px] text-ink-faint font-mono uppercase tracking-tight">
+                        <span className="label-mono-sm">
                           {timeAgo(w.createdAt)}
                         </span>
                       </div>

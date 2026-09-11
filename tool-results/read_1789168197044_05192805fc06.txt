@@ -1,0 +1,402 @@
+   100→  - 'use client'
+   101→  - useEffect → GET `/api/auth/me` → setMaster, спиннер пока loading
+   102→  - master === null → <LoginScreen onLogin={setMaster} />
+   103→  - master.role === 'SENIOR' → <SeniorView master onLogout={() => setMaster(null)} />
+   104→  - master.role === 'REGULAR' → <MasterView ... />
+   105→  - Sticky header (Leaf + «Кальянный ассистент») + sticky footer паттерн сохранён
+   106→
+   107→Технические моменты:
+   108→- Использовал shadcn/ui из `src/components/ui/`: Card, Button, Input, Badge, Tabs, ScrollArea, Popover, Tooltip, Textarea, Sheet, Progress, Separator
+   109→- Никакого indigo/blue — только emerald/teal/amber/sky/violet/rose
+   110→- Sticky footer паттерн: `min-h-screen flex flex-col` + `mt-auto` на footer
+   111→- Mobile-first: TabsList с flex-col на мобиле → sm:flex-row; floating chat-button на мобиле + sticky aside на десктопе
+   112→- refreshKey-паттерн: `useState(0)` + `setRefreshKey(k => k+1)` прокидывается во все дочерние компоненты
+   113→
+   114→Верификация:
+   115→- `bun run lint` → 0 ошибок, 0 предупреждений
+   116→- dev.log компилится без ошибок/warnings
+   117→- Сделал end-to-end проверку через curl:
+   118→  - POST /api/auth/login pin=1111 → вернул senior Тимура
+   119→  - POST /api/auth/login pin=2222 → вернул regular Айрата
+   120→  - GET /api/auth/me с кукой → вернул того же мастера
+   121→  - GET /api/shifts для Айрата → его смена (5 кальянов, isMine=true)
+   122→  - GET /api/shifts для Тимура → все смены, видит Айрата
+   123→  - POST /api/shifts/hookah action=add → count: 6 ✓
+   124→  - POST /api/wishes text="хочу новые шланги" → создано ✓
+   125→  - POST /api/requests text="BlackBurn Energy 2 банки" → создано ✓
+   126→  - GET /api/notifications для Тимура → 3 непрочитанных (FINISHED + WISH + REQUEST)
+   127→- Прибил устаревший dev-сервер (запущен с Sep 09 с устаревшим Prisma-клиентом без модели Master) и стартанул заново (`setsid nohup bun run dev`) — после перегенерации Prisma-клиента всё заработало
+   128→
+   129→Stage Summary:
+   130→- Полностью готов UI-слой системы управления кальянной: PIN-логин, два разных интерфейса для старшего и обычного мастера, реальные API работают end-to-end.
+   131→- Файлы (новые): src/lib/master-utils.ts, src/components/hookah/{login-screen,shift-panel,notifications-bell,master-requests,wishes-panel,senior-shift-view,master-view,senior-view}.tsx
+   132→- Файлы (изменённые): src/lib/types.ts (расширение), src/app/page.tsx (полная замена на auth-gate)
+   133→- Демо-доступ: Старший Тимур PIN 1111, мастера Айрат PIN 2222 (sky), Марат PIN 3333 (violet).
+   134→- Старший видит live-смену всех мастеров с их счётчиком кальянов, получает нотификации-колокольчик (FINISHED/WISH/REQUEST/SHIFT_OPEN/SHIFT_CLOSE/LOW_STOCK), может менять статусы заявок и хотелок.
+   135→- Обычный мастер открывает/закрывает свою смену, считает кальяны (большая +1 кнопка), оставляет заявки и хотелки, видит остатки склада read-only.
+   136→
+   137→---
+   138→Task ID: 7
+   139→Agent: main (Z.ai Code)
+   140→Task: Верификация всей системы через Agent Browser + интеграция.
+   141→
+   142→Work Log:
+   143→- Проверил lint (0 ошибок) и dev.log (чистая компиляция, все API возвращают 200).
+   144→- Agent Browser, desktop 1440x900:
+   145→  - Login screen рендерится: 4 PIN-бокса, кнопки быстрого входа (1111/2222/3333).
+   146→  - Вход PIN 1111 → старший Тимур: 6 табов (Смена/Склад/Заявки/Хотелки/Справочник/История), notifications bell, AI-чат справа.
+   147→  - Senior shift view: "live · обновление каждые 10с", "1 мастер на смене, 6 кальянов", карточка Айрата (на смене 2ч19м, 6 кальянов). Кнопка "Открыть смену" корректно отключена (сейчас ~00:40 МСК, до 12:00).
+   148→  - Выход → вход PIN 2222 → обычный мастер Айрат: greeting "Айрат 👋", shift panel с счётчиком (6), кнопка +1 кальян, форма заявки, табы Заявки/Хотелки/Склад.
+   149→  - Нажал +1 кальян → счётчик 6→7 ✓ (POST /api/shifts/hookah).
+   150→  - Отправил заявку "BlackBurn Energy 2 банки" через форму → создалась ✓, старший получил нотификацию [REQUEST] ✓.
+   151→  - AI-чат: отправил "закончился darkside supernova cola" → LLM понял = 0г, обновил 45г→0г, ответил "✓ Записал: Darkside Supernova Cola = 0г (закончился)" ✓.
+   152→  - Проверил БД: Darkside Supernova Cola = 0г, isLow=true ✓.
+   153→  - Проверил нотификации старшего: 5 непрочитанных, включая [FINISHED] "Айрат отметил: закончился Darkside Cola" ✓ (авто-пуш сработал).
+   154→- Mobile (iPhone 14, 390px): floating chat button visible, 3 tabs, aside hidden (Sheet pattern) ✓.
+   155→- Консоль: 0 errors, 0 warnings.
+   156→
+   157→Stage Summary:
+   158→- Полностью рабочая multi-role система. Все ключевые сценарии проверены в браузере:
+   159→  1. PIN-авторизация по ролям
+   160→  2. Старший: live-дашборд смены с авто-рефрешем, уведомления, склад, заявки, хотелки, AI-чат
+   161→  3. Обычный мастер: смена (открытие с 12:00 МСК), счётчик кальянов, форма заявок/хотелок, AI-чат
+   162→  4. AI понимает речь обоих ролей, списывает остатки, создаёт авто-пуши старшему
+   163→  5. Адаптивность: десктоп (чат справа) + мобайл (floating button + Sheet)
+   164→- PIN-коды для демо: Старший Тимур=1111, Мастера Айрат=2222, Марат=3333.
+   165→
+   166→---
+   167→Task ID: 4
+   168→Agent: full-stack-developer (Z.ai Code)
+   169→
+   170→Task: Добавить вкладку «Мастера» в веб-панель старшего мастера — управление командой: список всех мастеров с PIN/Telegram ID, добавление новых, привязка telegramId через inline-редактирование.
+   171→
+   172→Work Log:
+   173→- Изучил контекст: прочитал `worklog.md` (Tasks 1, 5, 7) и существующие файлы: `src/lib/auth.ts` (cookie-auth через `getCurrentMaster`), `src/lib/master-utils.ts` (мастер-цвета + `initials`), `src/lib/bot-auth.ts`, `/api/bot/masters/route.ts` (бот-секрет + telegramId-based старший), `/api/tobaccos/route.ts` (cookie-auth паттерн), prisma-схему (модель `Master` с полями pin, telegramId, role, color, active), `src/components/hookah/senior-view.tsx` (6 табов), `src/components/hookah/login-screen.tsx`, `tobaccos-manager.tsx` (как образец диалог-формы).
+   174→
+   175→1. Создал **`src/app/api/masters/route.ts`** (новый):
+   176→   - `requireSenior()` helper — через `getCurrentMaster()` проверяет что: (а) пользователь залогинен (401 иначе) и (б) его роль === SENIOR (403 иначе).
+   177→   - **GET** — список всех активных мастеров с полями `{id, name, role, color, pin, telegramId}`. Сортировка по role, name. SENIOR only.
+   178→   - **POST** — создание мастера `{name, role, pin?, color, telegramId?}`:
+   179→     - Имя: trim + проверка уникальности (case-sensitive из-за @unique в Prisma).
+   180→     - Роль: `'SENIOR' | 'REGULAR'` (по умолчанию REGULAR).
+   181→     - Цвет: валидируется против white-list `[emerald, teal, amber, sky, violet, rose]`.
+   182→     - PIN: если передан — должна быть 4 цифры и не совпадать с существующим. Если не передан — авто-генерация (до 10 попыток с проверкой уникальности).
+   183→     - Telegram ID: опциональный, при наличии проверяется уникальность.
+   184→   - **PATCH** — обновление telegramId `{id, telegramId?}`:
+   185→     - Проверка существования мастера (404).
+   186→     - Если telegramId пустой/отсутствует → отвязка (null).
+   187→     - Проверка уникальности telegramId (кроме текущего мастера).
+   188→     - Возвращает обновлённый мастер + понятное сообщение на русском.
+   189→   - Серверные ошибки обёрнуты в try/catch с 500 ответом.
+   190→
+   191→2. Создал **`src/components/hookah/masters-manager.tsx`** (новый):
+   192→   - Props: `{ refreshKey: number; onRefresh: () => void }` — интегрируется в общий refresh-паттерн старшего.
+   193→   - **Header**: иконка `Users` + заголовок «Мастера» + подзаголовок-описание + кнопки «Обновить» (icon) и «Добавить мастера» (Dialog).
+   194→   - **Сводка** (4 мини-карточки): Всего / Старших (emerald) / Мастеров (sky) / С Telegram (violet) — быстрая статистика команды.
+   195→   - **Список мастеров** (ScrollArea `max-h-[65vh]`) — каждый как строка-карточка:
+   196→     - Аватар (кружок, цвет мастера, инициалы) + ring-2 в цвете.
+   197→     - Имя + role-бейдж: SENIOR → `⭐️ старший` (emerald Badge), REGULAR → `🌿 мастер` (sky Badge).
+   198→     - PIN код — моноширинный, с иконкой `KeyRound`.
+   199→     - Telegram ID — с иконкой `Hash`. Если привязан: моноширинный ID. Если нет: курсив «не привязан» + кнопка «привязать» (с иконкой `Send`).
+   200→   - **Inline-редактирование Telegram ID** (без диалога): клик по «привязать» или по иконке `Pencil` (если уже привязан) → появляется Input (`h-8 w-40 font-mono`, только цифры, Enter=сохранить, Escape=отмена) + зелёная кнопка ✓ (`Check`/`Loader2` если saving) + серая кнопка ✕ (`X`). PATCH `/api/masters` → toast success/error → refresh списка.
+   201→   - **Dialog «Новый мастер»**:
+   202→     - Поле «Имя» (autoFocus).
+   203→     - Select «Роль»: REGULAR (`🌿 мастер`) / SENIOR (`⭐️ старший`).
+   204→     - PIN: input с авто-генерацией при открытии диалога + кнопка-иконка `RefreshCw` для перегенерации. Подсказка что если оставить пустым — сгенерится сервером.
+   205→     - Цвет аватара: 6 цветных кружков (emerald/teal/amber/sky/violet/rose) — клик выбирает, выбранный подсвечен `ring-2 ring-offset-2 ring-foreground scale-110`.
+   206→     - Telegram ID: опциональное поле (только цифры), под ним hint: «Мастер может привязать себя сам через бота: /claim PIN».
+   207→   - Под списком подсказка: «Мастера также могут привязать Telegram сами: @Defowork_bot → /claim ВАШ_PIN».
+   208→   - Использовал shadcn/ui: `Card`, `Button`, `Input`, `Badge`, `Label`, `ScrollArea`, `Dialog`, `Select`, `DialogTrigger/Footer/Close`.
+   209→   - Все цвета из разрешённой палитры (emerald/teal/amber/sky/violet/rose), без indigo/blue.
+   210→   - Тосты через `sonner`.
+   211→   - Полностью на русском.
+   212→
+   213→3. Интегрировал в **`src/components/hookah/senior-view.tsx`**:
+   214→   - Добавил импорт `MastersManager` и иконку `Users` из `lucide-react`.
+   215→   - TabsList расширил с 6 до 7 колонок (`sm:grid-cols-7`) — добавил новый таб «Мастера» **после «Хотелки», перед «Справочник»** (логично: управление командой рядом с хотелками/заявками, до справочника табака).
+   216→   - Новый `TabsContent value="masters"` рендерит `<MastersManager refreshKey={refreshKey} onRefresh={refresh} />`.
+   217→   - На мобиле `grid-cols-3` остаётся (получается 3 строки по 2-3 таба) — адаптивность сохранена.
+   218→
+   219→4. Обновил **`src/components/hookah/login-screen.tsx`**:
+   220→   - Добавил иконку `Send` в импорт из `lucide-react`.
+   221→   - Под блоком демо-PIN кнопок добавил строку с иконкой-самолётиком (emerald) и текстом: «Или войдите через Telegram: **@Defowork_bot** → `/claim ВАШ_PIN`». Стиль: `text-[11px] text-muted-foreground`, иконка и имя бота подсвечены emerald/foreground.
+   222→
+   223→Верификация:
+   224→- **`bun run lint`** → 0 ошибок, 0 warnings, exit code 0.
+   225→- **dev.log**: Next.js 16 Turbopack компилируется без ошибок.
+   226→- Запустил dev-сервер (бышел из строя — стартанул через `setsid`) и протестировал end-to-end через curl:
+   227→  - `GET /api/masters` без auth → 401 `{"error":"Не авторизован"}` ✓
+   228→  - `POST /api/auth/login` pin=1111 → вернул старшего Тимура + установил hm_session cookie ✓
+   229→  - `GET /api/masters` с senior-cookie → 200, 3 мастера (Тимур SENIOR emerald pin=1111 tg=666; Айрат REGULAR sky pin=2222; Марат REGULAR violet pin=3333) ✓
+   230→  - `POST /api/masters` с senior-cookie `{name:"Дмитрий",role:"REGULAR",color:"amber",telegramId:"987654321"}` → 200, мастер создан с авто-PIN=5838 ✓
+   231→  - `POST /api/auth/login` pin=2222 → regular Айрат; `GET /api/masters` с regular-cookie → 403 `{"error":"Только старший мастер может управлять мастерами"}` ✓ (RBAC работает)
+   232→  - `PATCH /api/masters` привязать `telegramId=555123456` к Айрату → 200 ✓
+   233→  - `PATCH` с дубликатом `telegramId=987654321` (уже у Дмитрия) → 400 `{"error":"Telegram ID 987654321 уже привязан к «Дмитрий»"}` ✓ (уникальность telegramId проверяется)
+   234→  - `PATCH` с пустым telegramId → 200, отвязка ✓
+   235→  - Созданный для теста мастер «Дмитрий» деактивирован (`active=false`) через скрипт, чтобы не засорять демо.
+   236→- Final lint: 0 errors, exit code 0.
+   237→
+   238→Stage Summary:
+   239→- Готово: старший мастер теперь может в веб-панели (новый таб «Мастера») управлять всей командой: видеть список с PIN, Telegram ID, ролями, цветами аватаров; добавлять новых мастеров с авто-генерацией PIN и выбором цвета; inline-привязывать/отвязывать/редактировать Telegram ID без диалогов. Все операции — SENIOR-only (401/403 RBAC).
+   240→- Логин-экран обновлён: добавлена подсказка про альтернативный вход через Telegram-бота `@Defowork_bot → /claim ВАШ_PIN`.
+   241→- Файлы (новые): `src/app/api/masters/route.ts`, `src/components/hookah/masters-manager.tsx`.
+   242→- Файлы (изменённые): `src/components/hookah/senior-view.tsx` (+1 таб, +1 импорт компонента, +Users иконка), `src/components/hookah/login-screen.tsx` (+Telegram hint с Send иконкой).
+   243→- API pattern: cookie-auth через `getCurrentMaster()` (как в /api/tobaccos), в отличие от /api/bot/masters который использует bot-secret + seniorTelegramId.
+   244→- Активные мастера в БД: Тимур (SENIOR, emerald, pin=1111, tg=666), Айрат (REGULAR, sky, pin=2222), Марат (REGULAR, violet, pin=3333).
+   245→
+   246→---
+   247→Task ID: 6
+   248→Agent: main (Z.ai Code)
+   249→Task: Интеграция Telegram-бота с системой кальянной (безопасность, роли, AI, смены, голос, фото).
+   250→
+   251→Work Log:
+   252→- Добавил поле `telegramId String? @unique` в Master model, db push + generate.
+   253→- Создал `.env` с BOT_SECRET, TELEGRAM_BOT_TOKEN, NEXT_API_URL.
+   254→- Создал `src/lib/bot-auth.ts` (checkBotSecret, findMasterByTelegram, safeMaster).
+   255→- Создал 7 внутренних API routes с защитой по X-Bot-Secret:
+   256→  • /api/bot/identify — найти мастера по telegramId
+   257→  • /api/bot/claim — привязать Telegram к мастеру по PIN (решает проблему первого входа)
+   258→  • /api/bot/chat — AI-обработка (текст/голос/фото) с прямой передачей masterId
+   259→  • /api/bot/shift — open/close/+1/status
+   260→  • /api/bot/asr — транскрипция голоса
+   261→  • /api/bot/vlm — распознавание накладной
+   262→  • /api/bot/register — регистрация нового мастера (только старший)
+   263→  • /api/bot/masters — список + PATCH telegramId (только старший)
+   264→- Рефакторинг `processMasterMessage` — добавлен опциональный `masterId` для прямого вызова ботом (без cookie-сессии). Убран дублирующий dynamic import `@/lib/db` (вызывал краш Turbopack).
+   265→- Создал мини-сервис `mini-services/hookah-bot/` (Bun + Telegraf 4.16, polling, port 3003 health endpoint):
+   266→  • Загружает .env из корня проекта
+   267→  • Middleware: идентифицирует мастера по telegramId через /api/bot/identify
+   268→  • Команды: /start, /help, /whoami, /claim <PIN>, /shift, /+1, /register (senior), /masters (senior)
+   269→  • Текст → /api/bot/chat → AI-движок
+   270→  • Голос → скачивание файла → /api/bot/asr → /api/bot/chat (source=VOICE)
+   271→  • Фото → скачивание → /api/bot/vlm → /api/bot/chat (source=PHOTO, invoiceItems)
+   272→  • Незарегистрированные пользователи получают свой Telegram ID + инструкцию /claim
+   273→  • Inline-кнопки для открытия/закрытия смены
+   274→- Добавил таб «Мастера» (через сабагента Task ID 4) в веб-панель старшего: просмотр, добавление, привязка Telegram ID.
+   275→- Обновил login-screen: упоминание @Defowork_bot и /claim.
+   276→
+   277→Верификация:
+   278→- Бот авторизован: @Defowork_bot (DEFO WORK BOT) ✓
+   279→- Telegram getMe возвращает OK ✓
+   280→- API flow через curl: identify (null→мастер), claim (PIN→привязка), chat (AI отвечает), shift status, create_request — всё работает ✓
+   281→- 3 последовательных AI-запроса через bot API — сервер стабилен ✓
+   282→- Бот стабильно работает 30+ секунд (polling активен) ✓
+   283→- Таб «Мастера» в браузере: показывает Тимура (tg=666), Айрата и Марата (не привязаны) ✓
+   284→- Lint: 0 ошибок ✓
+   285→
+   286→Stage Summary:
+   287→- Telegram-бот @Defowork_bot полностью интегрирован и работает.
+   288→- Безопасность: только whitelist-пользователи (по telegramId). Незнакомцы получают отказ + свой ID.
+   289→- Роли: SENIOR (полный доступ + /register, /masters) vs REGULAR (своя смена, заявки, AI).
+   290→- Первый вход: /claim <PIN> — привязывает Telegram к существующему мастеру по PIN.
+   291→- Тот же AI-движок для веба и бота — единая логика учёта.
+   292→- PIN-коды для демо: Тимур(старший)=1111, Айрат=2222, Марат=3333.
+   293→- Бот: @Defowork_bot, мини-сервис на порту 3003.
+   294→
+   295→---
+   296→Task ID: 8
+   297→Agent: main (Z.ai Code)
+   298→Task: Подготовить проект к production-деплою (вариант 3): webhook + Dockerfile + PostgreSQL + README.
+   299→
+   300→Work Log:
+   301→- Создал webhook endpoint src/app/api/telegram/webhook/route.ts — Telegram сам присылает Update, не нужен постоянный polling-процесс.
+   302→- Рефактор src/lib/bot-runner.ts:
+   303→  • Добавил USE_POLLING флаг (env): polling для локалки, webhook для продакшена
+   304→  • Экспортировал getBot() для webhook endpoint
+   305→  • ensureBotRunning() теперь не запускает polling автоматически в prod
+   306→- Обновил src/app/layout.tsx — бот инициализируется при первом рендере.
+   307→- Создал prisma/schema.postgres.prisma — копия schema с provider="postgresql".
+   308→- Вернул schema.prisma к явному provider="sqlite" (env() в provider не работает в Prisma).
+   309→- Создал .env.example с описанием всех переменных.
+   310→- Обновил .gitignore: .env, *.db, *.log, agent-ctx/ — секреты не попадут в git.
+   311→- Создал скрипты управления webhook:
+   312→  • scripts/set-webhook.ts — установить webhook на URL
+   313→  • scripts/webhook-info.ts — проверить статус
+   314→  • scripts/delete-webhook.ts — удалить webhook (переключить на polling)
+   315→- Добавил npm-скрипты: db:use-postgres, db:use-sqlite, db:seed, bot:webhook:set/info/delete.
+   316→- Создал Dockerfile (multi-stage build, Bun, db push при старте).
+   317→- Создал railway.toml (Dockerfile builder, healthcheck, restart policy).
+   318→- Создал render.yaml (альтернатива: Render blueprint с PostgreSQL).
+   319→- Создал README.md с пошаговой инструкцией деплоя на Railway.
+   320→- Lint: 0 ошибок. Webhook endpoint проверен локально (GET возвращает status, бот инициализируется).
+   321→
+   322→Stage Summary:
+   323→- Проект полностью готов к деплою. План:
+   324→  1. git init + push на GitHub (.env в .gitignore — токены не утекут)
+   325→  2. Railway: New Project from GitHub → автоматически соберёт по Dockerfile
+   326→  3. Add PostgreSQL plugin → получить DATABASE_URL
+   327→  4. bun run db:use-postgres + закоммитить
+   328→  5. Задать env vars в Railway dashboard (TELEGRAM_BOT_TOKEN, BOT_SECRET, USE_POLLING=0, NEXT_API_URL, WEBHOOK_URL)
+   329→  6. После деплоя: bun run bot:webhook:set с публичным URL Railway
+   330→  7. /claim 1111 в Telegram → войти как Тимур (старший)
+   331→- В песочнице webhook не работает (Telegram требует HTTPS, есть только HTTP). Polling работает пока жив dev-сервер.
+   332→- После деплоя на Railway (HTTPS автоматически) бот будет стабилен 24/7.
+   333→- Файлы для деплоя: Dockerfile, railway.toml, render.yaml, .env.example, README.md, prisma/schema.postgres.prisma, scripts/*.
+   334→
+   335→---
+   336→Task ID: 9 — PRODUCTION DEPLOY SUCCESS
+   337→Agent: main (Z.ai Code)
+   338→Task: Деплой системы на Railway + настройка Telegram webhook.
+   339→
+   340→Work Log:
+   341→- Залили проект на GitHub: github.com/a22sstudio/hookah-assistant (использовали fine-grained PAT)
+   342→- Подключили Railway → автодеплой из GitHub репо
+   343→- Добавили PostgreSQL плагин в Railway → DATABASE_URL автоматически
+   344→- Итеративно фиксили Dockerfile:
+   345→  • Убрали VOLUME (Railway не поддерживает) → build failed
+   346→  • Перешли oven/bun:1.1 → oven/bun:1.2 (lockfile v1 не поддерживался)
+   347→  • Убрали --frozen-lockfile
+   348→  • Установили openssl (Prisma требует для PostgreSQL)
+   349→  • Добавили bun install (был пропущен → prisma: command not found)
+   350→  • Заменили bun run db:generate → bunx prisma generate
+   351→  • Сделали ensureBotRunning неблокирующим (await getMe в layout блокировал рендер → 502)
+   352→  • Упростили Dockerfile (убрали standalone build, перешли на next start)
+   353→  • Добавили ARG CACHE_BUSTER для принудительной пересборки
+   354→- КРИТИЧЕСКИЙ ФИКС: пользователь задал в Railway Start Command "bunx next start -p ${PORT:-3000}" — bash-подстановка не работала → Next.js падал с "argument is not a non-negative number". Решение: удалить Start Command из Railway Settings (использовать Dockerfile CMD).
+   355→- Создали /api/setup endpoint для инициализации БД дефолтными мастерами + табаками
+   356→- Создали /api/telegram/webhook endpoint — Telegram сам присылает Update, не нужен polling
+   357→- Рефактор bot-runner: ensureBotRunning неблокирующий, USE_POLLING по env флагу
+   358→
+   359→Финальная проверка:
+   360→- ✅ https://hookah-assistant-production.up.railway.app/api/auth/me → 200
+   361→- ✅ /api/setup → инициализирована БД (3 мастера, 10 табаков)
+   362→- ✅ Telegram webhook установлен: https://...up.railway.app/api/telegram/webhook
+   363→- ✅ botRunning: true (бот инициализирован на Railway)
+   364→- ✅ pending: 0 (все 4 сообщения из очереди обработаны)
+   365→- ✅ Тестовое сообщение отправлено пользователю (tg=697853671)
+   366→
+   367→Stage Summary:
+   368→- Система полностью в продакшене на Railway.
+   369→- Бот работает 24/7 через webhook (не зависит от сессии разработки).
+   370→- БД на PostgreSQL (Railway managed, с бэкапами).
+   371→- Веб-панель: https://hookah-assistant-production.up.railway.app (PIN 1111 = Тимур, старший)
+   372→- Telegram бот: @Defowork_bot — /start → /claim 1111 → работа.
+   373→- Демо-аккаунты: Тимур(старший)=1111, Айрат=2222, Марат=3333.
+   374→
+   375→---
+   376→Task ID: 10 — AI РАБОТАЕТ В ПРОДАКШЕНЕ (Hugging Face)
+   377→Agent: main (Z.ai Code)
+   378→Task: Подключить бесплатный AI-провайдер, работающий из РФ.
+   379→
+   380→Проблема: z-ai-web-dev-sdk использует internal-api.z.ai → 403 с Railway. Gemini не работает из РФ. OpenRouter требует пополнения счёта.
+   381→
+   382→Решение: Hugging Face Router (router.huggingface.co) — бесплатно, работает из РФ.
+   383→- LLM: Qwen/Qwen3.8-27B (провайдер ovhcloud, pricing 0/0 = бесплатно)
+   384→- Vision: inclusionAI/Ling-3.0-flash-VL (провайдер novita, бесплатно)
+   385→- ASR: временно отключён (HF router не поддерживает аудио)
+   386→
+   387→Реализация (src/lib/ai.ts):
+   388→- hfChat() — единая функция для LLM и Vision через OpenAI-compatible API
+   389→- getHfToken() — читает HF_TOKEN из env
+   390→- Сохранил все сигнатуры: processMasterMessage, recognizeInvoice, transcribeAudio
+   391→- parseAIResponse устойчив к reasoning-выводу (извлекает JSON из текста)
+   392→- System prompt идентичный (роль-aware, контекст склада + смены)
+   393→- transcribeAudio кидает понятную ошибку «ASR временно недоступен»
+   394→- bot-runner: voice handler красиво сообщает пользователю
+   395→
+   396→Тест:
+   397→- POST /api/chat {message:"чего мало?"} как Тимур → 200 за 16.8с
+   398→- Reply: "Тимур, мало: Burn Tobacco Energy 46г, Daily Hookah Base Watermelon Mint 8г, ..."
+   399→- query action выполнен успешно, 7 позиций найдено
+   400→- Тестовое сообщение отправлено пользователю в Telegram
+   401→
+   402→Stage Summary:
+   403→- Бот полностью работает в продакшене: https://hookah-assistant-production.up.railway.app
+   404→- AI: Hugging Face (бесплатно навсегда, ~1000 запросов/день)
+   405→- Веб-панель: вход по PIN 1111
+   406→- Telegram: @Defowork_bot → /claim 1111 → /help → «чего мало?»
+   407→- Голосовые: временно отключены (пользователь получает понятное сообщение)
+   408→- Фото: может работать нестабильно через HF Vision
+   409→
+   410→---
+   411→Task ID: 11 — ASR РАБОТАЕТ (Whisper Large V3 Turbo)
+   412→Agent: main (Z.ai Code)
+   413→Task: Подключить бесплатный ASR через HF.
+   414→
+   415→Проблема: ASR был отключён. Нужно бесплатное решение работающее из РФ.
+   416→
+   417→Решение: Hugging Face Inference API с openai/whisper-large-v3-turbo.
+   418→- POST на https://router.huggingface.co/hf-inference/models/openai/whisper-large-v3-turbo
+   419→- Content-Type: audio/ogg (для Telegram) или audio/wav
+   420→- Ответ: { "text": "распознанный текст" }
+   421→- 1 секунда на распознавание
+   422→- Бесплатно, через тот же HF_TOKEN
+   423→- Whisper Large V3 — лучшая ASR модель для русского
+   424→
+   425→Реализация (src/lib/ai.ts):
+   426→- transcribeAudio() переписана: автоопределение mime (data: URL, OGG по байтам 'OggS', дефолт wav)
+   427→- POST raw audio bytes на HF endpoint
+   428→- Возвращает распознанный текст
+   429→- bot-runner.ts: убрана заглушка «временно недоступно», обработка идёт через withTimeout 30с
+   430→
+   431→Проблемы с деплоем:
+   432→- Railway не подхватил пуш после git pull --rebase
+   433→- Решение: пустой коммит-триггер (a2ebc3e "trigger: redeploy") → автодеплой запустился
+   434→
+   435→Тест (подтверждён пользователем):
+   436→- Тимур отправил голосовое «чего осталось мало»
+   437→- Бот распознал за 1 сек: "Отправь мне чего осталось мало"
+   438→- AI ответил списком из 7 позиций «мало»
+   439→- Скорость: ответ в ту же минуту
+   440→- Скриншот: /home/z/my-project/upload/Снимок экрана 2026—09—11 в 03.20.16.png
+   441→
+   442→Stage Summary:
+   443→- ASR полностью работает в продакшене, бесплатно, стабильно.
+   444→- Полный AI-стек через HF: LLM + Vision + ASR = $0/мес.
+   445→- Веб-панель: https://hookah-assistant-production.up.railway.app
+   446→- Бот: @Defowork_bot
+   447→- Голосовые: распознаёт Whisper, отвечает Qwen, всё бесплатно.
+   448→
+   449→---
+   450→Task ID: redesign-1
+   451→Agent: main (Z.ai Code)
+   452→Task: Полный редизайн UI Hookah Assistant — editorial / brutalist / technical minimalism в стиле tour-kyrgyzstan.com. Белый фон, чёрный текст, терракотовый (#dc2f02) акцент. Fragment Mono для заголовков/лейблов/навигации/бейджей/кнопок, Archivo для body. Острые углы (--radius:0), тонкие 1px границы, асимметричные сетки.
+   453→
+   454→Work Log:
+   455→- Прочитал `worklog.md` (Tasks 1, 5, 7, 4) — понял контекст: multi-role CRM (SENIOR / REGULAR), PIN-логин, смены мастеров, AI-чат, заявки/хотелки, склад, уведомления-колокольчик.
+   456→- Изучил существующие `globals.css` (токены paper/ink/ember, --radius:0, утилиты .label-mono/.heading-mono/.body-sans/.frame/.frame-ink/.ember-text/.ember-bg/.ember-line) и `layout.tsx` (Archivo + Fragment_Mono через next/font, переменные --font-archivo / --font-fragment-mono).
+   457→- Прочитал ВСЕ компоненты в `src/components/hookah/` (14 файлов) и базовые shadcn компоненты (button, badge, input, tabs, card, textarea, progress, dialog, sheet, popover, label, select).
+   458→
+   459→Phase 3 — обновил базовые shadcn компоненты (сохраняя variants/props/API):
+   460→- `button.tsx`: убрал rounded-md, добавил font-mono uppercase tracking-tight в базовый класс. outline меняет bg на foreground при hover (инверсия). Размеры h-9/h-8/h-11.
+   461→- `badge.tsx`: rounded-none, font-mono uppercase tracking-tight, text-[10px], h-5. Variant outline теперь border-border + text-foreground.
+   462→- `input.tsx`: rounded-none, font-mono, placeholder font-mono uppercase text-xs, focus ring ember (через --ring).
+   463→- `textarea.tsx`: rounded-none, font-sans для основного текста, font-mono uppercase для placeholder.
+   464→- `card.tsx`: rounded-none, shadow-none, border-border. CardTitle = font-mono uppercase tracking-tight text-sm.
+   465→- `tabs.tsx`: TabsList убран bg-muted, заменил на border-b border-border (line-tabs). TabsTrigger = border-b-2 border-transparent, активный = border-foreground, font-mono uppercase tracking-tight text-xs.
+   466→- `progress.tsx`: rounded-none, h-[2px] (тонкая линия как в дизайне).
+   467→- `dialog.tsx`: rounded-none, border-border, shadow-none. DialogTitle = font-mono uppercase tracking-tight.
+   468→- `sheet.tsx`: shadow-none, border-border.
+   469→- `popover.tsx`: rounded-none, border-border, shadow-none, p-0 (контент сам задаёт паддинги).
+   470→- `label.tsx`: text-[11px] font-mono uppercase tracking-tight text-muted-foreground.
+   471→- `select.tsx`: rounded-none, font-mono uppercase text-xs, shadow-none.
+   472→
+   473→Phase 1 — переписал все 14 компонентов hookah (СОХРАНИЛ все props, state, fetch, event handlers — только JSX/CSS):
+   474→
+   475→1. `login-screen.tsx`: Чёрно-белый экран. Огромный заголовок "HOOKAH / ASSISTANT" в Fragment Mono (clamp 32-56px). Тонкая grid-разметка фона opacity 0.025. Label "ENTER PIN" + 4 квадратных инпута (h-16 w-14, 1px border, focus=ember). Demo-пины как editorial-список кнопок с моно-текстом `[1111]` в скобках. Telegram-подсказка внизу. Никаких gradient/blurred blobs.
+   476→
+   477→2. `shift-panel.tsx`: Нет смены → card frame-ink с большим заголовком "ОТКРЫТЬ СМЕНУ" + ember-кнопка. Есть смена → card с frame (1px ember border), pulsing ember-dot + "НА СМЕНЕ", огромное число кальянов (clamp 56-96px) в Fragment Mono, "+1 Кальян" (ember bg, 50% width) + "Отменить" (50% width). Закрыть смену = outline.
+   478→
+   479→3. `dashboard.tsx`: 4 stat-карточки в ряд (label-mono + огромные числа в font-mono). Карточка "Мало" подсвечивается ember-border (frame) когда lowCount > 0. Список табаков = простые строки с border-b, без card bg. Progress bar = h-[2px], ember когда isLow. Поиск = Input с mono placeholder. Фильтры = inline кнопки (active = bg-foreground / bg-ember для "Мало"), без shadcn Button.
+   480→
+   481→4. `ai-chat.tsx`: Header BLACK bg (bg-foreground) + white text + ember иконка Sparkles + "AI ASSISTANT" uppercase mono + подзаголовок "старшего кальянного мастера". Сообщения: user = ember bg + white text (right), assistant = white bg + 1px border (left). Pending indicator = 3 blinking dots (cursor-blink). Input = 1px border, mono placeholder. Send = ember bg. Mic/Image = outline 9x9. Suggestions = mono uppercase "→ text" с border. Убрал иконки-эмодзи из текста (текстовые подсказки в plain text).
+   482→
+   483→5. `operations-list.tsx`: Список с 1px dividers. Каждая строка: маленькая иконка в квадрате с 1px border (ember для incoming, ink-faint для других). Tobacco name в mono uppercase bold. Delta (+/- Nг) справа в mono bold. Time в label-mono. Badge OPERATION_LABELS через label-mono вместо Badge.
+   484→
+   485→6. `orders-list.tsx`: 3 stat-карточки (Ожидают = ember-border при pending > 0). Список строк с 1px dividers. Status badges: PENDING=ember border+text, ORDERED=ink border, RECEIVED=muted. Buttons = outline.
+   486→
+   487→7. `master-requests.tsx`: Форма в card с frame (ember border). Textarea с mono placeholder. Submit = primary (ink). Сводка для senior в 2 карточках (ожидают = ember-border). Список с 1px dividers, аватар квадратный (мастер-цвет bg + white mono initials), статус badges (PENDING=ember, ORDERED=ink, DONE=muted).
+   488→
+   489→8. `wishes-panel.tsx`: Аналогично master-requests. Star-иконка в ember. Submit = primary.
+   490→
+   491→9. `tobaccos-manager.tsx`: Заголовок + 2 кнопки (refresh, add). Список с 1px dividers. Brand в mono uppercase bold, line в sans, "мало" badge ember. Dialog — острые углы, mono labels.
+   492→
+   493→10. `masters-manager.tsx`: 4 stat-карточки (без цветовых акцентов — только ink). Список мастеров с 1px dividers. Аватар = квадратный (h-10 w-10) с мастер-цветом bg + white mono initials + 2px ring в цвете. Role badges: SENIOR=ember border+text, REGULAR=ink border. PIN/Telegram ID в label-mono. Inline-редактирование сохранено полностью.
+   494→
+   495→11. `notifications-bell.tsx`: Bell button = 9x9 outline с ember badge (-top-1 -right-1, count). Dropdown: header BLACK bg + white text, items с 1px dividers. Item-иконка в квадрате с 1px border (ember для непрочитанных, ink-faint для прочитанных). Label-mono для типа уведомления (ЗАКАНЧИЛСЯ, ЗАЯВКА и т.д.). Сообщение в body-sans. Тонкая ember-точка для непрочитанных.
+   496→
+   497→12. `senior-shift-view.tsx`: Заголовок "LIVE-смены" + пульсирующий ember-dot + "LIVE" в ember. 3 stat-карточки (мастеров/кальянов/ср.). Карточки смен: 1px border (frame для isMine), цветная полоса h-[3px] сверху, квадратный аватар 12x12, огроиное число кальянов (clamp 32-44px) в цвете мастера. SENIOR/ВЫ бейджи = квадратные с border.
+   498→
+   499→13. `master-view.tsx`: Header 60px высота: аватар квадратный + "ПРИВЕТ," label + name в mono uppercase bold. Logout = outline 9x9. ShiftPanel наверху. Tabs = 3 триггера (grid-cols-3) с иконками. AIChat sticky right (lg:block). Floating ember button bottom-right на мобиле (Sheet). Footer border-t, label-mono.
+
+[showing lines 100-499 of 623; use offset=500 with limit to continue reading]

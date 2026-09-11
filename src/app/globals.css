@@ -3,10 +3,16 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ═══════════════════════════════════════════════════════════
+   HOOKAH ASSISTANT — Design System
+   Гибрид: editorial identity (Fragment Mono + ember) +
+   Linear principles (3-tier tokens, dark-native, motion, shadows)
+   ═══════════════════════════════════════════════════════════ */
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-archivo);
+  --font-sans: var(--font-inter);
   --font-mono: var(--font-fragment-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -25,6 +31,7 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -38,161 +45,423 @@
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
   --color-ember: var(--ember);
-  --color-ink: var(--ink);
-  --color-ink-soft: var(--ink-soft);
-  --color-ink-faint: var(--ink-faint);
-  --color-paper: var(--paper);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
+  --color-ember-foreground: var(--ember-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* ═══════════════════════════════════════════════════════════
+   ТIER 1: PRIMITIVE — raw palette, never reference directly
+   ═══════════════════════════════════════════════════════════ */
 :root {
-  /* ── Палитра в стиле tour-kyrgyzstan.com ── */
-  --paper: #FFFFFF;
-  --ink: #000000;
-  --ink-soft: rgba(0, 0, 0, 0.65);
-  --ink-faint: rgba(0, 0, 0, 0.45);
-  --ember: #dc2f02; /* терракотовый акцент */
+  /* Gray scale (neutral, cool undertone) */
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+  --gray-950: #030712;
 
-  --radius: 0; /* острые углы — editorial/brutalist */
-  --background: var(--paper);
-  --foreground: var(--ink);
-  --card: var(--paper);
-  --card-foreground: var(--ink);
-  --popover: var(--paper);
-  --popover-foreground: var(--ink);
-  --primary: var(--ink);
-  --primary-foreground: var(--paper);
-  --secondary: rgba(0, 0, 0, 0.04);
-  --secondary-foreground: var(--ink);
-  --muted: rgba(0, 0, 0, 0.04);
-  --muted-foreground: var(--ink-faint);
-  --accent: var(--ember);
-  --accent-foreground: var(--paper);
-  --destructive: var(--ember);
-  --border: rgba(0, 0, 0, 0.18);
-  --input: rgba(0, 0, 0, 0.18);
-  --ring: var(--ember);
-  --chart-1: var(--ember);
-  --chart-2: var(--ink);
-  --chart-3: var(--ink-soft);
-  --chart-4: rgba(0, 0, 0, 0.65);
-  --chart-5: rgba(0, 0, 0, 0.45);
-  --sidebar: var(--paper);
-  --sidebar-foreground: var(--ink);
-  --sidebar-primary: var(--ink);
-  --sidebar-primary-foreground: var(--paper);
-  --sidebar-accent: var(--muted);
-  --sidebar-accent-foreground: var(--ink);
+  /* Ember scale (brand accent — terracotta) */
+  --ember-50: #fef3f0;
+  --ember-100: #fde3dc;
+  --ember-200: #fbc8b9;
+  --ember-300: #f7a18a;
+  --ember-400: #f17551;
+  --ember-500: #dc2f02;  /* base ember */
+  --ember-600: #c42802;
+  --ember-700: #a32202;
+  --ember-800: #831f06;
+  --ember-900: #6b1d08;
+  --ember-950: #3b0d03;
+
+  /* Semantic status */
+  --green-500: #10b981;
+  --green-600: #059669;
+  --amber-500: #f59e0b;
+  --amber-600: #d97706;
+  --red-500: #ef4444;
+  --red-600: #dc2626;
+
+  /* Motion */
+  --duration-instant: 0ms;
+  --duration-fast: 100ms;
+  --duration-base: 200ms;
+  --duration-moderate: 300ms;
+  --duration-slow: 500ms;
+
+  --ease-linear: linear;
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);     /* entrances */
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);       /* exits */
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1); /* default */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Spacing scale (4px base) */
+  --space-0: 0px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+
+  /* Radii — sharp but functional */
+  --radius: 6px;
+  --radius-pill: 9999px;
+  --radius-circle: 50%;
+
+  /* Type scale (Major Third, 1.25) */
+  --text-xs: 12px;    /* 0.75rem */
+  --text-sm: 14px;    /* 0.875rem */
+  --text-base: 16px;  /* 1rem */
+  --text-lg: 18px;    /* 1.125rem */
+  --text-xl: 20px;    /* 1.25rem */
+  --text-2xl: 24px;   /* 1.5rem */
+  --text-3xl: 30px;   /* 1.875rem */
+  --text-4xl: 36px;   /* 2.25rem */
+  --text-5xl: 48px;   /* 3rem */
+  --text-6xl: 60px;   /* 3.75rem */
+  --text-7xl: 72px;   /* 4.5rem */
+
+  /* ═══════════════════════════════════════════════════════════
+     TIER 2: SEMANTIC — light theme (default)
+     ═══════════════════════════════════════════════════════════ */
+
+  /* Surfaces */
+  --background: #ffffff;
+  --foreground: var(--gray-900);
+  --card: #ffffff;
+  --card-foreground: var(--gray-900);
+  --popover: #ffffff;
+  --popover-foreground: var(--gray-900);
+
+  /* Muted/secondary */
+  --muted: var(--gray-50);
+  --muted-foreground: var(--gray-500);
+  --secondary: var(--gray-100);
+  --secondary-foreground: var(--gray-900);
+
+  /* Brand */
+  --ember: var(--ember-500);
+  --ember-foreground: #ffffff;
+  --accent: var(--ember-500);
+  --accent-foreground: #ffffff;
+
+  /* Status */
+  --success: var(--green-600);
+  --success-foreground: #ffffff;
+  --warning: var(--amber-600);
+  --warning-foreground: #ffffff;
+  --destructive: var(--red-600);
+  --destructive-foreground: #ffffff;
+
+  /* Borders — semi-transparent for subtle structure */
+  --border: rgba(0, 0, 0, 0.09);
+  --input: rgba(0, 0, 0, 0.12);
+  --ring: var(--ember-500);
+
+  /* Primary (ink) */
+  --primary: var(--gray-900);
+  --primary-foreground: #ffffff;
+
+  /* Sidebar */
+  --sidebar: var(--gray-50);
+  --sidebar-foreground: var(--gray-900);
+  --sidebar-primary: var(--gray-900);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--gray-100);
+  --sidebar-accent-foreground: var(--gray-900);
   --sidebar-border: var(--border);
-  --sidebar-ring: var(--ember);
+  --sidebar-ring: var(--ember-500);
+
+  /* Charts */
+  --chart-1: var(--ember-500);
+  --chart-2: var(--gray-900);
+  --chart-3: var(--gray-500);
+  --chart-4: var(--green-500);
+  --chart-5: var(--amber-500);
+
+  /* Shadows — multi-layered for depth */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04);
+  --shadow-xl: 0 10px 20px rgba(0, 0, 0, 0.08), 0 4px 8px rgba(0, 0, 0, 0.04);
+  --shadow-2xl: 0 20px 40px rgba(0, 0, 0, 0.12), 0 8px 16px rgba(0, 0, 0, 0.06);
 }
 
+/* ═══════════════════════════════════════════════════════════
+   DARK THEME — native dark, not "applied"
+   Inspired by Linear (#08090a canvas, semi-transparent white borders)
+   ═══════════════════════════════════════════════════════════ */
 .dark {
-  --paper: #0a0a0a;
-  --ink: #ffffff;
-  --ink-soft: rgba(255, 255, 255, 0.65);
-  --ink-faint: rgba(255, 255, 255, 0.45);
-  --ember: #ff4d1c;
-  --background: var(--paper);
-  --foreground: var(--ink);
-  --card: var(--paper);
-  --card-foreground: var(--ink);
-  --popover: var(--paper);
-  --popover-foreground: var(--ink);
-  --primary: var(--ink);
-  --primary-foreground: var(--paper);
-  --secondary: rgba(255, 255, 255, 0.08);
-  --secondary-foreground: var(--ink);
-  --muted: rgba(255, 255, 255, 0.08);
-  --muted-foreground: var(--ink-faint);
-  --accent: var(--ember);
-  --accent-foreground: var(--paper);
-  --destructive: var(--ember);
-  --border: rgba(255, 255, 255, 0.18);
-  --input: rgba(255, 255, 255, 0.18);
+  /* Surfaces — layered dark */
+  --background: #0a0b0d;       /* canvas */
+  --foreground: #f7f8f8;      /* near-white, not pure */
+  --card: #111316;             /* panel background */
+  --card-foreground: #f7f8f8;
+  --popover: #16181c;          /* elevated surface */
+  --popover-foreground: #f7f8f8;
+
+  /* Muted/secondary */
+  --muted: rgba(255, 255, 255, 0.04);
+  --muted-foreground: rgba(255, 255, 255, 0.55);
+  --secondary: rgba(255, 255, 255, 0.06);
+  --secondary-foreground: #f7f8f8;
+
+  /* Brand — slightly brighter ember for dark */
+  --ember: #ff5733;
+  --ember-foreground: #ffffff;
+  --accent: #ff5733;
+  --accent-foreground: #ffffff;
+
+  /* Status — brighter for dark */
+  --success: #34d399;
+  --success-foreground: #0a0b0d;
+  --warning: #fbbf24;
+  --warning-foreground: #0a0b0d;
+  --destructive: #f87171;
+  --destructive-foreground: #0a0b0d;
+
+  /* Borders — semi-transparent white (Linear-style) */
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.12);
   --ring: var(--ember);
-  --sidebar: var(--paper);
-  --sidebar-foreground: var(--ink);
-  --sidebar-primary: var(--ink);
-  --sidebar-primary-foreground: var(--paper);
-  --sidebar-accent: var(--muted);
-  --sidebar-accent-foreground: var(--ink);
+
+  /* Primary (ink = white in dark) */
+  --primary: #f7f8f8;
+  --primary-foreground: #0a0b0d;
+
+  /* Sidebar */
+  --sidebar: #08090a;
+  --sidebar-foreground: #f7f8f8;
+  --sidebar-primary: #f7f8f8;
+  --sidebar-primary-foreground: #0a0b0d;
+  --sidebar-accent: rgba(255, 255, 255, 0.06);
+  --sidebar-accent-foreground: #f7f8f8;
   --sidebar-border: var(--border);
   --sidebar-ring: var(--ember);
+
+  /* Charts */
+  --chart-1: #ff5733;
+  --chart-2: #f7f8f8;
+  --chart-3: rgba(255, 255, 255, 0.55);
+  --chart-4: #34d399;
+  --chart-5: #fbbf24;
+
+  /* Shadows — heavier on dark for depth */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.2);
+  --shadow-xl: 0 12px 32px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.3);
+  --shadow-2xl: 0 24px 64px rgba(0, 0, 0, 0.6), 0 8px 16px rgba(0, 0, 0, 0.4);
 }
 
+/* ═══════════════════════════════════════════════════════════
+   BASE STYLES
+   ═══════════════════════════════════════════════════════════ */
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
+  }
+  *:focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "ss01", "cv01";
+    font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+    font-feature-settings: "cv01", "ss01", "ss03";
+    font-weight: 450; /* between regular (400) and medium (500) — Linear signature */
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Reduced motion respect */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
-/* ── Editorial стиль: uppercase labels, тонкие линии ── */
+/* ═══════════════════════════════════════════════════════════
+   TIER 3: COMPONENT-LEVEL UTILITIES (editorial identity preserved)
+   ═══════════════════════════════════════════════════════════ */
 @layer utilities {
+  /* Type utilities — editorial identity via Fragment Mono */
   .label-mono {
-    font-family: var(--font-fragment-mono), monospace;
+    font-family: var(--font-fragment-mono), ui-monospace, monospace;
     text-transform: uppercase;
-    letter-spacing: 0;
-    font-size: 11px;
-    color: var(--ink-faint);
+    letter-spacing: 0.02em;
+    font-size: var(--text-xs);
+    font-weight: 400;
+    color: var(--muted-foreground);
+    line-height: 1.4;
+  }
+  .label-mono-sm {
+    font-family: var(--font-fragment-mono), ui-monospace, monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    font-size: 10px;
+    font-weight: 400;
+    color: var(--muted-foreground);
+    line-height: 1.4;
   }
   .heading-mono {
-    font-family: var(--font-fragment-mono), monospace;
+    font-family: var(--font-fragment-mono), ui-monospace, monospace;
     text-transform: uppercase;
     letter-spacing: -0.02em;
     font-weight: 700;
+    line-height: 1.1;
   }
   .body-sans {
-    font-family: var(--font-archivo), sans-serif;
+    font-family: var(--font-inter), system-ui, sans-serif;
   }
-  .ember-line {
-    border-color: var(--ember);
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
   }
-  .ember-text {
-    color: var(--ember);
-  }
-  .ember-bg {
-    background: var(--ember);
-  }
-  .ink-bg {
-    background: var(--ink);
-    color: var(--paper);
-  }
-  .frame {
-    border: 1px solid var(--ember);
-  }
-  .frame-ink {
+
+  /* Ember utilities */
+  .ember-text { color: var(--ember); }
+  .ember-bg { background: var(--ember); color: var(--ember-foreground); }
+  .ember-border { border-color: var(--ember); }
+  .ember-frame { border: 1px solid var(--ember); }
+
+  /* Ink (primary dark) */
+  .ink-bg { background: var(--primary); color: var(--primary-foreground); }
+
+  /* Surface utilities */
+  .surface-card {
+    background: var(--card);
     border: 1px solid var(--border);
   }
+  .surface-elevated {
+    background: var(--popover);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+  }
+  .surface-flat {
+    background: var(--muted);
+  }
+
+  /* Frame utilities */
+  .frame { border: 1px solid var(--border); }
+  .frame-strong { border: 1px solid var(--foreground); }
+  .frame-ember { border: 1px solid var(--ember); }
+
+  /* Shadows */
+  .shadow-sm-soft { box-shadow: var(--shadow-sm); }
+  .shadow-md-soft { box-shadow: var(--shadow-md); }
+  .shadow-lg-soft { box-shadow: var(--shadow-lg); }
+  .shadow-xl-soft { box-shadow: var(--shadow-xl); }
+
+  /* Motion presets */
+  .transition-fast { transition-duration: var(--duration-fast); transition-timing-function: var(--ease-out); }
+  .transition-base { transition-duration: var(--duration-base); transition-timing-function: var(--ease-out); }
+  .transition-moderate { transition-duration: var(--duration-moderate); transition-timing-function: var(--ease-out); }
 }
 
-/* ── Custom scrollbar в стиле сайта ── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+/* ═══════════════════════════════════════════════════════════
+   SCROLLBAR — minimal, themed
+   ═══════════════════════════════════════════════════════════ */
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.18); }
+::-webkit-scrollbar-thumb {
+  background: var(--muted-foreground);
+  border-radius: var(--radius-pill);
+  opacity: 0.3;
+}
 ::-webkit-scrollbar-thumb:hover { background: var(--ember); }
 
-/* ── Плавные fade-in анимации ── */
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--muted-foreground) transparent;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ANIMATIONS — token-driven, reduced-motion safe
+   ═══════════════════════════════════════════════════════════ */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.fade-in {
-  animation: fadeIn 0.35s ease-out both;
+@keyframes fadeInScale {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
 }
-
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
 @keyframes blink {
   50% { opacity: 0; }
 }
-.cursor-blink {
-  animation: blink 1s step-end infinite;
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.fade-in { animation: fadeIn var(--duration-moderate) var(--ease-out) both; }
+.fade-in-scale { animation: fadeInScale var(--duration-moderate) var(--ease-spring) both; }
+.slide-in-right { animation: slideInRight var(--duration-moderate) var(--ease-out) both; }
+.cursor-blink { animation: blink 1s step-end infinite; }
+.live-pulse { animation: pulse 2s var(--ease-in-out) infinite; }
+
+/* Staggered children — for lists */
+.stagger-children > * {
+  animation: fadeIn var(--duration-moderate) var(--ease-out) both;
+}
+.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 40ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 80ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 120ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 160ms; }
+.stagger-children > *:nth-child(6) { animation-delay: 200ms; }
+.stagger-children > *:nth-child(7) { animation-delay: 240ms; }
+.stagger-children > *:nth-child(8) { animation-delay: 280ms; }
+
+/* Reduced motion — disable all animations */
+@media (prefers-reduced-motion: reduce) {
+  .fade-in,
+  .fade-in-scale,
+  .slide-in-right,
+  .cursor-blink,
+  .live-pulse,
+  .stagger-children > * {
+    animation: none !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   THEME TRANSITION — smooth switching
+   ═══════════════════════════════════════════════════════════ */
+.theme-transition,
+.theme-transition * {
+  transition: background-color var(--duration-base) var(--ease-out),
+              border-color var(--duration-base) var(--ease-out),
+              color var(--duration-base) var(--ease-out);
 }

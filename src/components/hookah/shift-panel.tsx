@@ -109,7 +109,7 @@ export function ShiftPanel({ refreshKey, onRefresh, masterName }: ShiftPanelProp
   if (loading) {
     return (
       <Card>
-        <CardContent className="p-6 flex items-center justify-center gap-2 text-muted-foreground text-xs font-mono uppercase tracking-tight">
+        <CardContent className="p-6 flex items-center justify-center gap-2 text-muted-foreground label-mono">
           <Loader2 className="h-3 w-3 animate-spin" /> Загрузка смены...
         </CardContent>
       </Card>
@@ -121,10 +121,10 @@ export function ShiftPanel({ refreshKey, onRefresh, masterName }: ShiftPanelProp
   // Нет открытой смены
   if (!myShift) {
     return (
-      <Card className="frame-ink">
+      <Card className="frame-strong fade-in">
         <CardContent className="p-8 flex flex-col items-start text-left gap-6">
           <div className="flex items-center gap-2 label-mono">
-            <span className="h-[6px] w-[6px] bg-ink-faint inline-block" />
+            <span className="h-1.5 w-1.5 bg-muted-foreground inline-block rounded-full" />
             Нет открытой смены
           </div>
           <div>
@@ -134,7 +134,7 @@ export function ShiftPanel({ refreshKey, onRefresh, masterName }: ShiftPanelProp
             >
               Открыть смену
             </h2>
-            <p className="body-sans text-sm text-ink-soft mt-2">
+            <p className="body-sans text-sm text-muted-foreground mt-2">
               {masterName}, открой смену, чтобы считать кальяны.
             </p>
           </div>
@@ -161,15 +161,15 @@ export function ShiftPanel({ refreshKey, onRefresh, masterName }: ShiftPanelProp
 
   // Смена открыта
   return (
-    <Card className="frame">
+    <Card className="frame-ember fade-in">
       <CardContent className="p-0">
         <div className="flex items-center justify-between px-6 pt-6 pb-4">
           <div className="flex items-center gap-2 label-mono">
-            <span className="relative flex h-[6px] w-[6px]">
-              <span className="animate-ping absolute inline-flex h-full w-full bg-[#dc2f02] opacity-75" />
-              <span className="relative inline-flex h-[6px] w-[6px] bg-[#dc2f02]" />
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full bg-ember opacity-75" />
+              <span className="relative inline-flex h-1.5 w-1.5 bg-ember" />
             </span>
-            <span className="text-[#dc2f02]">На смене</span>
+            <span className="text-ember">На смене</span>
           </div>
           <span className="label-mono">
             С {formatHHMM(myShift.openedAt)} · {shiftDuration(myShift.openedAt)}
@@ -182,13 +182,13 @@ export function ShiftPanel({ refreshKey, onRefresh, masterName }: ShiftPanelProp
             <div className="flex flex-col">
               <span className="label-mono mb-2">Кальянов</span>
               <span
-                className="font-mono font-bold leading-none text-foreground tabular-nums"
+                className="font-mono font-bold leading-none text-foreground tabular"
                 style={{ fontSize: 'clamp(56px, 12vw, 96px)' }}
               >
                 {myShift.hookahCount}
               </span>
             </div>
-            <Cigarette className="h-6 w-6 text-ink-faint mb-2" />
+            <Cigarette className="h-6 w-6 text-muted-foreground/70 mb-2" />
           </div>
         </div>
 
@@ -196,7 +196,8 @@ export function ShiftPanel({ refreshKey, onRefresh, masterName }: ShiftPanelProp
         <div className="flex">
           <Button
             size="lg"
-            className="flex-1 h-16 rounded-none border-0 border-r border-border bg-[#dc2f02] text-white hover:bg-[#dc2f02]/85 text-sm"
+            variant="destructive"
+            className="flex-1 h-16 rounded-none border-0 border-r border-border text-sm"
             disabled={busy}
             onClick={() => addHookah('add')}
           >

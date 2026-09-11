@@ -208,7 +208,7 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
           >
             Мастера
           </h2>
-          <p className="body-sans text-xs text-ink-soft mt-2">
+          <p className="body-sans text-xs text-muted-foreground mt-2">
             Управление командой: PIN-коды, роли и привязка к Telegram.
           </p>
         </div>
@@ -293,7 +293,7 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                         key={c.value}
                         type="button"
                         onClick={() => setForm({ ...form, color: c.value })}
-                        className={`h-8 w-8 ${c.className} transition-all ${
+                        className={`h-8 w-8 ${c.className} rounded-md transition-base ${
                           form.color === c.value
                             ? 'ring-2 ring-offset-2 ring-foreground scale-110'
                             : 'hover:scale-105 opacity-80'
@@ -319,7 +319,7 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                       })
                     }
                   />
-                  <p className="text-[10px] text-ink-faint font-mono uppercase tracking-tight">
+                  <p className="label-mono-sm">
                     Мастер может привязать себя сам через бота: /claim PIN
                   </p>
                 </div>
@@ -345,38 +345,38 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
 
       {/* Сводка */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="border border-border p-4">
+        <div className="border border-border rounded-md p-4 shadow-sm-soft">
           <div className="label-mono mb-2">Всего</div>
-          <div className="text-3xl font-mono font-bold tabular-nums text-foreground">{stats.total}</div>
+          <div className="text-3xl font-mono font-bold tabular text-foreground">{stats.total}</div>
         </div>
-        <div className="border border-border p-4">
+        <div className="border border-border rounded-md p-4 shadow-sm-soft">
           <div className="label-mono mb-2">Старших</div>
-          <div className="text-3xl font-mono font-bold tabular-nums text-foreground">{stats.senior}</div>
+          <div className="text-3xl font-mono font-bold tabular text-foreground">{stats.senior}</div>
         </div>
-        <div className="border border-border p-4">
+        <div className="border border-border rounded-md p-4 shadow-sm-soft">
           <div className="label-mono mb-2">Мастеров</div>
-          <div className="text-3xl font-mono font-bold tabular-nums text-foreground">{stats.regular}</div>
+          <div className="text-3xl font-mono font-bold tabular text-foreground">{stats.regular}</div>
         </div>
-        <div className="border border-border p-4">
+        <div className="border border-border rounded-md p-4 shadow-sm-soft">
           <div className="label-mono mb-2">С Telegram</div>
-          <div className="text-3xl font-mono font-bold tabular-nums text-foreground">{stats.boundTg}</div>
+          <div className="text-3xl font-mono font-bold tabular text-foreground">{stats.boundTg}</div>
         </div>
       </div>
 
       {/* Список мастеров */}
-      <div className="border border-border">
+      <div className="border border-border rounded-md shadow-sm-soft">
         {loading ? (
-          <div className="p-8 text-center text-muted-foreground text-xs font-mono uppercase tracking-tight flex items-center justify-center gap-2">
+          <div className="p-8 text-center text-muted-foreground label-mono flex items-center justify-center gap-2">
             <Loader2 className="h-3 w-3 animate-spin" /> Загрузка...
           </div>
         ) : masters.length === 0 ? (
           <div className="p-10 text-center text-muted-foreground text-sm body-sans">
-            <Users className="h-6 w-6 mx-auto mb-3 text-ink-faint" />
+            <Users className="h-6 w-6 mx-auto mb-3 text-muted-foreground/70" />
             Мастеров пока нет.
           </div>
         ) : (
           <ScrollArea className="max-h-[65vh]">
-            <div>
+            <div className="stagger-children">
               {masters.map((m) => {
                 const isEditing = editingId === m.id
                 const isSaving = savingId === m.id
@@ -384,14 +384,14 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                 return (
                   <div
                     key={m.id}
-                    className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 border-b border-border last:border-b-0 hover:bg-muted/40 transition-colors"
+                    className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 border-b border-border last:border-b-0 hover:bg-muted/40 transition-base transition-colors"
                   >
                     {/* Аватар + имя + роль */}
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div
                         className={`h-10 w-10 shrink-0 ${masterAvatarClass(
                           m.color,
-                        )} flex items-center justify-center text-xs font-mono font-bold uppercase text-white border-2 ${colors.ring}/30`}
+                        )} flex items-center justify-center text-xs font-mono font-bold uppercase text-white border-2 ${colors.ring}/30 rounded-md`}
                       >
                         {initials(m.name)}
                       </div>
@@ -401,7 +401,7 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                             {m.name}
                           </span>
                           {m.role === 'SENIOR' ? (
-                            <Badge className="border-[#dc2f02] text-[#dc2f02] bg-transparent">
+                            <Badge className="border-ember text-ember bg-transparent">
                               старший
                             </Badge>
                           ) : (
@@ -412,21 +412,21 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                         </div>
                         {/* PIN + Telegram ID строка */}
                         <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                          <span className="flex items-center gap-1 text-[11px] text-ink-faint font-mono uppercase tracking-tight">
+                          <span className="flex items-center gap-1 label-mono-sm">
                             <KeyRound className="h-3 w-3" />
                             <span className="font-bold text-foreground">
                               {m.pin}
                             </span>
                           </span>
                           {!isEditing && (
-                            <span className="flex items-center gap-1 text-[11px] text-ink-faint font-mono uppercase tracking-tight">
+                            <span className="flex items-center gap-1 label-mono-sm">
                               <Hash className="h-3 w-3" />
                               {m.telegramId ? (
                                 <span className="font-bold text-foreground">
                                   {m.telegramId}
                                 </span>
                               ) : (
-                                <span className="italic text-ink-faint/80">
+                                <span className="italic text-muted-foreground/70">
                                   не привязан
                                 </span>
                               )}
@@ -513,7 +513,7 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
         )}
       </div>
 
-      <p className="text-[10px] text-ink-faint text-center font-mono uppercase tracking-tight">
+      <p className="label-mono-sm text-center">
         Мастера также могут привязать Telegram сами: откройте{' '}
         <span className="font-bold text-foreground">@Defowork_bot</span> и отправьте{' '}
         <span className="font-bold text-foreground">/claim ВАШ_PIN</span>

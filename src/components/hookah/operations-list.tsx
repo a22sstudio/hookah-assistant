@@ -66,9 +66,9 @@ export function OperationsList({ refreshKey }: OperationsListProps) {
         </Button>
       </div>
 
-      <div className="border border-border">
+      <div className="border border-border rounded-md shadow-sm-soft">
         {loading ? (
-          <div className="p-8 text-center text-muted-foreground text-xs font-mono uppercase tracking-tight">
+          <div className="p-8 text-center text-muted-foreground label-mono">
             Загрузка...
           </div>
         ) : operations.length === 0 ? (
@@ -77,7 +77,7 @@ export function OperationsList({ refreshKey }: OperationsListProps) {
           </div>
         ) : (
           <ScrollArea className="max-h-[70vh]">
-            <div>
+            <div className="stagger-children">
               {operations.map((op) => {
                 const isIncoming = op.type === 'INCOMING'
                 const Icon =
@@ -91,13 +91,13 @@ export function OperationsList({ refreshKey }: OperationsListProps) {
                 return (
                   <div
                     key={op.id}
-                    className="group flex items-start gap-4 p-4 border-b border-border last:border-b-0 hover:bg-muted/50 transition-colors"
+                    className="group flex items-start gap-4 p-4 border-b border-border last:border-b-0 hover:bg-muted/50 transition-base transition-colors"
                   >
                     <div
-                      className={`mt-0.5 flex items-center justify-center h-7 w-7 shrink-0 border ${
+                      className={`mt-0.5 flex items-center justify-center h-7 w-7 shrink-0 border rounded-sm ${
                         isIncoming
-                          ? 'border-[#dc2f02] text-[#dc2f02]'
-                          : 'border-border text-ink-soft'
+                          ? 'border-ember text-ember'
+                          : 'border-border text-muted-foreground'
                       }`}
                     >
                       <Icon className="h-3.5 w-3.5" />
@@ -109,25 +109,25 @@ export function OperationsList({ refreshKey }: OperationsListProps) {
                         </span>
                         <span className="label-mono">{OPERATION_LABELS[op.type]}</span>
                       </div>
-                      <div className="flex items-center gap-2 mt-1.5 text-[11px] font-mono uppercase tracking-tight text-ink-faint">
-                        <span className={isIncoming ? 'text-[#dc2f02]' : 'text-ink-soft'}>
+                      <div className="flex items-center gap-2 mt-1.5 label-mono-sm">
+                        <span className={isIncoming ? 'text-ember' : 'text-muted-foreground'}>
                           {op.gramsBefore}г → {op.gramsAfter}г
                         </span>
-                        <span className="text-ink-faint">·</span>
+                        <span className="text-muted-foreground/70">·</span>
                         <span>{SOURCE_LABELS[op.source]}</span>
                         {op.note && (
                           <>
-                            <span className="text-ink-faint">·</span>
-                            <span className="italic text-ink-soft">{op.note}</span>
+                            <span className="text-muted-foreground/70">·</span>
+                            <span className="italic text-muted-foreground">{op.note}</span>
                           </>
                         )}
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
-                      <span className="font-mono text-sm font-bold tabular-nums text-foreground">
+                      <span className="font-mono text-sm font-bold tabular text-foreground">
                         {deltaLabel}
                       </span>
-                      <span className="text-[10px] text-ink-faint font-mono uppercase tracking-tight whitespace-nowrap">
+                      <span className="label-mono-sm whitespace-nowrap">
                         {formatTime(op.createdAt)}
                       </span>
                     </div>

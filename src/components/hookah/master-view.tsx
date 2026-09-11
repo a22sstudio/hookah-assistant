@@ -7,6 +7,7 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { ShiftPanel } from '@/components/hookah/shift-panel'
 import { MasterRequests } from '@/components/hookah/master-requests'
 import { WishesPanel } from '@/components/hookah/wishes-panel'
@@ -49,13 +50,13 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      {/* Header */}
+      {/* Header — sticky, opaque, z-40 */}
       <header className="sticky top-0 z-40 border-b border-border bg-background">
         <div className="mx-auto max-w-[1400px] px-4 sm:px-6 h-[60px] flex items-center gap-4">
           <div
             className={`h-9 w-9 shrink-0 ${masterAvatarClass(
               master.color,
-            )} flex items-center justify-center text-xs font-mono font-bold uppercase text-white`}
+            )} flex items-center justify-center text-xs font-mono font-bold uppercase text-white rounded-md`}
           >
             {initials(master.name)}
           </div>
@@ -65,6 +66,7 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
               {master.name}
             </h1>
           </div>
+          <ThemeToggle />
           <Button
             variant="outline"
             size="icon"
@@ -162,8 +164,9 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
       <Sheet open={mobileChatOpen} onOpenChange={setMobileChatOpen}>
         <SheetTrigger asChild>
           <Button
-            className="lg:hidden fixed bottom-20 right-4 z-40 h-12 w-12 bg-[#dc2f02] hover:bg-[#dc2f02]/85"
+            className="lg:hidden fixed bottom-20 right-4 z-40 h-12 w-12"
             size="icon"
+            variant="destructive"
           >
             <MessageCircle className="h-5 w-5" />
           </Button>
@@ -177,7 +180,7 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
 
       {/* Footer */}
       <footer className="mt-auto border-t border-border bg-background">
-        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 py-3 flex items-center justify-between text-[11px] text-ink-faint font-mono uppercase tracking-tight">
+        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 py-3 flex items-center justify-between label-mono-sm">
           <span>
             Кальянный ассистент · <span className="font-bold text-foreground">{master.name}</span>
           </span>
@@ -230,25 +233,25 @@ function MasterStockReadOnly({ refreshKey }: { refreshKey: number }) {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="border border-border p-4 flex flex-col gap-3">
+        <div className="border border-border rounded-md p-4 flex flex-col gap-3 shadow-sm-soft">
           <div className="flex items-center justify-between">
             <span className="label-mono">Позиций</span>
-            <Package className="h-3.5 w-3.5 text-ink-faint" />
+            <Package className="h-3.5 w-3.5 text-muted-foreground/70" />
           </div>
           <span
-            className="font-mono font-bold leading-none tabular-nums text-foreground"
+            className="font-mono font-bold leading-none tabular text-foreground"
             style={{ fontSize: 'clamp(28px, 4vw, 40px)' }}
           >
             {tobaccos.length}
           </span>
         </div>
-        <div className={`border ${lowCount > 0 ? 'frame' : 'border-border'} p-4 flex flex-col gap-3`}>
+        <div className={`border rounded-md p-4 flex flex-col gap-3 shadow-sm-soft transition-base ${lowCount > 0 ? 'frame-ember' : 'border-border'}`}>
           <div className="flex items-center justify-between">
             <span className="label-mono">Мало</span>
-            <AlertTriangle className={`h-3.5 w-3.5 ${lowCount > 0 ? 'text-[#dc2f02]' : 'text-ink-faint'}`} />
+            <AlertTriangle className={`h-3.5 w-3.5 ${lowCount > 0 ? 'text-ember' : 'text-muted-foreground/70'}`} />
           </div>
           <span
-            className="font-mono font-bold leading-none tabular-nums text-foreground"
+            className="font-mono font-bold leading-none tabular text-foreground"
             style={{ fontSize: 'clamp(28px, 4vw, 40px)' }}
           >
             {lowCount}
@@ -256,9 +259,9 @@ function MasterStockReadOnly({ refreshKey }: { refreshKey: number }) {
         </div>
       </div>
 
-      <div className="border border-border">
+      <div className="border border-border rounded-md shadow-sm-soft">
         {loading ? (
-          <div className="p-8 text-center text-muted-foreground text-xs font-mono uppercase tracking-tight flex items-center justify-center gap-2">
+          <div className="p-8 text-center text-muted-foreground label-mono flex items-center justify-center gap-2">
             <Loader2 className="h-3 w-3 animate-spin" /> Загрузка...
           </div>
         ) : tobaccos.length === 0 ? (
@@ -267,7 +270,7 @@ function MasterStockReadOnly({ refreshKey }: { refreshKey: number }) {
           </div>
         ) : (
           <ScrollArea className="max-h-[60vh]">
-            <div>
+            <div className="stagger-children">
               {tobaccos.map((t) => {
                 const percent = Math.min(
                   100,
@@ -283,12 +286,12 @@ function MasterStockReadOnly({ refreshKey }: { refreshKey: number }) {
                         <span className="font-mono uppercase text-sm font-bold tracking-tight truncate">
                           {t.brand}
                         </span>
-                        <span className="font-sans text-xs text-ink-soft truncate">
+                        <span className="font-sans text-xs text-muted-foreground truncate">
                           {t.line}
                         </span>
                         <span className="font-sans text-sm truncate">{t.flavor}</span>
                         {t.isLow && (
-                          <Badge className="border-[#dc2f02] text-[#dc2f02] bg-transparent">
+                          <Badge className="border-ember text-ember bg-transparent">
                             мало
                           </Badge>
                         )}
@@ -296,9 +299,9 @@ function MasterStockReadOnly({ refreshKey }: { refreshKey: number }) {
                       <div className="flex items-center gap-3 mt-2">
                         <Progress
                           value={percent}
-                          className={`h-[2px] flex-1 ${t.isLow ? '[&>[data-slot=progress-indicator]]:bg-[#dc2f02]' : ''}`}
+                          className={`h-[2px] flex-1 ${t.isLow ? '[&>[data-slot=progress-indicator]]:bg-ember' : ''}`}
                         />
-                        <span className="text-[11px] text-ink-faint font-mono tabular-nums whitespace-nowrap">
+                        <span className="label-mono-sm tabular whitespace-nowrap">
                           {t.currentGrams} / {t.defaultJarGrams}г
                         </span>
                       </div>

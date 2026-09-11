@@ -90,8 +90,8 @@ export function TobaccosManager({ refreshKey, onRefresh }: TobaccosManagerProps)
   return (
     <div className="space-y-6">
       {/* Заголовок */}
-      <div className="flex items-end justify-between gap-4 border-b border-border pb-3">
-        <div>
+      <div className="flex items-end justify-between gap-4 border-b border-border pb-3 flex-wrap">
+        <div className="min-w-0">
           <span className="label-mono">Каталог</span>
           <h2
             className="heading-mono text-foreground leading-none mt-1"
@@ -99,7 +99,7 @@ export function TobaccosManager({ refreshKey, onRefresh }: TobaccosManagerProps)
           >
             Справочник табаков
           </h2>
-          <p className="body-sans text-xs text-ink-soft mt-2">
+          <p className="body-sans text-xs text-muted-foreground mt-2">
             Гибридный режим: добавляйте вручную. Бот тоже учится распознавать с накладных.
           </p>
         </div>
@@ -193,9 +193,9 @@ export function TobaccosManager({ refreshKey, onRefresh }: TobaccosManagerProps)
       </div>
 
       {/* Список */}
-      <div className="border border-border">
+      <div className="border border-border rounded-md shadow-sm-soft">
         {loading ? (
-          <div className="p-8 text-center text-muted-foreground text-xs font-mono uppercase tracking-tight">
+          <div className="p-8 text-center text-muted-foreground label-mono">
             Загрузка...
           </div>
         ) : tobaccos.length === 0 ? (
@@ -204,35 +204,35 @@ export function TobaccosManager({ refreshKey, onRefresh }: TobaccosManagerProps)
           </div>
         ) : (
           <ScrollArea className="max-h-[65vh]">
-            <div>
+            <div className="stagger-children">
               {tobaccos.map((t) => (
                 <div
                   key={t.id}
-                  className="flex items-center gap-4 p-4 border-b border-border last:border-b-0 hover:bg-muted/50 transition-colors"
+                  className="flex items-center gap-4 p-4 border-b border-border last:border-b-0 hover:bg-muted/50 transition-base transition-colors"
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-baseline gap-2 flex-wrap">
                       <span className="font-mono uppercase text-sm font-bold tracking-tight truncate">
                         {t.brand}
                       </span>
-                      <span className="font-sans text-xs text-ink-soft truncate">
+                      <span className="font-sans text-xs text-muted-foreground truncate">
                         · {t.line}
                       </span>
                       {t.isLow && (
-                        <Badge className="border-[#dc2f02] text-[#dc2f02] bg-transparent">
+                        <Badge className="border-ember text-ember bg-transparent">
                           мало
                         </Badge>
                       )}
                     </div>
-                    <div className="text-xs text-ink-soft truncate mt-1 body-sans">
+                    <div className="text-xs text-muted-foreground truncate mt-1 body-sans">
                       {t.flavor}
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <div className="text-[11px] text-ink-faint font-mono uppercase tracking-tight">
+                    <div className="label-mono-sm">
                       банка: <span className="font-bold text-foreground">{t.defaultJarGrams}г</span>
                     </div>
-                    <div className="text-[11px] text-ink-faint font-mono uppercase tracking-tight">
+                    <div className="label-mono-sm">
                       порог: <span className="font-bold text-foreground">{t.thresholdGrams}г</span>
                     </div>
                   </div>

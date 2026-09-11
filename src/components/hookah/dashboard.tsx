@@ -55,18 +55,18 @@ function StatCard({
 }) {
   return (
     <div
-      className={`relative border border-border p-4 flex flex-col gap-3 ${
-        accent ? 'frame' : ''
+      className={`relative border p-4 flex flex-col gap-3 rounded-md transition-base ${
+        accent ? 'frame-ember shadow-sm-soft' : 'border-border shadow-sm-soft'
       }`}
     >
       <div className="flex items-center justify-between">
         <span className="label-mono">{label}</span>
         <Icon
-          className={`h-3.5 w-3.5 ${accent ? 'text-[#dc2f02]' : 'text-ink-faint'}`}
+          className={`h-3.5 w-3.5 ${accent ? 'text-ember' : 'text-muted-foreground/70'}`}
         />
       </div>
       <span
-        className="font-mono font-bold leading-none tabular-nums text-foreground"
+        className="font-mono font-bold leading-none tabular text-foreground"
         style={{ fontSize: 'clamp(28px, 4vw, 40px)' }}
       >
         {value}
@@ -255,7 +255,7 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
       {/* Поиск + фильтры */}
       <div className="flex flex-col sm:flex-row gap-2">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-ink-faint" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/70" />
           <Input
             placeholder="Поиск по бренду / вкусу..."
             value={search}
@@ -263,33 +263,33 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
             className="pl-9"
           />
         </div>
-        <div className="flex gap-0 border border-border">
+        <div className="flex gap-0 border border-border rounded-md overflow-hidden">
           <button
             onClick={() => setFilter('all')}
-            className={`px-3 py-2 text-[11px] font-mono uppercase tracking-tight transition-colors border-r border-border ${
+            className={`px-3 py-2 text-[11px] font-mono uppercase tracking-tight transition-base transition-colors border-r border-border ${
               filter === 'all'
-                ? 'bg-foreground text-background'
-                : 'text-ink-soft hover:bg-muted'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:bg-muted'
             }`}
           >
             Все
           </button>
           <button
             onClick={() => setFilter('low')}
-            className={`px-3 py-2 text-[11px] font-mono uppercase tracking-tight transition-colors border-r border-border ${
+            className={`px-3 py-2 text-[11px] font-mono uppercase tracking-tight transition-base transition-colors border-r border-border ${
               filter === 'low'
-                ? 'bg-[#dc2f02] text-white'
-                : 'text-ink-soft hover:bg-muted'
+                ? 'bg-ember text-ember-foreground'
+                : 'text-muted-foreground hover:bg-muted'
             }`}
           >
             Мало
           </button>
           <button
             onClick={() => setFilter('ok')}
-            className={`px-3 py-2 text-[11px] font-mono uppercase tracking-tight transition-colors ${
+            className={`px-3 py-2 text-[11px] font-mono uppercase tracking-tight transition-base transition-colors ${
               filter === 'ok'
-                ? 'bg-foreground text-background'
-                : 'text-ink-soft hover:bg-muted'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:bg-muted'
             }`}
           >
             Достаточно
@@ -297,10 +297,10 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
         </div>
       </div>
 
-      {/* Список табаков — без ScrollArea, рамка оборачивает весь список */}
-      <div className="border border-border">
+      {/* Список табаков — без ScrollArea, рамка оборачивает весь список, страница скроллит естественно */}
+      <div className="border border-border rounded-md overflow-hidden shadow-sm-soft">
         {loading ? (
-          <div className="p-8 text-center text-muted-foreground text-xs font-mono uppercase tracking-tight flex items-center justify-center gap-2">
+          <div className="p-8 text-center text-muted-foreground label-mono flex items-center justify-center gap-2">
             <Loader2 className="h-3 w-3 animate-spin" /> Загрузка...
           </div>
         ) : filtered.length === 0 ? (
@@ -308,7 +308,7 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
             Ничего не найдено.
           </div>
         ) : (
-          <div>
+          <div className="stagger-children">
             {filtered.map((t) => {
               const percent = Math.min(
                 100,
@@ -319,48 +319,48 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
                   type="button"
                   key={t.id}
                   onClick={() => openEdit(t)}
-                  className="group w-full text-left flex items-center gap-4 p-4 border-b border-border last:border-b-0 hover:bg-muted/50 transition-colors"
+                  className="group w-full text-left flex items-center gap-4 p-4 border-b border-border last:border-b-0 hover:bg-muted/50 transition-base transition-colors"
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-baseline gap-2 flex-wrap">
                       <span className="font-mono uppercase text-sm font-bold tracking-tight truncate">
                         {t.brand}
                       </span>
-                      <span className="font-mono text-[11px] uppercase tracking-tight text-ink-faint truncate">
+                      <span className="label-mono-sm truncate">
                         {t.line}
                       </span>
                       <span className="font-sans text-sm truncate">
                         {t.flavor}
                       </span>
                       {t.isLow && (
-                        <Badge className="border-[#dc2f02] text-[#dc2f02] bg-transparent">
+                        <Badge className="border-ember text-ember bg-transparent">
                           мало
                         </Badge>
                       )}
                     </div>
                     {/* Тонкая 2px линия вместо Progress-бара */}
                     <div className="flex items-center gap-3 mt-2">
-                      <div className="relative h-[2px] flex-1 bg-muted overflow-hidden">
+                      <div className="relative h-[2px] flex-1 bg-muted overflow-hidden rounded-full">
                         <div
-                          className={`absolute inset-y-0 left-0 ${
-                            t.isLow ? 'bg-[#dc2f02]' : 'bg-foreground'
+                          className={`absolute inset-y-0 left-0 transition-moderate transition-[width] ${
+                            t.isLow ? 'bg-ember' : 'bg-foreground'
                           }`}
                           style={{ width: `${percent}%` }}
                         />
                       </div>
-                      <span className="text-[11px] text-ink-faint font-mono tabular-nums whitespace-nowrap">
+                      <span className="label-mono-sm tabular whitespace-nowrap">
                         {t.currentGrams} / {t.defaultJarGrams}г
                       </span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="font-mono text-sm font-bold tabular-nums text-foreground">
+                    <span className="font-mono text-sm font-bold tabular text-foreground">
                       {t.currentGrams}
                     </span>
-                    <span className="text-[10px] text-ink-faint font-mono uppercase tracking-tight">
+                    <span className="label-mono-sm">
                       г
                     </span>
-                    <Pencil className="h-3.5 w-3.5 text-ink-faint opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <Pencil className="h-3.5 w-3.5 text-muted-foreground/70 opacity-0 group-hover:opacity-100 transition-base" />
                   </div>
                 </button>
               )
@@ -369,7 +369,7 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
         )}
       </div>
 
-      <p className="text-[11px] text-ink-faint font-mono uppercase tracking-tight">
+      <p className="label-mono-sm">
         Клик по позиции — редактирование
       </p>
 
@@ -391,7 +391,7 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
           {editForm && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5 sm:col-span-2">
-                <Label className="label-mono">Бренд</Label>
+                <Label>Бренд</Label>
                 <Input
                   value={editForm.brand}
                   onChange={(e) =>
@@ -402,7 +402,7 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
               </div>
 
               <div className="space-y-1.5">
-                <Label className="label-mono">Линейка</Label>
+                <Label>Линейка</Label>
                 <Input
                   value={editForm.line}
                   onChange={(e) =>
@@ -412,7 +412,7 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
               </div>
 
               <div className="space-y-1.5">
-                <Label className="label-mono">Вкус</Label>
+                <Label>Вкус</Label>
                 <Input
                   value={editForm.flavor}
                   onChange={(e) =>
@@ -422,7 +422,7 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
               </div>
 
               <div className="space-y-1.5">
-                <Label className="label-mono">Банка, г</Label>
+                <Label>Банка, г</Label>
                 <Input
                   type="number"
                   value={editForm.defaultJarGrams}
@@ -432,12 +432,12 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
                       defaultJarGrams: e.target.value,
                     })
                   }
-                  className="font-mono tabular-nums"
+                  className="font-mono tabular"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <Label className="label-mono">Порог «мало», г</Label>
+                <Label>Порог «мало», г</Label>
                 <Input
                   type="number"
                   value={editForm.thresholdGrams}
@@ -447,12 +447,12 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
                       thresholdGrams: e.target.value,
                     })
                   }
-                  className="font-mono tabular-nums"
+                  className="font-mono tabular"
                 />
               </div>
 
               <div className="space-y-1.5 sm:col-span-2">
-                <Label className="label-mono">Текущий остаток, г</Label>
+                <Label>Текущий остаток, г</Label>
                 <Input
                   type="number"
                   value={editForm.currentGrams}
@@ -462,13 +462,13 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
                       currentGrams: e.target.value,
                     })
                   }
-                  className="font-mono tabular-nums text-base"
+                  className="font-mono tabular text-base"
                   placeholder="например, 147"
                 />
               </div>
 
               <div className="space-y-1.5 sm:col-span-2">
-                <Label className="label-mono">Заметки</Label>
+                <Label>Заметки</Label>
                 <Textarea
                   value={editForm.notes}
                   onChange={(e) =>
@@ -486,7 +486,7 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
               <AlertDialogTrigger asChild>
                 <Button
                   variant="outline"
-                  className="border-[#dc2f02] text-[#dc2f02] hover:bg-[#dc2f02] hover:text-white"
+                  className="border-ember text-ember hover:bg-ember hover:text-ember-foreground"
                   disabled={deleting || saving}
                 >
                   {deleting ? (
@@ -499,7 +499,7 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle className="heading-mono">
+                  <AlertDialogTitle>
                     Удалить {editing?.brand} {editing?.flavor}?
                   </AlertDialogTitle>
                   <AlertDialogDescription>
@@ -509,10 +509,7 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Отмена</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={deleteTobacco}
-                    className="bg-[#dc2f02] text-white hover:bg-[#dc2f02]/85"
-                  >
+                  <AlertDialogAction onClick={deleteTobacco}>
                     Удалить
                   </AlertDialogAction>
                 </AlertDialogFooter>

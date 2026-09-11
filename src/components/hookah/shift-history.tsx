@@ -349,7 +349,7 @@ export function ShiftHistory({ refreshKey, onRefresh }: ShiftHistoryProps) {
         ) : (
           <div className="space-y-1 flex flex-col justify-end">
             <span className="label-mono block">Итого</span>
-            <div className="border border-border px-3 py-2 h-9 flex items-center font-mono text-xs tabular-nums text-foreground">
+            <div className="border border-border rounded-md px-3 py-2 h-9 flex items-center font-mono text-xs tabular text-foreground shadow-sm-soft">
               {totals ? `${totals.shifts} смен · ${totals.hookahs} кальян.` : '—'}
             </div>
           </div>
@@ -357,7 +357,7 @@ export function ShiftHistory({ refreshKey, onRefresh }: ShiftHistoryProps) {
       </div>
 
       {/* Таблица */}
-      <div className="border border-border overflow-x-auto">
+      <div className="border border-border rounded-md overflow-x-auto shadow-sm-soft">
         <table className="w-full min-w-[720px]">
           <thead>
             <tr className="border-b border-border">
@@ -375,7 +375,7 @@ export function ShiftHistory({ refreshKey, onRefresh }: ShiftHistoryProps) {
               <tr>
                 <td
                   colSpan={7}
-                  className="p-8 text-center text-muted-foreground text-xs font-mono uppercase tracking-tight"
+                  className="p-8 text-center text-muted-foreground label-mono"
                 >
                   <Loader2 className="h-3 w-3 animate-spin inline mr-2" />
                   Загрузка...
@@ -394,9 +394,9 @@ export function ShiftHistory({ refreshKey, onRefresh }: ShiftHistoryProps) {
               shifts.map((s) => (
                 <tr
                   key={s.id}
-                  className="border-b border-border last:border-b-0 hover:bg-muted/40 transition-colors"
+                  className="border-b border-border last:border-b-0 hover:bg-muted/40 transition-base transition-colors"
                 >
-                  <td className="py-3 px-3 border-r border-border font-mono text-xs tabular-nums text-ink-soft whitespace-nowrap">
+                  <td className="py-3 px-3 border-r border-border font-mono text-xs tabular text-muted-foreground whitespace-nowrap">
                     {fmtDateTime(s.openedAt)}
                   </td>
                   <td className="py-3 px-3 border-r border-border">
@@ -404,7 +404,7 @@ export function ShiftHistory({ refreshKey, onRefresh }: ShiftHistoryProps) {
                       <span
                         className={`h-6 w-6 shrink-0 ${masterAvatarClass(
                           s.masterColor,
-                        )} flex items-center justify-center text-[10px] font-mono font-bold uppercase text-white`}
+                        )} flex items-center justify-center text-[10px] font-mono font-bold uppercase text-white rounded-sm`}
                       >
                         {initials(s.masterName)}
                       </span>
@@ -415,27 +415,27 @@ export function ShiftHistory({ refreshKey, onRefresh }: ShiftHistoryProps) {
                   </td>
                   <td className="py-3 px-3 border-r border-border text-right">
                     <span
-                      className="font-mono font-bold tabular-nums text-foreground"
+                      className="font-mono font-bold tabular text-foreground"
                       style={{ fontSize: 'clamp(20px, 3vw, 28px)' }}
                     >
                       {s.hookahCount}
                     </span>
                   </td>
-                  <td className="py-3 px-3 border-r border-border text-right font-mono text-xs tabular-nums text-ink-soft whitespace-nowrap">
+                  <td className="py-3 px-3 border-r border-border text-right font-mono text-xs tabular text-muted-foreground whitespace-nowrap">
                     {fmtDuration(s.openedAt, s.closedAt)}
                   </td>
-                  <td className="py-3 px-3 border-r border-border text-right font-mono text-xs tabular-nums text-ink-soft">
+                  <td className="py-3 px-3 border-r border-border text-right font-mono text-xs tabular text-muted-foreground">
                     {s.requestsCount}
                   </td>
-                  <td className="py-3 px-3 border-r border-border text-right font-mono text-xs tabular-nums text-ink-soft">
+                  <td className="py-3 px-3 border-r border-border text-right font-mono text-xs tabular text-muted-foreground">
                     {s.wishesCount}
                   </td>
                   <td className="py-3 px-3 font-mono text-[10px] uppercase tracking-tight whitespace-nowrap">
-                    <span className="text-ink-faint">
+                    <span className="text-muted-foreground/70">
                       {fmtTime(s.openedAt)} — {s.closedAt ? fmtTime(s.closedAt) : 'сейчас'}
                     </span>
                     {s.status === 'OPEN' && (
-                      <span className="ml-2 border border-[#dc2f02] text-[#dc2f02] px-1 py-0.5 font-bold">
+                      <span className="ml-2 border border-ember text-ember px-1 py-0.5 font-bold rounded-sm live-pulse">
                         LIVE
                       </span>
                     )}
@@ -451,15 +451,15 @@ export function ShiftHistory({ refreshKey, onRefresh }: ShiftHistoryProps) {
                   ИТОГО: {totals.shifts} смен
                 </td>
                 <td className="py-3 px-3 border-r border-border text-right">
-                  <span className="font-mono font-bold tabular-nums text-foreground text-lg">
+                  <span className="font-mono font-bold tabular text-foreground text-lg">
                     {totals.hookahs}
                   </span>
                 </td>
                 <td className="py-3 px-3 border-r border-border label-mono text-right">—</td>
-                <td className="py-3 px-3 border-r border-border text-right font-mono text-xs tabular-nums text-ink-soft">
+                <td className="py-3 px-3 border-r border-border text-right font-mono text-xs tabular text-muted-foreground">
                   {totals.requests}
                 </td>
-                <td className="py-3 px-3 border-r border-border text-right font-mono text-xs tabular-nums text-ink-soft">
+                <td className="py-3 px-3 border-r border-border text-right font-mono text-xs tabular text-muted-foreground">
                   {totals.wishes}
                 </td>
                 <td className="py-3 px-3" />

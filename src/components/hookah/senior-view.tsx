@@ -16,6 +16,7 @@ import { NotificationsBell } from '@/components/hookah/notifications-bell'
 import { AIChat } from '@/components/hookah/ai-chat'
 import { ScheduleCalendar } from '@/components/hookah/schedule-calendar'
 import { ShiftHistory } from '@/components/hookah/shift-history'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { Leaf } from 'lucide-react'
 import { MessageCircle, LayoutDashboard, History, ShoppingCart, Star, BookOpen, Clock, LogOut, Users, CalendarRange, ListChecks } from 'lucide-react'
 import { masterAvatarClass, initials } from '@/lib/master-utils'
@@ -44,11 +45,11 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      {/* Header */}
+      {/* Header — sticky, opaque, z-40 */}
       <header className="sticky top-0 z-40 border-b border-border bg-background">
         <div className="mx-auto max-w-[1400px] px-4 sm:px-6 h-[60px] flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <Leaf className="h-5 w-5 text-[#dc2f02]" />
+            <Leaf className="h-5 w-5 text-ember" />
             <span className="label-mono hidden sm:inline">Кальянная CRM</span>
           </div>
           <div className="h-6 w-px bg-border hidden sm:block" />
@@ -59,6 +60,9 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
             </h1>
           </div>
 
+          {/* Theme toggle */}
+          <ThemeToggle />
+
           {/* Уведомления */}
           <NotificationsBell refreshKey={refreshKey} />
 
@@ -66,7 +70,7 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
           <div
             className={`h-9 w-9 shrink-0 ${masterAvatarClass(
               master.color,
-            )} flex items-center justify-center text-xs font-mono font-bold uppercase text-white`}
+            )} flex items-center justify-center text-xs font-mono font-bold uppercase text-white rounded-md`}
             title={master.name}
           >
             {initials(master.name)}
@@ -212,8 +216,9 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
       <Sheet open={mobileChatOpen} onOpenChange={setMobileChatOpen}>
         <SheetTrigger asChild>
           <Button
-            className="lg:hidden fixed bottom-20 right-4 z-40 h-12 w-12 bg-[#dc2f02] hover:bg-[#dc2f02]/85"
+            className="lg:hidden fixed bottom-20 right-4 z-40 h-12 w-12"
             size="icon"
+            variant="destructive"
           >
             <MessageCircle className="h-5 w-5" />
           </Button>
@@ -227,7 +232,7 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
 
       {/* Footer */}
       <footer className="mt-auto border-t border-border bg-background">
-        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 py-3 flex items-center justify-between text-[11px] text-ink-faint font-mono uppercase tracking-tight">
+        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 py-3 flex items-center justify-between label-mono-sm">
           <span>
             Кальянный ассистент · <span className="font-bold text-foreground">Senior: {master.name}</span>
           </span>

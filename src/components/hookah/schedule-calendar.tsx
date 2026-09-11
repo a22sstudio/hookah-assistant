@@ -197,7 +197,7 @@ export function ScheduleCalendar({
       </div>
 
       {/* День недели заголовки */}
-      <div className="border border-border">
+      <div className="border border-border rounded-md shadow-sm-soft overflow-hidden">
         <div className="grid grid-cols-7">
           {WEEKDAYS_SHORT.map((d) => (
             <div
@@ -210,7 +210,7 @@ export function ScheduleCalendar({
         </div>
 
         {loading ? (
-          <div className="p-12 text-center text-muted-foreground text-xs font-mono uppercase tracking-tight flex items-center justify-center gap-2">
+          <div className="p-12 text-center text-muted-foreground label-mono flex items-center justify-center gap-2">
             <Loader2 className="h-3 w-3 animate-spin" /> Загрузка...
           </div>
         ) : (
@@ -233,45 +233,45 @@ export function ScheduleCalendar({
                   type="button"
                   key={cell.iso}
                   onClick={() => openDay(cell.iso!)}
-                  className={`group text-left border-b border-r border-border last:border-r-0 min-h-[88px] sm:min-h-[110px] p-1.5 sm:p-2 hover:bg-muted/40 transition-colors flex flex-col gap-1 ${
-                    isToday ? 'frame' : ''
+                  className={`group text-left border-b border-r border-border last:border-r-0 min-h-[88px] sm:min-h-[110px] p-1.5 sm:p-2 hover:bg-muted/40 transition-base transition-colors flex flex-col gap-1 ${
+                    isToday ? 'frame-ember' : ''
                   }`}
                 >
                   <div className="flex items-center justify-between">
                     <span
-                      className={`font-mono text-xs tabular-nums ${
+                      className={`font-mono text-xs tabular ${
                         isWeekend
-                          ? 'text-[#dc2f02] font-bold'
-                          : 'text-ink-soft'
+                          ? 'text-ember font-bold'
+                          : 'text-muted-foreground'
                       } ${isToday ? 'font-bold' : ''}`}
                     >
                       {cell.date.getDate()}
                     </span>
                     {dayEntries.length === 0 && (
-                      <Plus className="h-3 w-3 text-ink-faint opacity-0 group-hover:opacity-100" />
+                      <Plus className="h-3 w-3 text-muted-foreground/70 opacity-0 group-hover:opacity-100" />
                     )}
                   </div>
                   <div className="space-y-0.5 min-h-0 overflow-hidden">
                     {dayEntries.slice(0, 3).map((e) => (
                       <div
                         key={e.id}
-                        className="flex items-center gap-1 text-[10px] sm:text-[11px] font-mono uppercase tracking-tight truncate"
+                        className="flex items-center gap-1 label-mono-sm truncate"
                       >
                         <span
                           className={`h-2 w-2 shrink-0 ${masterAvatarClass(
                             e.masterColor,
-                          )}`}
+                          )} rounded-sm`}
                         />
                         <span className="truncate text-foreground">
                           {e.masterName}
                         </span>
-                        <span className="text-ink-faint shrink-0">
+                        <span className="text-muted-foreground/70 shrink-0">
                           {e.startHour}-{e.endHour}
                         </span>
                       </div>
                     ))}
                     {dayEntries.length > 3 && (
-                      <div className="text-[10px] font-mono uppercase tracking-tight text-ink-faint">
+                      <div className="label-mono-sm">
                         +{dayEntries.length - 3} ещё
                       </div>
                     )}
@@ -287,18 +287,18 @@ export function ScheduleCalendar({
       <div className="flex items-center gap-3 flex-wrap">
         <span className="label-mono">Легенда:</span>
         <div className="flex items-center gap-1.5">
-          <div className="h-3 w-3 frame" />
-          <span className="text-[11px] font-mono uppercase tracking-tight text-ink-soft">
+          <div className="h-3 w-3 frame-ember rounded-sm" />
+          <span className="label-mono-sm text-muted-foreground">
             сегодня
           </span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="font-mono text-xs text-[#dc2f02] font-bold">•</span>
-          <span className="text-[11px] font-mono uppercase tracking-tight text-ink-soft">
+          <span className="font-mono text-xs text-ember font-bold">•</span>
+          <span className="label-mono-sm text-muted-foreground">
             выходной
           </span>
         </div>
-        <span className="text-[11px] text-ink-faint font-mono uppercase tracking-tight ml-auto hidden sm:inline">
+        <span className="label-mono-sm ml-auto hidden sm:inline">
           Клик по дню — {canEdit ? 'редактировать' : 'посмотреть'}
         </span>
       </div>
@@ -419,25 +419,25 @@ function DayDialog({
 
         <div className="space-y-2">
           {entries.length === 0 ? (
-            <p className="text-sm text-ink-soft body-sans py-2">
+            <p className="text-sm text-muted-foreground body-sans py-2">
               {canEdit ? 'Нет запланированных смен. Добавьте ниже.' : 'Смен нет.'}
             </p>
           ) : (
             entries.map((e) => (
               <div
                 key={e.id}
-                className="flex items-center gap-2 border border-border p-2.5"
+                className="flex items-center gap-2 border border-border rounded-md p-2.5"
               >
                 <span
                   className={`h-3 w-3 shrink-0 ${masterAvatarClass(
                     e.masterColor,
-                  )}`}
+                  )} rounded-sm`}
                 />
                 <div className="flex-1 min-w-0">
                   <p className="font-mono text-sm font-bold uppercase tracking-tight truncate">
                     {e.masterName}
                   </p>
-                  <p className="label-mono">
+                  <p className="label-mono-sm">
                     {e.startHour}:00 — {e.endHour}:00
                     {e.note ? ` · ${e.note}` : ''}
                   </p>
@@ -446,7 +446,7 @@ function DayDialog({
                   <Button
                     size="icon"
                     variant="ghost"
-                    className="h-7 w-7 text-[#dc2f02] hover:bg-[#dc2f02] hover:text-white"
+                    className="h-7 w-7 text-ember hover:bg-ember hover:text-ember-foreground"
                     onClick={() => handleDelete(e.id)}
                     disabled={deletingId === e.id}
                     title="Удалить смену"
@@ -468,7 +468,7 @@ function DayDialog({
             <span className="label-mono block">Добавить мастера</span>
             <div className="space-y-2">
               <div className="space-y-1.5">
-                <Label className="label-mono">Мастер</Label>
+                <Label>Мастер</Label>
                 <Select value={masterId} onValueChange={setMasterId}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Выберите мастера" />
@@ -484,30 +484,30 @@ function DayDialog({
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1.5">
-                  <Label className="label-mono">С часа</Label>
+                  <Label>С часа</Label>
                   <Input
                     type="number"
                     min={0}
                     max={23}
                     value={startHour}
                     onChange={(e) => setStartHour(e.target.value)}
-                    className="font-mono tabular-nums"
+                    className="font-mono tabular"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="label-mono">До часа</Label>
+                  <Label>До часа</Label>
                   <Input
                     type="number"
                     min={0}
                     max={23}
                     value={endHour}
                     onChange={(e) => setEndHour(e.target.value)}
-                    className="font-mono tabular-nums"
+                    className="font-mono tabular"
                   />
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label className="label-mono">Заметка (необязательно)</Label>
+                <Label>Заметка (необязательно)</Label>
                 <Input
                   value={note}
                   onChange={(e) => setNote(e.target.value)}

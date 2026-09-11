@@ -17,9 +17,9 @@ interface MasterRequestsProps {
 }
 
 const STATUS_STYLE: Record<MasterRequest['status'], string> = {
-  PENDING: 'border-[#dc2f02] text-[#dc2f02] bg-transparent',
+  PENDING: 'border-ember text-ember bg-transparent',
   ORDERED: 'border-foreground text-foreground bg-transparent',
-  DONE: 'border-border text-ink-faint bg-transparent',
+  DONE: 'border-border text-muted-foreground bg-transparent',
 }
 
 const NEXT_STATUS: Record<MasterRequest['status'], MasterRequest['status'] | null> = {
@@ -137,7 +137,7 @@ export function MasterRequests({ role, refreshKey, onRefresh }: MasterRequestsPr
 
       {/* Форма добавления (только для обычных мастеров) */}
       {!isSenior && (
-        <div className="frame p-5 space-y-3">
+        <div className="frame p-5 space-y-3 rounded-md shadow-sm-soft">
           <div className="flex items-center gap-2 label-mono">
             <Package className="h-3.5 w-3.5" />
             Новая заявка
@@ -173,17 +173,17 @@ export function MasterRequests({ role, refreshKey, onRefresh }: MasterRequestsPr
       {/* Сводка для старшего */}
       {isSenior && items.length > 0 && (
         <div className="grid grid-cols-2 gap-3">
-          <div className={`border ${pendingCount > 0 ? 'frame' : 'border-border'} p-4 flex items-center gap-3`}>
-            <Inbox className={`h-4 w-4 ${pendingCount > 0 ? 'text-[#dc2f02]' : 'text-ink-faint'}`} />
+          <div className={`border rounded-md p-4 flex items-center gap-3 shadow-sm-soft transition-base ${pendingCount > 0 ? 'frame-ember' : 'border-border'}`}>
+            <Inbox className={`h-4 w-4 ${pendingCount > 0 ? 'text-ember' : 'text-muted-foreground/70'}`} />
             <div>
-              <p className="text-2xl font-mono font-bold leading-none tabular-nums text-foreground">{pendingCount}</p>
+              <p className="text-2xl font-mono font-bold leading-none tabular text-foreground">{pendingCount}</p>
               <p className="label-mono mt-1">ожидают</p>
             </div>
           </div>
-          <div className="border border-border p-4 flex items-center gap-3">
-            <ShoppingCart className="h-4 w-4 text-ink-faint" />
+          <div className="border border-border rounded-md p-4 flex items-center gap-3 shadow-sm-soft">
+            <ShoppingCart className="h-4 w-4 text-muted-foreground/70" />
             <div>
-              <p className="text-2xl font-mono font-bold leading-none tabular-nums text-foreground">{orderedCount}</p>
+              <p className="text-2xl font-mono font-bold leading-none tabular text-foreground">{orderedCount}</p>
               <p className="label-mono mt-1">заказано</p>
             </div>
           </div>
@@ -191,9 +191,9 @@ export function MasterRequests({ role, refreshKey, onRefresh }: MasterRequestsPr
       )}
 
       {/* Список заявок */}
-      <div className="border border-border">
+      <div className="border border-border rounded-md shadow-sm-soft">
         {loading ? (
-          <div className="p-8 text-center text-muted-foreground text-xs font-mono uppercase tracking-tight flex items-center justify-center gap-2">
+          <div className="p-8 text-center text-muted-foreground label-mono flex items-center justify-center gap-2">
             <Loader2 className="h-3 w-3 animate-spin" /> Загрузка...
           </div>
         ) : items.length === 0 ? (
@@ -204,7 +204,7 @@ export function MasterRequests({ role, refreshKey, onRefresh }: MasterRequestsPr
           </div>
         ) : (
           <ScrollArea className="max-h-[60vh]">
-            <div>
+            <div className="stagger-children">
               {items.map((r) => {
                 const next = NEXT_STATUS[r.status]
                 const NextIcon = NEXT_ICON[r.status]
@@ -219,23 +219,23 @@ export function MasterRequests({ role, refreshKey, onRefresh }: MasterRequestsPr
                         <div
                           className={`mt-0.5 h-9 w-9 shrink-0 ${masterAvatarClass(
                             r.master.color,
-                          )} flex items-center justify-center text-[10px] font-mono font-bold uppercase text-white`}
+                          )} flex items-center justify-center text-[10px] font-mono font-bold uppercase text-white rounded-md`}
                         >
                           {initials(r.master.name)}
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
                         {isSenior && (
-                          <div className="text-[11px] font-mono uppercase tracking-tight text-ink-soft mb-1">
+                          <div className="label-mono-sm mb-1">
                             {r.master.name}
                             {r.isMine && (
-                              <span className="ml-1.5 text-[#dc2f02]">· ты</span>
+                              <span className="ml-1.5 text-ember">· ты</span>
                             )}
                           </div>
                         )}
                         <p className="body-sans text-sm break-words">{r.text}</p>
                         {r.grams != null && (
-                          <p className="text-[11px] text-ink-faint mt-1 font-mono uppercase tracking-tight">
+                          <p className="label-mono-sm mt-1">
                             Нужно: <span className="text-foreground font-bold">{r.grams}г</span>
                           </p>
                         )}
@@ -243,7 +243,7 @@ export function MasterRequests({ role, refreshKey, onRefresh }: MasterRequestsPr
                           <Badge variant="outline" className={STATUS_STYLE[r.status]}>
                             {REQUEST_STATUS_LABELS[r.status]}
                           </Badge>
-                          <span className="text-[10px] text-ink-faint font-mono uppercase tracking-tight">
+                          <span className="label-mono-sm">
                             {timeAgo(r.createdAt)}
                           </span>
                         </div>

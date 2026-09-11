@@ -620,3 +620,119 @@ TASK 4 — AI: update_schedule + БОТ:
 - Editorial стиль сохранён: Fragment Mono uppercase, sharp corners, 1px borders, ember только для важных состояний (LIVE, МАЛО, сегодня, ember-text).
 - Mobile-first responsive: TabsList grid-cols-4 (mobile) → grid-cols-9 (sm) для senior; grid-cols-4 для master; таблица shift-history горизонтально скроллит на мобиле (min-w-[720px] + overflow-x-auto).
 - 100% существующей функциональности сохранено: shift-panel, master-requests, wishes-panel, masters-manager, tobaccos-manager, operations-list, ai-chat, notifications-bell — без изменений.
+
+---
+
+Task ID: redesign-3
+Agent: main (Z.ai Code)
+Task: Перевести UI Hookah Assistant на новую 3-tier систему дизайн-токенов (primitive → semantic → component). Тёмная тема нативная (через `.dark` класс). Sharp corners `var(--radius)` = 6px. Добавить ThemeToggle в хедеры.
+
+Контекст: globals.css уже переписан под 3-tier архитектуру (Tier 1: primitive gray/ember/статусы/длительность/spacing/radii/type; Tier 2: semantic surfaces/borders/status/primary per light + dark theme; Tier 3: utility classes label-mono/heading-mono/ember-text/frame/shadow-soft/transition-base/fade-in/stagger-children). Tailwind 4 `@theme inline` маппит `--color-ember` → `bg-ember/text-ember/border-ember` утилиты. Dark mode нативный — токены переключаются автоматически через `.dark` класс на `<html>`, не нужны `dark:` префиксы.
+
+## Phase 1 — Обновил 17 базовых shadcn/ui компонентов
+
+Все используют семантические токены, sharp corners (`rounded-md` = 6px через `@theme inline --radius-md: var(--radius)`), `.transition-base` для motion, focus-visible ring-2 ring-ring ring-offset-2 ring-offset-background (WCAG 2.2 AA):
+
+- `button.tsx`: variants default (bg-primary ink), destructive (bg-ember), outline (1px border-border + hover:bg-muted), secondary (bg-muted), ghost. Hover = bg shift, NO scale. `transition-base transition-colors`.
+- `input.tsx`: border-input, focus:border-ember + ring-2 ring-ring.
+- `textarea.tsx`: same as input, body text в font-sans.
+- `card.tsx`: bg-card border-border rounded-md shadow-sm-soft. CardTitle использует .heading-mono.
+- `badge.tsx`: default (muted bg + muted-fg), secondary (secondary bg), destructive (ember bg + ember-fg), outline (border-border + transparent bg).
+- `tabs.tsx`: TabsList border-b (no inner bg). TabsTrigger: border-b-2 border-transparent базовый + data-[state=active]:border-ember data-[state=active]:text-foreground (подчёркивание 2px ember, NOT bg change). Hover: text-foreground (subtle). TabsContent: fade-in анимация.
+- `dialog.tsx`: bg-popover border-border rounded-md shadow-xl-soft. Overlay: bg-black/60 backdrop-blur-sm. Content: fade-in-scale. DialogTitle: .heading-mono.
+- `sheet.tsx`: same pattern. SheetTitle: .heading-mono. Sharp corners.
+- `popover.tsx`: bg-popover border-border rounded-md shadow-lg-soft p-0. fade-in-scale.
+- `scroll-area.tsx`: thumb bg-muted-foreground/40 hover:bg-ember.
+- `progress.tsx`: bg-muted h-1 rounded-full. Indicator: bg-foreground transition-moderate transition-[width]. Hookah код оверрайдит на bg-ember для мало.
+- `select.tsx`: border-input rounded-md font-mono uppercase. SelectContent: bg-popover border-border rounded-md shadow-lg-soft. SelectItem indicator: text-ember.
+- `label.tsx`: использует .label-mono utility.
+- `avatar.tsx`: NEW variant prop `variant?: "circle" | "square"`. Default circle (rounded-full for people). Square variant: rounded-md (var(--radius)). Border 1px solid var(--border).
+- `separator.tsx`: bg-border.
+- `tooltip.tsx`: bg-primary text-primary-foreground rounded-md shadow-md-soft px-2 font-mono text-xs. fade-in-scale.
+- `alert-dialog.tsx`: same as dialog (popover bg, shadow-xl-soft, backdrop-blur-sm). AlertDialogAction uses destructive variant (ember accent).
+
+## Phase 2 — Обновил 16 hookah компонентов
+
+Стратегия миграции цветов:
+- `text-[#dc2f02]` → `text-ember` (Tailwind 4 маппит --color-ember из @theme inline)
+- `bg-[#dc2f02]` → `bg-ember`
+- `bg-[#dc2f02]/85` → `bg-ember/85`
+- `border-[#dc2f02]` → `border-ember`
+- `text-ink-faint` → `text-muted-foreground/70` (very faint)
+- `text-ink-soft` → `text-muted-foreground`
+- `bg-ink-faint` → `bg-muted-foreground`
+- `frame-ink` → `frame-strong` (border-foreground)
+- `frame` (для accent) → `frame-ember` (ember border)
+
+Все 16 файлов обновлены:
+1. login-screen.tsx — добавил ThemeToggle в правом верхнем углу. Сетка фона использует var(--foreground) вместо #000 (адаптив к dark). PIN inputs: border-destructive на error. Demo pins: rounded-md + transition-base.
+2. dashboard.tsx — StatCard использует frame-ember + shadow-sm-soft когда accent. Stock list: НЕ обёрнут в Card или ScrollArea с max-h. Простой div с border-border rounded-md overflow-hidden shadow-sm-soft, строки border-b last:border-b-0. Страница скроллит естественно. Stagger-children анимация. Filter pills: bg-primary text-primary-foreground (ink) для всех/достаточно, bg-ember для мало.
+3. ai-chat.tsx — header bg-foreground text-background (инвертированная панель — dark в light, light в dark). User messages: bg-ember text-ember-foreground. Assistant: surface-card + shadow-sm-soft. Каждое сообщение: slide-in-right animation.
+4. shift-panel.tsx — Empty: Card frame-strong (ink border). Active: Card frame-ember (ember border). +1 Кальян: variant="destructive" (ember). Отменить: outline.
+5. operations-list.tsx — stagger-children list. Row icons square с border-ember для incoming.
+6. orders-list.tsx — StatCard frame-ember когда accent. Status badges ember/foreground/border.
+7. master-requests.tsx — Form в .frame Card с rounded-md shadow-sm-soft. Avatars: rounded-md. Senior summary cards с ember border когда pending.
+8. wishes-panel.tsx — same pattern. Star icon: text-ember.
+9. tobaccos-manager.tsx — Low badge: border-ember text-ember.
+10. masters-manager.tsx — 4 stat cards. Avatars: rounded-md + ring. SENIOR badge: border-ember text-ember. Color picker: rounded-md.
+11. notifications-bell.tsx — Unread badge: bg-ember text-ember-foreground rounded-full. Dropdown header: bg-foreground text-background rounded-t-md. Unread dot: ember rounded-full.
+12. senior-shift-view.tsx — StatCards frame-ember когда accent. ShiftCard: frame-ember когда isMine. Live indicator: bg-ember live-pulse. Master avatars: rounded-md. SENIOR/ВЫ badges: rounded-sm.
+13. master-view.tsx — добавил ThemeToggle в header (между greeting и logout). Mobile chat button: variant="destructive". Header: sticky top-0 z-40 bg-background border-b (полностью непрозрачный).
+14. senior-view.tsx — добавил ThemeToggle в header. Mobile chat: destructive variant. Header: solid bg-background.
+15. schedule-calendar.tsx — Today cell: frame-ember. Weekend numbers: text-ember font-bold. Master color dots: rounded-sm. Calendar wrapper: rounded-md shadow-sm-soft overflow-hidden.
+16. shift-history.tsx — Stat box: border-border rounded-md shadow-sm-soft. Table cells: text-muted-foreground. LIVE badge: border-ember text-ember rounded-sm live-pulse. Footer row: border-t-2 border-foreground bg-muted/30.
+
+Также обновил:
+- src/app/page.tsx — loading screen: text-ember spinner, .label-mono-sm footer.
+- src/components/theme-toggle.tsx — починил pre-existing ESLint ошибки (react-hooks/immutability и react-hooks/set-state-in-effect). Переписал с useSyncExternalStore для корректной синхронизации с localStorage + matchMedia. Подписывается на storage events + matchMedia change events.
+
+## Phase 3 — Визуальные баги исправлены
+
+1. Stock list frame (dashboard.tsx): НЕ обёрнут в Card или ScrollArea с max-h. Простой div с border-border rounded-md overflow-hidden shadow-sm-soft. Страница скроллит естественно.
+
+2. Header overlap (senior-view, master-view): header `sticky top-0 z-40 bg-background border-b` — полностью непрозрачный, без backdrop-blur, без прозрачности. Контент под ним БЕЗ отрицательного margin.
+
+3. Tab underline (tabs.tsx): TabsTrigger border-b-2 border-transparent базовый + data-[state=active]:border-ember data-[state=active]:bg-transparent (НЕ bg change). 2px ember подчёркивание под активным табом.
+
+## Dark mode дизайн-решения
+
+- Native (не applied): токены переключаются автоматически через .dark класс на `<html>`. Не нужны dark: префиксы в коде компонентов.
+- Ember ярче в тёмной теме: #ff5733 (vs #dc2f02 в светлой) — для visibility на тёмном canvas.
+- Surfaces слоистые: --background #0a0b0d (canvas), --card #111316 (panels), --popover #16181c (elevated). Карточки визуально выше canvas.
+- Borders semi-transparent white: rgba(255,255,255,0.08) в dark — Linear-style subtle structure. Inputs чуть сильнее: rgba(255,255,255,0.12).
+- Muted surfaces: rgba(255,255,255,0.04). Muted foreground: rgba(255,255,255,0.55) — WCAG AA compliant.
+- Inverted panels: bg-foreground text-background — dark-on-light в light theme, light-on-dark в dark theme. Идеально для AI Chat header и Notifications dropdown header.
+- Status colors ярче: success #34d399, warning #fbbf24, destructive #f87171.
+- Shadows тяжелее: --shadow-xl: 0 12px 32px rgba(0,0,0,0.5), 0 4px 8px rgba(0,0,0,0.3).
+- ThemeToggle: добавлен в login-screen (top-right corner), master-view header, senior-view header. useSyncExternalStore подписан на localStorage + matchMedia — корректно обновляется при переключении в одной вкладке и propagates в другие через storage events.
+
+## Верификация
+
+- `bun run lint` → EXIT 0 (0 ошибок, 0 предупреждений). Починил pre-existing react-hooks/immutability и react-hooks/set-state-in-effect ошибки в theme-toggle.tsx.
+- `dev.log` → чистая компиляция (без ошибок/warnings, кроме ожидаемого TELEGRAM_BOT_TOKEN не задан).
+- `GET /` → 200 OK. `GET /api/auth/me` → 200 OK.
+- Все props/state/fetch/event handlers СОХРАНЕНЫ (нулевые поведенческие изменения — только визуальные токены обновлены).
+- Russian text сохранён во всех компонентах.
+- Mobile-first responsive сохранён: TabsList grid-cols-4 (mobile) → grid-cols-9 (sm) senior; grid-cols-4 master.
+- Sticky footer паттерн сохранён: min-h-screen flex flex-col + mt-auto на footer.
+- Sharp corners var(--radius) = 6px через rounded-md (Tailwind 4 маппит --radius-md → var(--radius) в @theme inline).
+- Avatars: rounded-md (square, для UI thumbnail style — masterview, senior, master-requests, color dots). Component поддерживает variant="circle" для реальных фото.
+- Pills/badges: rounded-md (6px) для content badges, rounded-full для status dots и notification count badges.
+
+## Stage Summary
+
+- 17 base shadcn/ui компонентов + 16 hookah компонентов + theme-toggle + page.tsx переведены на новую 3-tier систему токенов.
+- Dark mode нативный через .dark класс. Токены auto-switch. Zero dark: префиксов в коде компонентов.
+- Все #dc2f02 хардкод hex заменены на bg-ember/text-ember/border-ember семантические утилиты.
+- Все text-ink-faint/text-ink-soft/bg-ink-faint/frame-ink legacy классы заменены на text-muted-foreground/70, text-muted-foreground, bg-muted-foreground, frame-strong/frame-ember утилиты.
+- Визуальные баги исправлены: dashboard stock list flows naturally (no ScrollArea/max-h), headers sticky+opaque (z-40), tab underline использует 2px ember border.
+- ThemeToggle компонент добавлен в login-screen + master-view + senior-view headers.
+- Lint: 0 errors, 0 warnings. Dev server: clean compilation.
+
+Файлы изменены (34 total):
+- src/components/ui/{button,input,textarea,card,badge,tabs,dialog,sheet,popover,scroll-area,progress,select,label,avatar,separator,tooltip,alert-dialog}.tsx (17)
+- src/components/hookah/{login-screen,dashboard,ai-chat,shift-panel,operations-list,orders-list,master-requests,wishes-panel,tobaccos-manager,masters-manager,notifications-bell,senior-shift-view,master-view,senior-view,schedule-calendar,shift-history}.tsx (16)
+- src/components/theme-toggle.tsx (1)
+- src/app/page.tsx (1)
+
+Work record сохранён: /home/z/my-project/agent-ctx/redesign-3-main.md

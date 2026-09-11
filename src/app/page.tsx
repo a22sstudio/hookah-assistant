@@ -41,13 +41,13 @@ export default function Home() {
           </div>
         </header>
         <main className="flex-1 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-4">
-            <Loader2 className="h-6 w-6 animate-spin text-[#dc2f02]" />
+          <div className="flex flex-col items-center gap-4 fade-in">
+            <Loader2 className="h-6 w-6 animate-spin text-ember" />
             <p className="label-mono">Загрузка...</p>
           </div>
         </main>
         <footer className="mt-auto border-t border-border bg-background">
-          <div className="mx-auto max-w-[1400px] px-4 sm:px-6 py-3 text-[11px] text-ink-faint font-mono uppercase tracking-tight">
+          <div className="mx-auto max-w-[1400px] px-4 sm:px-6 py-3 label-mono-sm">
             Кальянный ассистент · powered by z.ai
           </div>
         </footer>

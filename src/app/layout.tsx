@@ -1,23 +1,25 @@
 import type { Metadata } from "next";
-import { Archivo, Fragment_Mono } from "next/font/google";
+import { Inter, Fragment_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { ensureBotRunning } from "@/lib/bot-runner";
 
-const archivo = Archivo({
-  variable: "--font-archivo",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800", "900"],
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin", "cyrillic"],
+  weight: ["300", "400", "500", "600", "700", "800", "900"],
+  display: "swap",
 });
 
 const fragmentMono = Fragment_Mono({
   variable: "--font-fragment-mono",
   subsets: ["latin"],
   weight: ["400"],
+  display: "swap",
 });
 
-// Запускаем Telegram-бота внутри процесса Next.js (singleton — запустится один раз)
+// Запускаем Telegram-бота внутри процесса Next.js (singleton)
 void ensureBotRunning();
 
 export const metadata: Metadata = {
@@ -30,6 +32,19 @@ export const metadata: Metadata = {
   },
 };
 
+// Inline script для предотвращения FOUC (flash of unstyled content) при theme switch
+const themeScript = `
+  (function() {
+    try {
+      const stored = localStorage.getItem('theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const theme = stored || (prefersDark ? 'dark' : 'light');
+      if (theme === 'dark') document.documentElement.classList.add('dark');
+      else document.documentElement.classList.remove('dark');
+    } catch (e) {}
+  })();
+`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -37,8 +52,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ru" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body
-        className={`${archivo.variable} ${fragmentMono.variable} antialiased bg-background text-foreground font-sans`}
+        className={`${inter.variable} ${fragmentMono.variable} antialiased bg-background text-foreground theme-transition`}
       >
         {children}
         <Toaster />

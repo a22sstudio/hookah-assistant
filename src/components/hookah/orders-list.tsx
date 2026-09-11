@@ -9,20 +9,20 @@ import { RefreshCw, ShoppingCart, CheckCircle2, Clock } from 'lucide-react'
 import { toast } from 'sonner'
 
 const STATUS_STYLE: Record<Order['status'], string> = {
-  PENDING: 'border-[#dc2f02] text-[#dc2f02] bg-transparent',
+  PENDING: 'border-ember text-ember bg-transparent',
   ORDERED: 'border-foreground text-foreground bg-transparent',
-  RECEIVED: 'border-border text-ink-faint bg-transparent',
+  RECEIVED: 'border-border text-muted-foreground bg-transparent',
 }
 
 function StatCard({ label, value, icon: Icon, accent }: { label: string; value: number; icon: typeof Clock; accent?: boolean }) {
   return (
-    <div className={`border ${accent ? 'frame' : 'border-border'} p-4 flex flex-col gap-3`}>
+    <div className={`border rounded-md p-4 flex flex-col gap-3 shadow-sm-soft transition-base ${accent ? 'frame-ember' : 'border-border'}`}>
       <div className="flex items-center justify-between">
         <span className="label-mono">{label}</span>
-        <Icon className={`h-3.5 w-3.5 ${accent ? 'text-[#dc2f02]' : 'text-ink-faint'}`} />
+        <Icon className={`h-3.5 w-3.5 ${accent ? 'text-ember' : 'text-muted-foreground/70'}`} />
       </div>
       <span
-        className="font-mono font-bold leading-none tabular-nums text-foreground"
+        className="font-mono font-bold leading-none tabular text-foreground"
         style={{ fontSize: 'clamp(28px, 4vw, 40px)' }}
       >
         {value}
@@ -113,9 +113,9 @@ export function OrdersList({ refreshKey, onRefresh }: OrdersListProps) {
       </div>
 
       {/* Список заявок */}
-      <div className="border border-border">
+      <div className="border border-border rounded-md shadow-sm-soft">
         {loading ? (
-          <div className="p-8 text-center text-muted-foreground text-xs font-mono uppercase tracking-tight">
+          <div className="p-8 text-center text-muted-foreground label-mono">
             Загрузка...
           </div>
         ) : orders.length === 0 ? (
@@ -124,7 +124,7 @@ export function OrdersList({ refreshKey, onRefresh }: OrdersListProps) {
           </div>
         ) : (
           <ScrollArea className="max-h-[60vh]">
-            <div>
+            <div className="stagger-children">
               {orders.map((o) => (
                 <div
                   key={o.id}
@@ -137,14 +137,14 @@ export function OrdersList({ refreshKey, onRefresh }: OrdersListProps) {
                           ? `${o.tobacco.brand} ${o.tobacco.line} ${o.tobacco.flavor}`
                           : '—'}
                       </div>
-                      <div className="text-[11px] text-ink-faint mt-1 font-mono uppercase tracking-tight">
+                      <div className="label-mono-sm mt-1">
                         Нужно: <span className="text-foreground font-bold">{o.gramsRequested}г</span>
                         {o.tobacco && (
                           <> · сейчас: <span className="text-foreground font-bold">{o.tobacco.currentGrams}г</span></>
                         )}
                       </div>
                       {o.note && (
-                        <div className="text-sm text-ink-soft italic mt-2 body-sans">
+                        <div className="text-sm text-muted-foreground italic mt-2 body-sans">
                           {o.note}
                         </div>
                       )}
@@ -173,7 +173,7 @@ export function OrdersList({ refreshKey, onRefresh }: OrdersListProps) {
                       <CheckCircle2 className="h-3 w-3" /> Получено
                     </Button>
                   )}
-                  <div className="text-[10px] text-ink-faint font-mono uppercase tracking-tight">
+                  <div className="label-mono-sm">
                     {formatTime(o.createdAt)}
                   </div>
                 </div>

@@ -278,15 +278,15 @@ export function AIChat({ onAction }: AIChatProps) {
   }
 
   return (
-    <div className="flex flex-col h-full border border-border bg-background overflow-hidden">
-      {/* Header — BLACK bg, white mono */}
-      <div className="flex items-center gap-2 px-4 h-[60px] border-b border-foreground bg-foreground text-background">
-        <Sparkles className="h-4 w-4 text-[#dc2f02]" />
+    <div className="flex flex-col h-full border border-border rounded-md bg-background overflow-hidden shadow-sm-soft">
+      {/* Header — ink-inverted panel */}
+      <div className="flex items-center gap-2 px-4 h-[60px] border-b border-border bg-foreground text-background">
+        <Sparkles className="h-4 w-4 text-ember" />
         <div className="flex-1 min-w-0">
           <p className="text-xs font-mono uppercase tracking-tight leading-none font-bold">
             AI ASSISTANT
           </p>
-          <p className="text-[10px] text-background/60 mt-0.5 font-mono uppercase tracking-tight">
+          <p className="label-mono-sm mt-0.5 text-background/60">
             старшего кальянного мастера
           </p>
         </div>
@@ -299,13 +299,13 @@ export function AIChat({ onAction }: AIChatProps) {
           {messages.map((m) => (
             <div
               key={m.id}
-              className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} slide-in-right`}
             >
               <div
-                className={`max-w-[85%] px-3 py-2 text-sm ${
+                className={`max-w-[85%] px-3 py-2 text-sm rounded-md ${
                   m.role === 'user'
-                    ? 'bg-[#dc2f02] text-white'
-                    : 'bg-background border border-border text-foreground'
+                    ? 'bg-ember text-ember-foreground'
+                    : 'surface-card text-foreground shadow-sm-soft'
                 }`}
               >
                 {m.attachments?.map((att, i) =>
@@ -314,10 +314,10 @@ export function AIChat({ onAction }: AIChatProps) {
                       key={i}
                       src={att.preview}
                       alt="накладная"
-                      className="mb-2 max-h-32 object-cover"
+                      className="mb-2 max-h-32 object-cover rounded-sm"
                     />
                   ) : att.type === 'voice' ? (
-                    <div key={i} className="flex items-center gap-1.5 mb-1 text-[11px] font-mono uppercase tracking-tight opacity-80">
+                    <div key={i} className="flex items-center gap-1.5 mb-1 label-mono-sm opacity-80">
                       <Mic className="h-3 w-3" /> голосовое
                     </div>
                   ) : null,
@@ -336,7 +336,7 @@ export function AIChat({ onAction }: AIChatProps) {
                     {m.actions.map((a, i) => (
                       <div
                         key={i}
-                        className="flex items-start gap-1.5 text-[11px] font-mono uppercase tracking-tight"
+                        className="flex items-start gap-1.5 label-mono-sm"
                       >
                         {a.success ? (
                           <CheckCircle2 className="h-3 w-3 mt-0.5 flex-shrink-0" />
@@ -360,7 +360,7 @@ export function AIChat({ onAction }: AIChatProps) {
                 <button
                   key={s}
                   onClick={() => sendText(s)}
-                  className="block w-full text-left text-[11px] font-mono uppercase tracking-tight px-3 py-2 border border-border hover:border-foreground hover:bg-muted transition-colors"
+                  className="block w-full text-left label-mono-sm px-3 py-2 border border-border rounded-md hover:border-foreground hover:bg-muted transition-base transition-colors"
                 >
                   → {s}
                 </button>
@@ -377,19 +377,19 @@ export function AIChat({ onAction }: AIChatProps) {
             <img
               src={pendingImage}
               alt="preview"
-              className="h-16 object-cover"
+              className="h-16 object-cover rounded-sm"
             />
             <button
               onClick={() => {
                 setPendingImage(null)
                 setPendingImageName('')
               }}
-              className="absolute -top-1.5 -right-1.5 bg-[#dc2f02] text-white p-0.5"
+              className="absolute -top-1.5 -right-1.5 bg-ember text-ember-foreground p-0.5 rounded-sm"
             >
               <X className="h-3 w-3" />
             </button>
           </div>
-          <p className="text-[10px] text-ink-faint mt-1 truncate font-mono uppercase tracking-tight">
+          <p className="label-mono-sm mt-1 truncate">
             {pendingImageName} — добавь комментарий или отправь
           </p>
         </div>
@@ -405,7 +405,7 @@ export function AIChat({ onAction }: AIChatProps) {
               className="hidden"
               onChange={handleImageUpload}
             />
-            <div className="border border-border p-2 hover:border-foreground transition-colors flex items-center justify-center h-9 w-9">
+            <div className="border border-border rounded-md p-2 hover:border-foreground transition-base transition-colors flex items-center justify-center h-9 w-9">
               <ImageIcon className="h-4 w-4" />
             </div>
           </label>
@@ -444,14 +444,15 @@ export function AIChat({ onAction }: AIChatProps) {
             size="icon"
             onClick={handleSend}
             disabled={loading || (!input.trim() && !pendingImage) || isRecording}
-            className="h-9 w-9 bg-[#dc2f02] hover:bg-[#dc2f02]/85"
+            className="h-9 w-9"
+            title="Отправить"
           >
             <Send className="h-4 w-4" />
           </Button>
         </div>
         {isRecording && (
-          <div className="flex items-center gap-2 text-[11px] text-[#dc2f02] font-mono uppercase tracking-tight animate-pulse">
-            <span className="h-1.5 w-1.5 bg-[#dc2f02]" />
+          <div className="flex items-center gap-2 label-mono-sm text-ember live-pulse">
+            <span className="h-1.5 w-1.5 bg-ember" />
             Идёт запись... нажми ⬛ чтобы остановить
           </div>
         )}
