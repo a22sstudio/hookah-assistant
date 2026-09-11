@@ -9,7 +9,7 @@ dockerfilePath = "Dockerfile"
 
 # CACHE_BUSTER заставляет Docker пересобрать все layers — обходит кеш Railway
 [build.args]
-CACHE_BUSTER = "v12-schedule-summary"
+CACHE_BUSTER = "v13-hookah-batch-ai"
 
 [deploy]
 # Railway выдаст публичный URL автоматически (https://docs.railway.app/deploy/expose)

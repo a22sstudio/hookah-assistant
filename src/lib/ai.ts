@@ -75,6 +75,7 @@ export type AIAction =
   | { tool: 'create_order'; args: { brand: string; line: string; flavor: string; grams: number; note?: string } }
   | { tool: 'create_request'; args: { text: string; grams?: number } }
   | { tool: 'create_wish'; args: { text: string } }
+  | { tool: 'add_hookah_batch'; args: { count: number } }
   | { tool: 'query'; args: { what: 'low_stock' | 'all_stock' | 'specific' | 'shift'; brand?: string; line?: string; flavor?: string } }
 
 export interface AIResult {
@@ -99,11 +100,13 @@ function buildSystemPrompt(stockContext: string, master: SessionMaster, shiftCon
 4. create_order — создать заявку на закуп конкретного табака (по граммам)
 5. create_request — заявка на закуп свободной формы ("BlackBurn Energy 2 банки")
 6. create_wish — хотелка/пожелание
-7. query — low_stock (что мало), all_stock (все остатки), shift (кто на смене и активные заявки)`
+7. add_hookah_batch — добавить N кальянов к смене ("забил 5", "сделал 3", "накрутил 10")
+8. query — low_stock (что мало), all_stock (все остатки), shift (кто на смене и активные заявки)`
     : `1. update_stock — отметить остаток табака (обычно когда "закончился" = 0, "мало осталось" = мало). Это списывает остаток и пушит старшему.
 2. create_request — заявка на закуп свободной формы ("BlackBurn Energy 2 банки")
 3. create_wish — хотелка/пожелание
-4. query — low_stock (что мало), all_stock (все остатки), shift (кто на смене)
+4. add_hookah_batch — добавить N кальянов к смене ("забил 5", "сделал 3", "накрутил 10")
+5. query — low_stock (что мало), all_stock (все остатки), shift (кто на смене)
 НЕ используй add_incoming, add_tobacco, create_order — это для старшего мастера.`
 
   return `Ты — умный ассистент кальянной. Сейчас с тобой работает: ${master.name} (${roleDesc}).
@@ -131,6 +134,9 @@ ${allowedTools}
 - "чего мало?" / "что заказать?" → query low_stock
 - "покажи остатки" → query all_stock
 - "что на смене?" / "как смена?" / "кто работает?" → query shift
+- "забил N кальянов" / "сделал N" / "накрутил N" / "сварил N" → add_hookah_batch с count=N
+  (N может быть числом или словом: "пять", "десять")
+  (без числа = +1: "забил кальян")
 
 СТРУКТУРА ТАБАКА — ВАЖНО! У каждого табака 3 поля:
 - brand — бренд/производитель (Darkside, Tangiers, Musthave, Daily Hookah, Burn, BlackBurn)
@@ -468,6 +474,21 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
           await pushToSeniors(notifMsg)
         }
         return { success: true, message: `Хотелка добавлена: "${text}"`, data: { wishId: wish.id } }
+      }
+
+      case 'add_hookah_batch': {
+        const count = Math.max(1, Math.min(100, action.args.count))
+        const shift = await db.shift.findFirst({ where: { masterId: master.id, status: 'OPEN' } })
+        if (!shift) {
+          return { success: false, message: 'Смена не открыта. /shift чтобы открыть.' }
+        }
+        const newCount = shift.hookahCount + count
+        await db.shift.update({ where: { id: shift.id }, data: { hookahCount: newCount } })
+        return {
+          success: true,
+          message: `+${count} кальянов (всего за смену: ${newCount})`,
+          data: { added: count, total: newCount },
+        }
       }
 
       case 'query': {
