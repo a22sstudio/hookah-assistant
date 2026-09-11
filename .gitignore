@@ -85,3 +85,4 @@ Thumbs.db
 # Agent context (внутреннее)
 agent-ctx/
 upload/
+tool-results/
