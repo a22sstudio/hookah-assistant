@@ -1,10 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -25,7 +24,6 @@ import {
   Loader2,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { useEffect, useCallback } from 'react'
 
 interface MasterViewProps {
   master: { id: string; name: string; role: 'SENIOR' | 'REGULAR'; color: string }
@@ -48,27 +46,27 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-muted/30">
+    <div className="min-h-screen flex flex-col bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="mx-auto max-w-7xl px-4 py-3 flex items-center gap-3">
+      <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 h-[60px] flex items-center gap-4">
           <div
-            className={`h-9 w-9 shrink-0 rounded-full ${masterAvatarClass(
+            className={`h-9 w-9 shrink-0 ${masterAvatarClass(
               master.color,
-            )} flex items-center justify-center text-xs font-bold text-white`}
+            )} flex items-center justify-center text-xs font-mono font-bold uppercase text-white`}
           >
             {initials(master.name)}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-muted-foreground leading-none">Привет,</p>
-            <h1 className="font-bold text-base sm:text-lg leading-tight truncate">
-              {master.name} 👋
+            <span className="label-mono">Привет,</span>
+            <h1 className="font-mono uppercase font-bold tracking-tight text-sm sm:text-base leading-tight truncate text-foreground">
+              {master.name}
             </h1>
           </div>
           <Button
-            variant="ghost"
+            variant="outline"
             size="icon"
-            className="h-9 w-9 rounded-full"
+            className="h-9 w-9"
             onClick={handleLogout}
             title="Выйти"
           >
@@ -78,10 +76,10 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
       </header>
 
       {/* Main */}
-      <main className="flex-1 mx-auto max-w-7xl w-full px-4 py-4">
-        <div className="grid lg:grid-cols-[1fr_440px] gap-4">
+      <main className="flex-1 mx-auto max-w-[1400px] w-full px-4 sm:px-6 py-6">
+        <div className="grid lg:grid-cols-[1fr_440px] gap-6">
           {/* Левая колонка */}
-          <div className="min-w-0 space-y-4">
+          <div className="min-w-0 space-y-6">
             {/* Смена — всегда сверху */}
             <ShiftPanel
               refreshKey={refreshKey}
@@ -94,42 +92,42 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
               <TabsList className="grid w-full grid-cols-3 h-auto">
                 <TabsTrigger
                   value="requests"
-                  className="flex flex-col gap-1 py-2 text-xs sm:text-sm sm:flex-row sm:gap-2"
+                  className="flex flex-col gap-1 py-2.5"
                 >
                   <ShoppingCart className="h-4 w-4" />
                   <span>Заявки</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="wishes"
-                  className="flex flex-col gap-1 py-2 text-xs sm:text-sm sm:flex-row sm:gap-2"
+                  className="flex flex-col gap-1 py-2.5"
                 >
                   <Star className="h-4 w-4" />
                   <span>Хотелки</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="stock"
-                  className="flex flex-col gap-1 py-2 text-xs sm:text-sm sm:flex-row sm:gap-2"
+                  className="flex flex-col gap-1 py-2.5"
                 >
                   <Package className="h-4 w-4" />
                   <span>Склад</span>
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="requests">
+              <TabsContent value="requests" className="pt-4">
                 <MasterRequests
                   role="REGULAR"
                   refreshKey={refreshKey}
                   onRefresh={refresh}
                 />
               </TabsContent>
-              <TabsContent value="wishes">
+              <TabsContent value="wishes" className="pt-4">
                 <WishesPanel
                   role="REGULAR"
                   refreshKey={refreshKey}
                   onRefresh={refresh}
                 />
               </TabsContent>
-              <TabsContent value="stock">
+              <TabsContent value="stock" className="pt-4">
                 <MasterStockReadOnly refreshKey={refreshKey} />
               </TabsContent>
             </Tabs>
@@ -137,7 +135,7 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
 
           {/* Правая колонка — чат (десктоп) */}
           <aside className="hidden lg:block">
-            <div className="sticky top-[81px] h-[calc(100vh-105px)]">
+            <div className="sticky top-[76px] h-[calc(100vh-100px)]">
               <AIChat onAction={refresh} />
             </div>
           </aside>
@@ -148,10 +146,10 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
       <Sheet open={mobileChatOpen} onOpenChange={setMobileChatOpen}>
         <SheetTrigger asChild>
           <Button
-            className="lg:hidden fixed bottom-20 right-4 z-40 h-14 w-14 rounded-full shadow-lg bg-emerald-600 hover:bg-emerald-700"
+            className="lg:hidden fixed bottom-20 right-4 z-40 h-12 w-12 bg-[#dc2f02] hover:bg-[#dc2f02]/85"
             size="icon"
           >
-            <MessageCircle className="h-6 w-6" />
+            <MessageCircle className="h-5 w-5" />
           </Button>
         </SheetTrigger>
         <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col">
@@ -162,12 +160,12 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
       </Sheet>
 
       {/* Footer */}
-      <footer className="mt-auto border-t bg-background">
-        <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between text-xs text-muted-foreground">
+      <footer className="mt-auto border-t border-border bg-background">
+        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 py-3 flex items-center justify-between text-[11px] text-ink-faint font-mono uppercase tracking-tight">
           <span>
-            Кальянный ассистент · <span className="font-medium text-foreground">{master.name}</span>
+            Кальянный ассистент · <span className="font-bold text-foreground">{master.name}</span>
           </span>
-          <span className="hidden sm:inline">🍃 удачной смены</span>
+          <span className="hidden sm:inline">удачной смены</span>
         </div>
       </footer>
     </div>
@@ -199,94 +197,103 @@ function MasterStockReadOnly({ refreshKey }: { refreshKey: number }) {
   const lowCount = tobaccos.filter((t) => t.isLow).length
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="rounded-lg bg-emerald-100 dark:bg-emerald-950 p-2">
-              <Package className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold leading-none">{tobaccos.length}</p>
-              <p className="text-xs text-muted-foreground mt-1">позиций</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="rounded-lg bg-amber-100 dark:bg-amber-950 p-2">
-              <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold leading-none">{lowCount}</p>
-              <p className="text-xs text-muted-foreground mt-1">заканчивается</p>
-            </div>
-          </CardContent>
-        </Card>
+    <div className="space-y-6">
+      <div className="flex items-end justify-between gap-4 border-b border-border pb-3">
+        <div>
+          <span className="label-mono">Инвентарь</span>
+          <h2
+            className="heading-mono text-foreground leading-none mt-1"
+            style={{ fontSize: 'clamp(24px, 4vw, 36px)' }}
+          >
+            Остатки склада
+          </h2>
+        </div>
+        <Button size="icon" variant="outline" onClick={load} title="Обновить">
+          <RefreshCw className="h-4 w-4" />
+        </Button>
       </div>
 
-      <Card>
-        <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-base">Остатки на складе</CardTitle>
-          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={load}>
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-        </CardHeader>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="p-6 text-center text-muted-foreground text-sm flex items-center justify-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" /> Загрузка...
-            </div>
-          ) : tobaccos.length === 0 ? (
-            <div className="p-6 text-center text-muted-foreground text-sm">
-              Справочник пуст
-            </div>
-          ) : (
-            <ScrollArea className="max-h-[60vh]">
-              <div className="divide-y">
-                {tobaccos.map((t) => {
-                  const percent = Math.min(
-                    100,
-                    Math.round((t.currentGrams / t.defaultJarGrams) * 100),
-                  )
-                  return (
-                    <div
-                      key={t.id}
-                      className="flex items-center gap-3 p-3"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium truncate text-sm">
-                            {t.brand}
-                          </span>
-                          <span className="text-muted-foreground text-xs">
-                            {t.line}
-                          </span>
-                          <span className="text-sm truncate">{t.flavor}</span>
-                          {t.isLow && (
-                            <Badge
-                              variant="outline"
-                              className="text-amber-700 border-amber-400 bg-amber-50 dark:bg-amber-950 dark:text-amber-400 text-[10px]"
-                            >
-                              мало
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 mt-1.5">
-                          <Progress value={percent} className="h-1.5 flex-1" />
-                          <span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-                            {t.currentGrams} / {t.defaultJarGrams}г
-                          </span>
-                        </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="border border-border p-4 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <span className="label-mono">Позиций</span>
+            <Package className="h-3.5 w-3.5 text-ink-faint" />
+          </div>
+          <span
+            className="font-mono font-bold leading-none tabular-nums text-foreground"
+            style={{ fontSize: 'clamp(28px, 4vw, 40px)' }}
+          >
+            {tobaccos.length}
+          </span>
+        </div>
+        <div className={`border ${lowCount > 0 ? 'frame' : 'border-border'} p-4 flex flex-col gap-3`}>
+          <div className="flex items-center justify-between">
+            <span className="label-mono">Мало</span>
+            <AlertTriangle className={`h-3.5 w-3.5 ${lowCount > 0 ? 'text-[#dc2f02]' : 'text-ink-faint'}`} />
+          </div>
+          <span
+            className="font-mono font-bold leading-none tabular-nums text-foreground"
+            style={{ fontSize: 'clamp(28px, 4vw, 40px)' }}
+          >
+            {lowCount}
+          </span>
+        </div>
+      </div>
+
+      <div className="border border-border">
+        {loading ? (
+          <div className="p-8 text-center text-muted-foreground text-xs font-mono uppercase tracking-tight flex items-center justify-center gap-2">
+            <Loader2 className="h-3 w-3 animate-spin" /> Загрузка...
+          </div>
+        ) : tobaccos.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground text-sm body-sans">
+            Справочник пуст.
+          </div>
+        ) : (
+          <ScrollArea className="max-h-[60vh]">
+            <div>
+              {tobaccos.map((t) => {
+                const percent = Math.min(
+                  100,
+                  Math.round((t.currentGrams / t.defaultJarGrams) * 100),
+                )
+                return (
+                  <div
+                    key={t.id}
+                    className="flex items-center gap-4 p-4 border-b border-border last:border-b-0"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline gap-2 flex-wrap">
+                        <span className="font-mono uppercase text-sm font-bold tracking-tight truncate">
+                          {t.brand}
+                        </span>
+                        <span className="font-sans text-xs text-ink-soft truncate">
+                          {t.line}
+                        </span>
+                        <span className="font-sans text-sm truncate">{t.flavor}</span>
+                        {t.isLow && (
+                          <Badge className="border-[#dc2f02] text-[#dc2f02] bg-transparent">
+                            мало
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 mt-2">
+                        <Progress
+                          value={percent}
+                          className={`h-[2px] flex-1 ${t.isLow ? '[&>[data-slot=progress-indicator]]:bg-[#dc2f02]' : ''}`}
+                        />
+                        <span className="text-[11px] text-ink-faint font-mono tabular-nums whitespace-nowrap">
+                          {t.currentGrams} / {t.defaultJarGrams}г
+                        </span>
                       </div>
                     </div>
-                  )
-                })}
-              </div>
-            </ScrollArea>
-          )}
-        </CardContent>
-      </Card>
+                  </div>
+                )
+              })}
+            </div>
+          </ScrollArea>
+        )}
+      </div>
     </div>
   )
 }

@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card } from '@/components/ui/card'
 import { Send, ImageIcon, Mic, Square, X, Loader2, Sparkles, CheckCircle2, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -34,7 +33,7 @@ export function AIChat({ onAction }: AIChatProps) {
       id: 'welcome',
       role: 'assistant',
       content:
-        'Привет! Я ассистент старшего кальянного мастера 🍃\n\nЯ умею:\n• Распознавать накладные по фото\n• Понимать голосовые про остатки\n• Вести учёт и формировать заявки\n\nНапиши или нажми 🎤 для голоса.',
+        'Привет! Я ассистент старшего кальянного мастера.\n\nЯ умею:\n• Распознавать накладные по фото\n• Понимать голосовые про остатки\n• Вести учёт и формировать заявки\n\nНапиши или нажми на микрофон для голоса.',
       timestamp: new Date().toISOString(),
     },
   ])
@@ -127,7 +126,7 @@ export function AIChat({ onAction }: AIChatProps) {
     setLoading(true)
     addMessage({
       role: 'user',
-      content: instruction || '📸 Приложил накладную',
+      content: instruction || 'Приложил накладную',
       attachments: [{ type: 'photo', preview: pendingImage }],
     })
     setPendingImage(null)
@@ -170,7 +169,7 @@ export function AIChat({ onAction }: AIChatProps) {
           )
           .join('\n')
         updateLastAssistant(
-          `${chatData.reply}\n\n📋 Распознано:\n${recognizedList}`,
+          `${chatData.reply}\n\nРАСПОЗНАНО:\n${recognizedList}`,
           chatData.executedActions,
         )
         if (chatData.executedActions?.length > 0) onAction()
@@ -214,7 +213,7 @@ export function AIChat({ onAction }: AIChatProps) {
 
   const sendVoice = async (blob: Blob) => {
     setLoading(true)
-    addMessage({ role: 'user', content: '🎙 Голосовое сообщение', attachments: [{ type: 'voice' }] })
+    addMessage({ role: 'user', content: 'Голосовое сообщение', attachments: [{ type: 'voice' }] })
     addMessage({ role: 'assistant', content: '', pending: true })
 
     try {
@@ -249,7 +248,7 @@ export function AIChat({ onAction }: AIChatProps) {
           updateLastAssistant(`⚠️ ${chatData.error}`)
         } else {
           updateLastAssistant(
-            `🎙 *«${asrData.text}»*\n\n${chatData.reply}`,
+            `«${asrData.text}»\n\n${chatData.reply}`,
             chatData.executedActions,
           )
           if (chatData.executedActions?.length > 0) onAction()
@@ -279,34 +278,34 @@ export function AIChat({ onAction }: AIChatProps) {
   }
 
   return (
-    <Card className="flex flex-col h-full overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-2 p-3 border-b bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/40">
-        <div className="rounded-full bg-emerald-600 p-1.5">
-          <Sparkles className="h-4 w-4 text-white" />
-        </div>
+    <div className="flex flex-col h-full border border-border bg-background overflow-hidden">
+      {/* Header — BLACK bg, white mono */}
+      <div className="flex items-center gap-2 px-4 h-[60px] border-b border-foreground bg-foreground text-background">
+        <Sparkles className="h-4 w-4 text-[#dc2f02]" />
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold leading-none">AI Ассистент</p>
-          <p className="text-[10px] text-muted-foreground mt-0.5">
+          <p className="text-xs font-mono uppercase tracking-tight leading-none font-bold">
+            AI ASSISTANT
+          </p>
+          <p className="text-[10px] text-background/60 mt-0.5 font-mono uppercase tracking-tight">
             старшего кальянного мастера
           </p>
         </div>
-        {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+        {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-background/60" />}
       </div>
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
-        <div className="p-3 space-y-3">
+        <div className="p-4 space-y-3">
           {messages.map((m) => (
             <div
               key={m.id}
               className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
+                className={`max-w-[85%] px-3 py-2 text-sm ${
                   m.role === 'user'
-                    ? 'bg-emerald-600 text-white rounded-br-sm'
-                    : 'bg-muted rounded-bl-sm'
+                    ? 'bg-[#dc2f02] text-white'
+                    : 'bg-background border border-border text-foreground'
                 }`}
               >
                 {m.attachments?.map((att, i) =>
@@ -315,34 +314,34 @@ export function AIChat({ onAction }: AIChatProps) {
                       key={i}
                       src={att.preview}
                       alt="накладная"
-                      className="rounded-lg mb-1 max-h-32 object-cover"
+                      className="mb-2 max-h-32 object-cover"
                     />
                   ) : att.type === 'voice' ? (
-                    <div key={i} className="flex items-center gap-1 mb-1 text-xs opacity-80">
+                    <div key={i} className="flex items-center gap-1.5 mb-1 text-[11px] font-mono uppercase tracking-tight opacity-80">
                       <Mic className="h-3 w-3" /> голосовое
                     </div>
                   ) : null,
                 )}
                 {m.pending ? (
-                  <div className="flex items-center gap-1.5 py-1">
-                    <span className="h-1.5 w-1.5 rounded-full bg-current animate-bounce [animation-delay:0ms]" />
-                    <span className="h-1.5 w-1.5 rounded-full bg-current animate-bounce [animation-delay:150ms]" />
-                    <span className="h-1.5 w-1.5 rounded-full bg-current animate-bounce [animation-delay:300ms]" />
+                  <div className="flex items-center gap-1 py-1">
+                    <span className="h-1.5 w-1.5 bg-current cursor-blink" />
+                    <span className="h-1.5 w-1.5 bg-current cursor-blink [animation-delay:0.2s]" />
+                    <span className="h-1.5 w-1.5 bg-current cursor-blink [animation-delay:0.4s]" />
                   </div>
                 ) : (
-                  <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                  <p className="whitespace-pre-wrap break-words body-sans leading-snug">{m.content}</p>
                 )}
                 {m.actions && m.actions.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-current/10 space-y-1">
+                  <div className="mt-2 pt-2 border-t border-current/15 space-y-1">
                     {m.actions.map((a, i) => (
                       <div
                         key={i}
-                        className="flex items-start gap-1.5 text-[11px] opacity-90"
+                        className="flex items-start gap-1.5 text-[11px] font-mono uppercase tracking-tight"
                       >
                         {a.success ? (
-                          <CheckCircle2 className="h-3 w-3 mt-0.5 flex-shrink-0 text-emerald-300" />
+                          <CheckCircle2 className="h-3 w-3 mt-0.5 flex-shrink-0" />
                         ) : (
-                          <XCircle className="h-3 w-3 mt-0.5 flex-shrink-0 text-red-300" />
+                          <XCircle className="h-3 w-3 mt-0.5 flex-shrink-0" />
                         )}
                         <span className="break-words">{a.message}</span>
                       </div>
@@ -355,15 +354,15 @@ export function AIChat({ onAction }: AIChatProps) {
 
           {/* Подсказки */}
           {messages.length <= 1 && (
-            <div className="space-y-1.5 pt-2">
-              <p className="text-[10px] text-muted-foreground px-1">Попробуй:</p>
+            <div className="space-y-1 pt-2">
+              <p className="label-mono px-1">Попробуй:</p>
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s}
                   onClick={() => sendText(s)}
-                  className="block w-full text-left text-xs px-3 py-2 rounded-lg border hover:bg-muted/50 transition-colors"
+                  className="block w-full text-left text-[11px] font-mono uppercase tracking-tight px-3 py-2 border border-border hover:border-foreground hover:bg-muted transition-colors"
                 >
-                  💬 {s}
+                  → {s}
                 </button>
               ))}
             </div>
@@ -373,32 +372,32 @@ export function AIChat({ onAction }: AIChatProps) {
 
       {/* Pending image preview */}
       {pendingImage && (
-        <div className="px-3 pt-2">
+        <div className="px-4 pt-3 pb-2 border-t border-border">
           <div className="relative inline-block">
             <img
               src={pendingImage}
               alt="preview"
-              className="h-16 rounded-lg object-cover"
+              className="h-16 object-cover"
             />
             <button
               onClick={() => {
                 setPendingImage(null)
                 setPendingImageName('')
               }}
-              className="absolute -top-1.5 -right-1.5 rounded-full bg-destructive text-white p-0.5"
+              className="absolute -top-1.5 -right-1.5 bg-[#dc2f02] text-white p-0.5"
             >
               <X className="h-3 w-3" />
             </button>
           </div>
-          <p className="text-[10px] text-muted-foreground mt-1 truncate">
+          <p className="text-[10px] text-ink-faint mt-1 truncate font-mono uppercase tracking-tight">
             {pendingImageName} — добавь комментарий или отправь
           </p>
         </div>
       )}
 
       {/* Input */}
-      <div className="p-3 border-t space-y-2">
-        <div className="flex items-end gap-2">
+      <div className="p-3 border-t border-border space-y-2">
+        <div className="flex items-end gap-1.5">
           <label className="cursor-pointer">
             <input
               type="file"
@@ -406,7 +405,7 @@ export function AIChat({ onAction }: AIChatProps) {
               className="hidden"
               onChange={handleImageUpload}
             />
-            <div className="rounded-lg border p-2 hover:bg-muted/50 transition-colors">
+            <div className="border border-border p-2 hover:border-foreground transition-colors flex items-center justify-center h-9 w-9">
               <ImageIcon className="h-4 w-4" />
             </div>
           </label>
@@ -416,9 +415,9 @@ export function AIChat({ onAction }: AIChatProps) {
               size="icon"
               variant="destructive"
               onClick={stopRecording}
-              className="rounded-lg"
+              className="h-9 w-9"
             >
-              <Square className="h-4 w-4" />
+              <Square className="h-3.5 w-3.5" />
             </Button>
           ) : (
             <Button
@@ -426,7 +425,7 @@ export function AIChat({ onAction }: AIChatProps) {
               variant="outline"
               onClick={startRecording}
               disabled={loading}
-              className="rounded-lg"
+              className="h-9 w-9"
               title="Записать голос"
             >
               <Mic className="h-4 w-4" />
@@ -437,7 +436,7 @@ export function AIChat({ onAction }: AIChatProps) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder={isRecording ? 'Записываю...' : pendingImage ? 'Комментарий к накладной...' : 'Сообщение...'}
+            placeholder={isRecording ? 'Записываю...' : pendingImage ? 'Комментарий...' : 'Сообщение...'}
             disabled={loading || isRecording}
             className="flex-1"
           />
@@ -445,18 +444,18 @@ export function AIChat({ onAction }: AIChatProps) {
             size="icon"
             onClick={handleSend}
             disabled={loading || (!input.trim() && !pendingImage) || isRecording}
-            className="rounded-lg bg-emerald-600 hover:bg-emerald-700"
+            className="h-9 w-9 bg-[#dc2f02] hover:bg-[#dc2f02]/85"
           >
             <Send className="h-4 w-4" />
           </Button>
         </div>
         {isRecording && (
-          <div className="flex items-center gap-2 text-xs text-red-600 animate-pulse">
-            <span className="h-2 w-2 rounded-full bg-red-600" />
+          <div className="flex items-center gap-2 text-[11px] text-[#dc2f02] font-mono uppercase tracking-tight animate-pulse">
+            <span className="h-1.5 w-1.5 bg-[#dc2f02]" />
             Идёт запись... нажми ⬛ чтобы остановить
           </div>
         )}
       </div>
-    </Card>
+    </div>
   )
 }

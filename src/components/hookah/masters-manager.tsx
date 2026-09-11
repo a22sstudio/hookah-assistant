@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -198,15 +197,18 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
+      <div className="flex items-end justify-between gap-4 border-b border-border pb-3 flex-wrap">
         <div className="min-w-0">
-          <h3 className="font-semibold flex items-center gap-2">
-            <Users className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+          <span className="label-mono">Команда</span>
+          <h2
+            className="heading-mono text-foreground leading-none mt-1"
+            style={{ fontSize: 'clamp(24px, 4vw, 36px)' }}
+          >
             Мастера
-          </h3>
-          <p className="text-xs text-muted-foreground mt-0.5">
+          </h2>
+          <p className="body-sans text-xs text-ink-soft mt-2">
             Управление командой: PIN-коды, роли и привязка к Telegram.
           </p>
         </div>
@@ -217,7 +219,7 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button size="sm" onClick={openCreateDialog}>
-                <Plus className="h-4 w-4 mr-1" /> Добавить мастера
+                <Plus className="h-4 w-4" /> Добавить мастера
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
@@ -249,12 +251,8 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="REGULAR">
-                          🌿 мастер
-                        </SelectItem>
-                        <SelectItem value="SENIOR">
-                          ⭐️ старший
-                        </SelectItem>
+                        <SelectItem value="REGULAR">мастер</SelectItem>
+                        <SelectItem value="SENIOR">старший</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -273,7 +271,6 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                             pin: e.target.value.replace(/\D/g, '').slice(0, 4),
                           })
                         }
-                        className="font-mono"
                       />
                       <Button
                         type="button"
@@ -296,10 +293,10 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                         key={c.value}
                         type="button"
                         onClick={() => setForm({ ...form, color: c.value })}
-                        className={`h-8 w-8 rounded-full ${c.className} transition-all ${
+                        className={`h-8 w-8 ${c.className} transition-all ${
                           form.color === c.value
                             ? 'ring-2 ring-offset-2 ring-foreground scale-110'
-                            : 'hover:scale-105'
+                            : 'hover:scale-105 opacity-80'
                         }`}
                         title={c.label}
                         aria-label={c.label}
@@ -321,9 +318,8 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                         telegramId: e.target.value.replace(/[^\d]/g, ''),
                       })
                     }
-                    className="font-mono"
                   />
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-[10px] text-ink-faint font-mono uppercase tracking-tight">
                     Мастер может привязать себя сам через бота: /claim PIN
                   </p>
                 </div>
@@ -348,193 +344,179 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
       </div>
 
       {/* Сводка */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <Card className="p-3">
-          <div className="text-[10px] uppercase text-muted-foreground">Всего</div>
-          <div className="text-xl font-bold tabular-nums">{stats.total}</div>
-        </Card>
-        <Card className="p-3">
-          <div className="text-[10px] uppercase text-muted-foreground">Старших</div>
-          <div className="text-xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
-            {stats.senior}
-          </div>
-        </Card>
-        <Card className="p-3">
-          <div className="text-[10px] uppercase text-muted-foreground">Мастеров</div>
-          <div className="text-xl font-bold tabular-nums text-sky-600 dark:text-sky-400">
-            {stats.regular}
-          </div>
-        </Card>
-        <Card className="p-3">
-          <div className="text-[10px] uppercase text-muted-foreground">С Telegram</div>
-          <div className="text-xl font-bold tabular-nums text-violet-600 dark:text-violet-400">
-            {stats.boundTg}
-          </div>
-        </Card>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="border border-border p-4">
+          <div className="label-mono mb-2">Всего</div>
+          <div className="text-3xl font-mono font-bold tabular-nums text-foreground">{stats.total}</div>
+        </div>
+        <div className="border border-border p-4">
+          <div className="label-mono mb-2">Старших</div>
+          <div className="text-3xl font-mono font-bold tabular-nums text-foreground">{stats.senior}</div>
+        </div>
+        <div className="border border-border p-4">
+          <div className="label-mono mb-2">Мастеров</div>
+          <div className="text-3xl font-mono font-bold tabular-nums text-foreground">{stats.regular}</div>
+        </div>
+        <div className="border border-border p-4">
+          <div className="label-mono mb-2">С Telegram</div>
+          <div className="text-3xl font-mono font-bold tabular-nums text-foreground">{stats.boundTg}</div>
+        </div>
       </div>
 
       {/* Список мастеров */}
-      <Card>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="p-6 text-center text-muted-foreground text-sm flex items-center justify-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" /> Загрузка...
-            </div>
-          ) : masters.length === 0 ? (
-            <div className="p-8 text-center text-muted-foreground text-sm">
-              <Users className="h-6 w-6 mx-auto mb-2 opacity-40" />
-              Мастеров пока нет
-            </div>
-          ) : (
-            <ScrollArea className="max-h-[65vh]">
-              <div className="divide-y">
-                {masters.map((m) => {
-                  const isEditing = editingId === m.id
-                  const isSaving = savingId === m.id
-                  const colors = masterColorClasses(m.color)
-                  return (
-                    <div
-                      key={m.id}
-                      className="flex flex-col sm:flex-row sm:items-center gap-3 p-3"
-                    >
-                      {/* Аватар + имя + роль */}
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div
-                          className={`h-10 w-10 shrink-0 rounded-full ${masterAvatarClass(
-                            m.color,
-                          )} flex items-center justify-center text-sm font-bold text-white shadow-sm ring-2 ${colors.ring}/30`}
-                        >
-                          {initials(m.name)}
+      <div className="border border-border">
+        {loading ? (
+          <div className="p-8 text-center text-muted-foreground text-xs font-mono uppercase tracking-tight flex items-center justify-center gap-2">
+            <Loader2 className="h-3 w-3 animate-spin" /> Загрузка...
+          </div>
+        ) : masters.length === 0 ? (
+          <div className="p-10 text-center text-muted-foreground text-sm body-sans">
+            <Users className="h-6 w-6 mx-auto mb-3 text-ink-faint" />
+            Мастеров пока нет.
+          </div>
+        ) : (
+          <ScrollArea className="max-h-[65vh]">
+            <div>
+              {masters.map((m) => {
+                const isEditing = editingId === m.id
+                const isSaving = savingId === m.id
+                const colors = masterColorClasses(m.color)
+                return (
+                  <div
+                    key={m.id}
+                    className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 border-b border-border last:border-b-0 hover:bg-muted/40 transition-colors"
+                  >
+                    {/* Аватар + имя + роль */}
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div
+                        className={`h-10 w-10 shrink-0 ${masterAvatarClass(
+                          m.color,
+                        )} flex items-center justify-center text-xs font-mono font-bold uppercase text-white border-2 ${colors.ring}/30`}
+                      >
+                        {initials(m.name)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline gap-2 flex-wrap">
+                          <span className="font-mono uppercase text-sm font-bold tracking-tight truncate text-foreground">
+                            {m.name}
+                          </span>
+                          {m.role === 'SENIOR' ? (
+                            <Badge className="border-[#dc2f02] text-[#dc2f02] bg-transparent">
+                              старший
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline">
+                              мастер
+                            </Badge>
+                          )}
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-medium text-sm truncate">
-                              {m.name}
+                        {/* PIN + Telegram ID строка */}
+                        <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                          <span className="flex items-center gap-1 text-[11px] text-ink-faint font-mono uppercase tracking-tight">
+                            <KeyRound className="h-3 w-3" />
+                            <span className="font-bold text-foreground">
+                              {m.pin}
                             </span>
-                            {m.role === 'SENIOR' ? (
-                              <Badge
-                                variant="secondary"
-                                className="bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900"
-                              >
-                                ⭐️ старший
-                              </Badge>
-                            ) : (
-                              <Badge
-                                variant="secondary"
-                                className="bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-400 border-sky-200 dark:border-sky-900"
-                              >
-                                🌿 мастер
-                              </Badge>
-                            )}
-                          </div>
-                          {/* PIN + Telegram ID строка */}
-                          <div className="flex items-center gap-3 mt-1 flex-wrap">
-                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                              <KeyRound className="h-3 w-3" />
-                              <span className="font-mono font-medium text-foreground">
-                                {m.pin}
-                              </span>
+                          </span>
+                          {!isEditing && (
+                            <span className="flex items-center gap-1 text-[11px] text-ink-faint font-mono uppercase tracking-tight">
+                              <Hash className="h-3 w-3" />
+                              {m.telegramId ? (
+                                <span className="font-bold text-foreground">
+                                  {m.telegramId}
+                                </span>
+                              ) : (
+                                <span className="italic text-ink-faint/80">
+                                  не привязан
+                                </span>
+                              )}
                             </span>
-                            {!isEditing && (
-                              <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                                <Hash className="h-3 w-3" />
-                                {m.telegramId ? (
-                                  <span className="font-mono font-medium text-foreground">
-                                    {m.telegramId}
-                                  </span>
-                                ) : (
-                                  <span className="italic text-muted-foreground/80">
-                                    не привязан
-                                  </span>
-                                )}
-                              </span>
-                            )}
-                          </div>
+                          )}
                         </div>
                       </div>
+                    </div>
 
-                      {/* Действия */}
-                      <div className="flex items-center gap-2 shrink-0">
-                        {isEditing ? (
-                          <>
-                            <Input
-                              inputMode="numeric"
-                              placeholder="123456789"
-                              value={editValue}
-                              onChange={(e) =>
-                                setEditValue(
-                                  e.target.value.replace(/[^\d]/g, ''),
-                                )
-                              }
-                              className="h-8 w-40 font-mono text-xs"
-                              autoFocus
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') void saveTelegram(m.id)
-                                if (e.key === 'Escape') cancelEdit()
-                              }}
-                            />
+                    {/* Действия */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      {isEditing ? (
+                        <>
+                          <Input
+                            inputMode="numeric"
+                            placeholder="123456789"
+                            value={editValue}
+                            onChange={(e) =>
+                              setEditValue(
+                                e.target.value.replace(/[^\d]/g, ''),
+                              )
+                            }
+                            className="h-8 w-40 text-xs"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') void saveTelegram(m.id)
+                              if (e.key === 'Escape') cancelEdit()
+                            }}
+                          />
+                          <Button
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => void saveTelegram(m.id)}
+                            disabled={isSaving}
+                            title="Сохранить"
+                          >
+                            {isSaving ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Check className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8"
+                            onClick={cancelEdit}
+                            disabled={isSaving}
+                            title="Отмена"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          {!m.telegramId ? (
                             <Button
-                              size="icon"
-                              className="h-8 w-8 bg-emerald-600 hover:bg-emerald-700"
-                              onClick={() => void saveTelegram(m.id)}
-                              disabled={isSaving}
-                              title="Сохранить"
+                              size="sm"
+                              variant="outline"
+                              className="h-8 text-[11px]"
+                              onClick={() => startEdit(m)}
                             >
-                              {isSaving ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <Check className="h-3.5 w-3.5" />
-                              )}
+                              <Send className="h-3 w-3" /> привязать
                             </Button>
+                          ) : (
                             <Button
                               size="icon"
                               variant="ghost"
                               className="h-8 w-8"
-                              onClick={cancelEdit}
-                              disabled={isSaving}
-                              title="Отмена"
+                              onClick={() => startEdit(m)}
+                              title="Изменить Telegram ID"
                             >
-                              <X className="h-3.5 w-3.5" />
+                              <Pencil className="h-3.5 w-3.5" />
                             </Button>
-                          </>
-                        ) : (
-                          <>
-                            {!m.telegramId ? (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-8 text-xs"
-                                onClick={() => startEdit(m)}
-                              >
-                                <Send className="h-3 w-3 mr-1" /> привязать
-                              </Button>
-                            ) : (
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8"
-                                onClick={() => startEdit(m)}
-                                title="Изменить Telegram ID"
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-                          </>
-                        )}
-                      </div>
+                          )}
+                        </>
+                      )}
                     </div>
-                  )
-                })}
-              </div>
-            </ScrollArea>
-          )}
-        </CardContent>
-      </Card>
+                  </div>
+                )
+              })}
+            </div>
+          </ScrollArea>
+        )}
+      </div>
 
-      <p className="text-[10px] text-muted-foreground text-center">
-        💡 Мастера также могут привязать Telegram сами: откройте{' '}
-        <span className="font-medium">@Defowork_bot</span> и отправьте{' '}
-        <span className="font-mono">/claim ВАШ_PIN</span>
+      <p className="text-[10px] text-ink-faint text-center font-mono uppercase tracking-tight">
+        Мастера также могут привязать Telegram сами: откройте{' '}
+        <span className="font-bold text-foreground">@Defowork_bot</span> и отправьте{' '}
+        <span className="font-bold text-foreground">/claim ВАШ_PIN</span>
       </p>
     </div>
   )

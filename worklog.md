@@ -445,3 +445,90 @@ Stage Summary:
 - Веб-панель: https://hookah-assistant-production.up.railway.app
 - Бот: @Defowork_bot
 - Голосовые: распознаёт Whisper, отвечает Qwen, всё бесплатно.
+
+---
+Task ID: redesign-1
+Agent: main (Z.ai Code)
+Task: Полный редизайн UI Hookah Assistant — editorial / brutalist / technical minimalism в стиле tour-kyrgyzstan.com. Белый фон, чёрный текст, терракотовый (#dc2f02) акцент. Fragment Mono для заголовков/лейблов/навигации/бейджей/кнопок, Archivo для body. Острые углы (--radius:0), тонкие 1px границы, асимметричные сетки.
+
+Work Log:
+- Прочитал `worklog.md` (Tasks 1, 5, 7, 4) — понял контекст: multi-role CRM (SENIOR / REGULAR), PIN-логин, смены мастеров, AI-чат, заявки/хотелки, склад, уведомления-колокольчик.
+- Изучил существующие `globals.css` (токены paper/ink/ember, --radius:0, утилиты .label-mono/.heading-mono/.body-sans/.frame/.frame-ink/.ember-text/.ember-bg/.ember-line) и `layout.tsx` (Archivo + Fragment_Mono через next/font, переменные --font-archivo / --font-fragment-mono).
+- Прочитал ВСЕ компоненты в `src/components/hookah/` (14 файлов) и базовые shadcn компоненты (button, badge, input, tabs, card, textarea, progress, dialog, sheet, popover, label, select).
+
+Phase 3 — обновил базовые shadcn компоненты (сохраняя variants/props/API):
+- `button.tsx`: убрал rounded-md, добавил font-mono uppercase tracking-tight в базовый класс. outline меняет bg на foreground при hover (инверсия). Размеры h-9/h-8/h-11.
+- `badge.tsx`: rounded-none, font-mono uppercase tracking-tight, text-[10px], h-5. Variant outline теперь border-border + text-foreground.
+- `input.tsx`: rounded-none, font-mono, placeholder font-mono uppercase text-xs, focus ring ember (через --ring).
+- `textarea.tsx`: rounded-none, font-sans для основного текста, font-mono uppercase для placeholder.
+- `card.tsx`: rounded-none, shadow-none, border-border. CardTitle = font-mono uppercase tracking-tight text-sm.
+- `tabs.tsx`: TabsList убран bg-muted, заменил на border-b border-border (line-tabs). TabsTrigger = border-b-2 border-transparent, активный = border-foreground, font-mono uppercase tracking-tight text-xs.
+- `progress.tsx`: rounded-none, h-[2px] (тонкая линия как в дизайне).
+- `dialog.tsx`: rounded-none, border-border, shadow-none. DialogTitle = font-mono uppercase tracking-tight.
+- `sheet.tsx`: shadow-none, border-border.
+- `popover.tsx`: rounded-none, border-border, shadow-none, p-0 (контент сам задаёт паддинги).
+- `label.tsx`: text-[11px] font-mono uppercase tracking-tight text-muted-foreground.
+- `select.tsx`: rounded-none, font-mono uppercase text-xs, shadow-none.
+
+Phase 1 — переписал все 14 компонентов hookah (СОХРАНИЛ все props, state, fetch, event handlers — только JSX/CSS):
+
+1. `login-screen.tsx`: Чёрно-белый экран. Огромный заголовок "HOOKAH / ASSISTANT" в Fragment Mono (clamp 32-56px). Тонкая grid-разметка фона opacity 0.025. Label "ENTER PIN" + 4 квадратных инпута (h-16 w-14, 1px border, focus=ember). Demo-пины как editorial-список кнопок с моно-текстом `[1111]` в скобках. Telegram-подсказка внизу. Никаких gradient/blurred blobs.
+
+2. `shift-panel.tsx`: Нет смены → card frame-ink с большим заголовком "ОТКРЫТЬ СМЕНУ" + ember-кнопка. Есть смена → card с frame (1px ember border), pulsing ember-dot + "НА СМЕНЕ", огромное число кальянов (clamp 56-96px) в Fragment Mono, "+1 Кальян" (ember bg, 50% width) + "Отменить" (50% width). Закрыть смену = outline.
+
+3. `dashboard.tsx`: 4 stat-карточки в ряд (label-mono + огромные числа в font-mono). Карточка "Мало" подсвечивается ember-border (frame) когда lowCount > 0. Список табаков = простые строки с border-b, без card bg. Progress bar = h-[2px], ember когда isLow. Поиск = Input с mono placeholder. Фильтры = inline кнопки (active = bg-foreground / bg-ember для "Мало"), без shadcn Button.
+
+4. `ai-chat.tsx`: Header BLACK bg (bg-foreground) + white text + ember иконка Sparkles + "AI ASSISTANT" uppercase mono + подзаголовок "старшего кальянного мастера". Сообщения: user = ember bg + white text (right), assistant = white bg + 1px border (left). Pending indicator = 3 blinking dots (cursor-blink). Input = 1px border, mono placeholder. Send = ember bg. Mic/Image = outline 9x9. Suggestions = mono uppercase "→ text" с border. Убрал иконки-эмодзи из текста (текстовые подсказки в plain text).
+
+5. `operations-list.tsx`: Список с 1px dividers. Каждая строка: маленькая иконка в квадрате с 1px border (ember для incoming, ink-faint для других). Tobacco name в mono uppercase bold. Delta (+/- Nг) справа в mono bold. Time в label-mono. Badge OPERATION_LABELS через label-mono вместо Badge.
+
+6. `orders-list.tsx`: 3 stat-карточки (Ожидают = ember-border при pending > 0). Список строк с 1px dividers. Status badges: PENDING=ember border+text, ORDERED=ink border, RECEIVED=muted. Buttons = outline.
+
+7. `master-requests.tsx`: Форма в card с frame (ember border). Textarea с mono placeholder. Submit = primary (ink). Сводка для senior в 2 карточках (ожидают = ember-border). Список с 1px dividers, аватар квадратный (мастер-цвет bg + white mono initials), статус badges (PENDING=ember, ORDERED=ink, DONE=muted).
+
+8. `wishes-panel.tsx`: Аналогично master-requests. Star-иконка в ember. Submit = primary.
+
+9. `tobaccos-manager.tsx`: Заголовок + 2 кнопки (refresh, add). Список с 1px dividers. Brand в mono uppercase bold, line в sans, "мало" badge ember. Dialog — острые углы, mono labels.
+
+10. `masters-manager.tsx`: 4 stat-карточки (без цветовых акцентов — только ink). Список мастеров с 1px dividers. Аватар = квадратный (h-10 w-10) с мастер-цветом bg + white mono initials + 2px ring в цвете. Role badges: SENIOR=ember border+text, REGULAR=ink border. PIN/Telegram ID в label-mono. Inline-редактирование сохранено полностью.
+
+11. `notifications-bell.tsx`: Bell button = 9x9 outline с ember badge (-top-1 -right-1, count). Dropdown: header BLACK bg + white text, items с 1px dividers. Item-иконка в квадрате с 1px border (ember для непрочитанных, ink-faint для прочитанных). Label-mono для типа уведомления (ЗАКАНЧИЛСЯ, ЗАЯВКА и т.д.). Сообщение в body-sans. Тонкая ember-точка для непрочитанных.
+
+12. `senior-shift-view.tsx`: Заголовок "LIVE-смены" + пульсирующий ember-dot + "LIVE" в ember. 3 stat-карточки (мастеров/кальянов/ср.). Карточки смен: 1px border (frame для isMine), цветная полоса h-[3px] сверху, квадратный аватар 12x12, огроиное число кальянов (clamp 32-44px) в цвете мастера. SENIOR/ВЫ бейджи = квадратные с border.
+
+13. `master-view.tsx`: Header 60px высота: аватар квадратный + "ПРИВЕТ," label + name в mono uppercase bold. Logout = outline 9x9. ShiftPanel наверху. Tabs = 3 триггера (grid-cols-3) с иконками. AIChat sticky right (lg:block). Floating ember button bottom-right на мобиле (Sheet). Footer border-t, label-mono.
+
+14. `senior-view.tsx`: Header 60px: Leaf-иконка в ember + "Кальянная CRM" label-mono + divider + "Senior / Name" в mono uppercase bold. NotificationsBell + квадратный аватар + logout. Tabs = 7 триггеров (grid-cols-4 sm:grid-cols-7) с иконками. AIChat sticky right. Footer border-t label-mono.
+
+Phase 2 — обновил `src/app/page.tsx`: loading-screen в editorial-стиле (label-mono заголовок "Кальянный ассистент", Loader2 в ember, label-mono "ЗАГРУЗКА...", footer border-t label-mono). Sticky header/footer паттерн сохранён. Auth-gate логика без изменений.
+
+Дизайн-решения:
+- ВСЕ круглые элементы (rounded-full) заменены на квадратные: аватары, PIN-боксы, badge-точки, бейджи. Только пульсирующие live-индикаторы остались круглыми (h-[6px] w-[6px]).
+- Сетевой grid max-w-[1400px] (было max-w-7xl = 1280px) — больше воздуха.
+- Padding header 60px (было 49px py-3) — соответствует дизайн-референсу.
+- Gap 6 (был 4) — больше пространства между колонками.
+- Sticky top-[76px] для AIChat (60px header + 16px padding).
+- Цветовая стратегия: ember (#dc2f02) ИСПОЛЬЗУЕТСЯ ТОЛЬКО для: low-stock, active states, pending requests, incoming operations, user-chat messages, send button, live indicator, primary CTA. Всё остальное = ink + paper.
+- Master colors (emerald/teal/amber/sky/violet/rose) сохранены как identity-цвета аватаров и цветных полос в senior-shift-view (функциональная дифференциация мастеров).
+- Убрал все эмодзи из UI-текстов (👋, 🍃, 🚬, 🎙, 📸, 🎤, ⭐️, 🌿). Оставил только там, где это语义тически важно в SOURCE_LABELS.
+- Empty states в editorial-стиле: "Пока нет операций.", "Справочник пуст.", "Никого на смене." — с точкой в конце, без "🚀 Начать".
+
+Верификация:
+- `bun run lint` → 0 ошибок, 0 предупреждений. ESLint чист.
+- `dev.log` → ✓ Compiled in Nms (сотни ms), без ошибок/предупреждений.
+- HTTP проверки:
+  - `GET /` → 200 (loading screen рендерится)
+  - `POST /api/auth/login pin=1111` → 200 (Тимур, SENIOR)
+  - `GET /api/auth/me` → 200 (сессия работает)
+  - `GET /api/shifts` → 200 (data access работает)
+- Все props, state, fetch, event handlers, fetch URLs, методы (GET/POST/PATCH/DELETE) — идентичны оригиналам. Изменён только JSX/CSS-классы.
+- Sticky footer паттерн сохранён (min-h-screen flex flex-col + mt-auto на footer).
+- Mobile-first responsive сохранён: TabsList grid-cols-3 (master) / grid-cols-4 sm:grid-cols-7 (senior), AIChat sticky right lg:block + Sheet на мобиле.
+
+Stage Summary:
+- Полная визуальная трансформация CRM в editorial / brutalist / technical minimalism стиль tour-kyrgyzstan.com.
+- 14 hookah компонентов + 12 shadcn base components переписаны с сохранением 100% функциональности.
+- Цветовая палитра: paper #FFFFFF + ink #000000 + ember #dc2f02 (терракотовый акцент). Никакого indigo/blue.
+- Типографика: Fragment Mono (uppercase) для всех заголовков/лейблов/навигации/бейджей/кнопок. Archivo для body-текста.
+- Острые углы везде (--radius:0), 1px границы (border-border = rgba(0,0,0,0.18)), без shadow.
+- Демо-доступ: Старший Тимур PIN 1111, мастера Айрат 2222 / Марат 3333.

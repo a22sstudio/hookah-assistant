@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { LoginScreen } from '@/components/hookah/login-screen'
 import { MasterView } from '@/components/hookah/master-view'
 import { SeniorView } from '@/components/hookah/senior-view'
-import { Leaf, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { Master } from '@/lib/types'
 
 export default function Home() {
@@ -34,31 +34,21 @@ export default function Home() {
   // Лоадер первой загрузки
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col bg-gradient-to-br from-emerald-50 via-teal-50 to-emerald-100 dark:from-emerald-950 dark:via-teal-950 dark:to-background">
-        <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
-          <div className="mx-auto max-w-7xl px-4 py-3 flex items-center gap-3">
-            <div className="rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 p-2 shadow-sm">
-              <Leaf className="h-5 w-5 text-white" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h1 className="font-bold text-base sm:text-lg leading-tight truncate">
-                Кальянный ассистент
-              </h1>
-              <p className="text-xs text-muted-foreground truncate">
-                AI-учёт табака
-              </p>
-            </div>
+      <div className="min-h-screen flex flex-col bg-background">
+        <header className="sticky top-0 z-40 border-b border-border bg-background">
+          <div className="mx-auto max-w-[1400px] px-4 sm:px-6 h-[60px] flex items-center gap-3">
+            <span className="label-mono">Кальянный ассистент</span>
           </div>
         </header>
         <main className="flex-1 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-3 text-muted-foreground">
-            <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
-            <p className="text-sm">Загрузка...</p>
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="h-6 w-6 animate-spin text-[#dc2f02]" />
+            <p className="label-mono">Загрузка...</p>
           </div>
         </main>
-        <footer className="mt-auto border-t bg-background">
-          <div className="mx-auto max-w-7xl px-4 py-3 text-xs text-muted-foreground">
-            Кальянный ассистент · powered by Z.ai
+        <footer className="mt-auto border-t border-border bg-background">
+          <div className="mx-auto max-w-[1400px] px-4 sm:px-6 py-3 text-[11px] text-ink-faint font-mono uppercase tracking-tight">
+            Кальянный ассистент · powered by z.ai
           </div>
         </footer>
       </div>

@@ -2,19 +2,10 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { Operation, OPERATION_LABELS, SOURCE_LABELS } from '@/lib/types'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { RefreshCw, ArrowUpRight, ArrowDownRight, Edit3 } from 'lucide-react'
+import { ArrowUpRight, ArrowDownRight, Edit3, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
-
-const TYPE_STYLES: Record<Operation['type'], string> = {
-  INCOMING: 'text-emerald-600 dark:text-emerald-400',
-  ADJUSTMENT: 'text-sky-600 dark:text-sky-400',
-  ORDER: 'text-amber-600 dark:text-amber-400',
-  CORRECTION: 'text-violet-600 dark:text-violet-400',
-}
 
 function formatTime(iso: string) {
   const d = new Date(iso)
@@ -59,75 +50,94 @@ export function OperationsList({ refreshKey }: OperationsListProps) {
   }, [load, refreshKey])
 
   return (
-    <Card>
-      <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-base">История операций</CardTitle>
-        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={load}>
+    <div className="space-y-4">
+      <div className="flex items-end justify-between gap-4 border-b border-border pb-3">
+        <div>
+          <span className="label-mono">Лог</span>
+          <h2
+            className="heading-mono text-foreground leading-none mt-1"
+            style={{ fontSize: 'clamp(24px, 4vw, 36px)' }}
+          >
+            История операций
+          </h2>
+        </div>
+        <Button size="icon" variant="outline" onClick={load} title="Обновить">
           <RefreshCw className="h-4 w-4" />
         </Button>
-      </CardHeader>
-      <CardContent className="p-0">
+      </div>
+
+      <div className="border border-border">
         {loading ? (
-          <div className="p-6 text-center text-muted-foreground text-sm">
+          <div className="p-8 text-center text-muted-foreground text-xs font-mono uppercase tracking-tight">
             Загрузка...
           </div>
         ) : operations.length === 0 ? (
-          <div className="p-6 text-center text-muted-foreground text-sm">
-            Пока нет операций
+          <div className="p-8 text-center text-muted-foreground text-sm body-sans">
+            Пока нет операций.
           </div>
         ) : (
           <ScrollArea className="max-h-[70vh]">
-            <div className="divide-y">
+            <div>
               {operations.map((op) => {
-                const isPositive = op.delta > 0
+                const isIncoming = op.type === 'INCOMING'
                 const Icon =
                   op.type === 'INCOMING'
                     ? ArrowUpRight
                     : op.type === 'ORDER'
                       ? ArrowDownRight
                       : Edit3
+                const deltaLabel =
+                  op.delta > 0 ? `+${op.delta}г` : `${op.delta}г`
                 return (
-                  <div key={op.id} className="flex items-start gap-3 p-3">
+                  <div
+                    key={op.id}
+                    className="group flex items-start gap-4 p-4 border-b border-border last:border-b-0 hover:bg-muted/50 transition-colors"
+                  >
                     <div
-                      className={`rounded-lg p-1.5 mt-0.5 ${op.type === 'INCOMING' ? 'bg-emerald-100 dark:bg-emerald-950' : op.type === 'ORDER' ? 'bg-amber-100 dark:bg-amber-950' : 'bg-muted'}`}
+                      className={`mt-0.5 flex items-center justify-center h-7 w-7 shrink-0 border ${
+                        isIncoming
+                          ? 'border-[#dc2f02] text-[#dc2f02]'
+                          : 'border-border text-ink-soft'
+                      }`}
                     >
-                      <Icon className={`h-3.5 w-3.5 ${TYPE_STYLES[op.type]}`} />
+                      <Icon className="h-3.5 w-3.5" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-sm">
-                          {op.tobacco
-                            ? `${op.tobacco.brand} ${op.tobacco.flavor}`
-                            : '—'}
+                      <div className="flex items-baseline gap-2 flex-wrap">
+                        <span className="font-mono uppercase text-sm font-bold tracking-tight truncate">
+                          {op.tobacco ? `${op.tobacco.brand} ${op.tobacco.flavor}` : '—'}
                         </span>
-                        <Badge variant="secondary" className="text-[10px] py-0 px-1.5">
-                          {OPERATION_LABELS[op.type]}
-                        </Badge>
+                        <span className="label-mono">{OPERATION_LABELS[op.type]}</span>
                       </div>
-                      <div className="text-xs text-muted-foreground mt-0.5">
-                        <span className={TYPE_STYLES[op.type]}>
+                      <div className="flex items-center gap-2 mt-1.5 text-[11px] font-mono uppercase tracking-tight text-ink-faint">
+                        <span className={isIncoming ? 'text-[#dc2f02]' : 'text-ink-soft'}>
                           {op.gramsBefore}г → {op.gramsAfter}г
                         </span>
-                        <span className="mx-1">·</span>
-                        {SOURCE_LABELS[op.source]}
+                        <span className="text-ink-faint">·</span>
+                        <span>{SOURCE_LABELS[op.source]}</span>
                         {op.note && (
                           <>
-                            <span className="mx-1">·</span>
-                            <span className="italic">{op.note}</span>
+                            <span className="text-ink-faint">·</span>
+                            <span className="italic text-ink-soft">{op.note}</span>
                           </>
                         )}
                       </div>
                     </div>
-                    <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                      {formatTime(op.createdAt)}
-                    </span>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span className="font-mono text-sm font-bold tabular-nums text-foreground">
+                        {deltaLabel}
+                      </span>
+                      <span className="text-[10px] text-ink-faint font-mono uppercase tracking-tight whitespace-nowrap">
+                        {formatTime(op.createdAt)}
+                      </span>
+                    </div>
                   </div>
                 )
               })}
             </div>
           </ScrollArea>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }

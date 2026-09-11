@@ -41,16 +41,18 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-muted/30">
+    <div className="min-h-screen flex flex-col bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="mx-auto max-w-7xl px-4 py-3 flex items-center gap-3">
-          <div className="rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 p-2 shadow-sm">
-            <Leaf className="h-5 w-5 text-white" />
+      <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 h-[60px] flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Leaf className="h-5 w-5 text-[#dc2f02]" />
+            <span className="label-mono hidden sm:inline">Кальянная CRM</span>
           </div>
+          <div className="h-6 w-px bg-border hidden sm:block" />
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-muted-foreground leading-none">Старший мастер</p>
-            <h1 className="font-bold text-base sm:text-lg leading-tight truncate">
+            <span className="label-mono">Senior /</span>
+            <h1 className="font-mono uppercase font-bold tracking-tight text-sm sm:text-base leading-tight truncate text-foreground">
               {master.name}
             </h1>
           </div>
@@ -60,18 +62,18 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
 
           {/* Аватар старшего */}
           <div
-            className={`h-9 w-9 shrink-0 rounded-full ${masterAvatarClass(
+            className={`h-9 w-9 shrink-0 ${masterAvatarClass(
               master.color,
-            )} flex items-center justify-center text-xs font-bold text-white`}
+            )} flex items-center justify-center text-xs font-mono font-bold uppercase text-white`}
             title={master.name}
           >
             {initials(master.name)}
           </div>
 
           <Button
-            variant="ghost"
+            variant="outline"
             size="icon"
-            className="h-9 w-9 rounded-full"
+            className="h-9 w-9"
             onClick={handleLogout}
             title="Выйти"
           >
@@ -81,64 +83,64 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
       </header>
 
       {/* Main */}
-      <main className="flex-1 mx-auto max-w-7xl w-full px-4 py-4">
-        <div className="grid lg:grid-cols-[1fr_440px] gap-4">
+      <main className="flex-1 mx-auto max-w-[1400px] w-full px-4 sm:px-6 py-6">
+        <div className="grid lg:grid-cols-[1fr_440px] gap-6">
           {/* Левая колонка */}
           <div className="min-w-0">
             <Tabs defaultValue="shift" className="w-full">
-              <TabsList className="grid w-full grid-cols-3 sm:grid-cols-7 h-auto mb-4">
+              <TabsList className="grid w-full grid-cols-4 sm:grid-cols-7 h-auto mb-6">
                 <TabsTrigger
                   value="shift"
-                  className="flex flex-col gap-1 py-2 text-xs sm:flex-row sm:gap-1.5"
+                  className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]"
                 >
                   <Clock className="h-4 w-4" />
                   <span>Смена</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="dashboard"
-                  className="flex flex-col gap-1 py-2 text-xs sm:flex-row sm:gap-1.5"
+                  className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]"
                 >
                   <LayoutDashboard className="h-4 w-4" />
                   <span>Склад</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="requests"
-                  className="flex flex-col gap-1 py-2 text-xs sm:flex-row sm:gap-1.5"
+                  className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]"
                 >
                   <ShoppingCart className="h-4 w-4" />
                   <span>Заявки</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="wishes"
-                  className="flex flex-col gap-1 py-2 text-xs sm:flex-row sm:gap-1.5"
+                  className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]"
                 >
                   <Star className="h-4 w-4" />
                   <span>Хотелки</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="masters"
-                  className="flex flex-col gap-1 py-2 text-xs sm:flex-row sm:gap-1.5"
+                  className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]"
                 >
                   <Users className="h-4 w-4" />
                   <span>Мастера</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="catalog"
-                  className="flex flex-col gap-1 py-2 text-xs sm:flex-row sm:gap-1.5"
+                  className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]"
                 >
                   <BookOpen className="h-4 w-4" />
                   <span>Справочник</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="history"
-                  className="flex flex-col gap-1 py-2 text-xs sm:flex-row sm:gap-1.5"
+                  className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]"
                 >
                   <History className="h-4 w-4" />
                   <span>История</span>
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="shift" className="space-y-4">
+              <TabsContent value="shift" className="space-y-6">
                 <SeniorShiftView refreshKey={refreshKey} onRefresh={refresh} />
                 <ShiftPanel
                   refreshKey={refreshKey}
@@ -177,7 +179,7 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
 
           {/* Правая колонка — чат (десктоп) */}
           <aside className="hidden lg:block">
-            <div className="sticky top-[81px] h-[calc(100vh-105px)]">
+            <div className="sticky top-[76px] h-[calc(100vh-100px)]">
               <AIChat onAction={refresh} />
             </div>
           </aside>
@@ -188,10 +190,10 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
       <Sheet open={mobileChatOpen} onOpenChange={setMobileChatOpen}>
         <SheetTrigger asChild>
           <Button
-            className="lg:hidden fixed bottom-20 right-4 z-40 h-14 w-14 rounded-full shadow-lg bg-emerald-600 hover:bg-emerald-700"
+            className="lg:hidden fixed bottom-20 right-4 z-40 h-12 w-12 bg-[#dc2f02] hover:bg-[#dc2f02]/85"
             size="icon"
           >
-            <MessageCircle className="h-6 w-6" />
+            <MessageCircle className="h-5 w-5" />
           </Button>
         </SheetTrigger>
         <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col">
@@ -202,13 +204,13 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
       </Sheet>
 
       {/* Footer */}
-      <footer className="mt-auto border-t bg-background">
-        <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between text-xs text-muted-foreground">
+      <footer className="mt-auto border-t border-border bg-background">
+        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 py-3 flex items-center justify-between text-[11px] text-ink-faint font-mono uppercase tracking-tight">
           <span>
-            Кальянный ассистент · <span className="font-medium text-foreground">Старший: {master.name}</span>
+            Кальянный ассистент · <span className="font-bold text-foreground">Senior: {master.name}</span>
           </span>
           <span className="hidden sm:inline">
-            🍃 AI-учёт табака · powered by Z.ai
+            AI-учёт табака · powered by z.ai
           </span>
         </div>
       </footer>

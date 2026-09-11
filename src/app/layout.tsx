@@ -1,28 +1,29 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Archivo, Fragment_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { ensureBotRunning } from "@/lib/bot-runner";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const archivo = Archivo({
+  variable: "--font-archivo",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800", "900"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const fragmentMono = Fragment_Mono({
+  variable: "--font-fragment-mono",
   subsets: ["latin"],
+  weight: ["400"],
 });
 
 // Запускаем Telegram-бота внутри процесса Next.js (singleton — запустится один раз)
-// Бот живёт пока жив dev-сервер, который поддерживается системой
 void ensureBotRunning();
 
 export const metadata: Metadata = {
-  title: "Кальянный ассистент — AI-учёт табака",
-  description: "Умный ассистент старшего кальянного мастера: распознавание накладных, голосовое обновление остатков, заявки на закуп.",
-  keywords: ["кальян", "табак", "учёт", "ассистент", "AI"],
+  title: "Hookah Assistant — кальянная CRM",
+  description: "Учёт табака, смены мастеров, заявки и хотелки. Веб-панель + Telegram-бот.",
+  keywords: ["кальян", "табак", "учёт", "ассистент", "CRM"],
   authors: [{ name: "Hookah Assistant" }],
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
@@ -35,9 +36,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="ru" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
+        className={`${archivo.variable} ${fragmentMono.variable} antialiased bg-background text-foreground font-sans`}
       >
         {children}
         <Toaster />

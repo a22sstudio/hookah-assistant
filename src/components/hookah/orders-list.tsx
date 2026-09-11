@@ -2,17 +2,33 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { Order, ORDER_STATUS_LABELS } from '@/lib/types'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { RefreshCw, ShoppingCart, CheckCircle2, Clock } from 'lucide-react'
 import { toast } from 'sonner'
 
 const STATUS_STYLE: Record<Order['status'], string> = {
-  PENDING: 'bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-950 dark:text-amber-400',
-  ORDERED: 'bg-sky-100 text-sky-700 border-sky-300 dark:bg-sky-950 dark:text-sky-400',
-  RECEIVED: 'bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-400',
+  PENDING: 'border-[#dc2f02] text-[#dc2f02] bg-transparent',
+  ORDERED: 'border-foreground text-foreground bg-transparent',
+  RECEIVED: 'border-border text-ink-faint bg-transparent',
+}
+
+function StatCard({ label, value, icon: Icon, accent }: { label: string; value: number; icon: typeof Clock; accent?: boolean }) {
+  return (
+    <div className={`border ${accent ? 'frame' : 'border-border'} p-4 flex flex-col gap-3`}>
+      <div className="flex items-center justify-between">
+        <span className="label-mono">{label}</span>
+        <Icon className={`h-3.5 w-3.5 ${accent ? 'text-[#dc2f02]' : 'text-ink-faint'}`} />
+      </div>
+      <span
+        className="font-mono font-bold leading-none tabular-nums text-foreground"
+        style={{ fontSize: 'clamp(28px, 4vw, 40px)' }}
+      >
+        {value}
+      </span>
+    </div>
+  )
 }
 
 function formatTime(iso: string) {
@@ -72,112 +88,100 @@ export function OrdersList({ refreshKey, onRefresh }: OrdersListProps) {
   const received = orders.filter((o) => o.status === 'RECEIVED')
 
   return (
-    <div className="space-y-4">
-      {/* Сводка */}
-      <div className="grid grid-cols-3 gap-3">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Clock className="h-4 w-4 text-amber-600" />
-              <span className="text-xs text-muted-foreground">Ожидают</span>
-            </div>
-            <p className="text-2xl font-bold">{pending.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <ShoppingCart className="h-4 w-4 text-sky-600" />
-              <span className="text-xs text-muted-foreground">Заказано</span>
-            </div>
-            <p className="text-2xl font-bold">{ordered.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              <span className="text-xs text-muted-foreground">Получено</span>
-            </div>
-            <p className="text-2xl font-bold">{received.length}</p>
-          </CardContent>
-        </Card>
+    <div className="space-y-6">
+      {/* Заголовок */}
+      <div className="flex items-end justify-between gap-4 border-b border-border pb-3">
+        <div>
+          <span className="label-mono">Закупки</span>
+          <h2
+            className="heading-mono text-foreground leading-none mt-1"
+            style={{ fontSize: 'clamp(24px, 4vw, 36px)' }}
+          >
+            Заявки на закуп
+          </h2>
+        </div>
+        <Button size="icon" variant="outline" onClick={load} title="Обновить">
+          <RefreshCw className="h-4 w-4" />
+        </Button>
       </div>
 
-      <Card>
-        <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-base">Заявки на закуп</CardTitle>
-          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={load}>
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-        </CardHeader>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="p-6 text-center text-muted-foreground text-sm">
-              Загрузка...
-            </div>
-          ) : orders.length === 0 ? (
-            <div className="p-6 text-center text-muted-foreground text-sm">
-              Заявок пока нет. Скажите ассистенту «напиши чего осталось мало».
-            </div>
-          ) : (
-            <ScrollArea className="max-h-[60vh]">
-              <div className="divide-y">
-                {orders.map((o) => (
-                  <div key={o.id} className="p-3 space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm truncate">
-                          {o.tobacco
-                            ? `${o.tobacco.brand} ${o.tobacco.line} ${o.tobacco.flavor}`
-                            : '—'}
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-0.5">
-                          Нужно: <span className="font-medium">{o.gramsRequested}г</span>
-                          {o.tobacco && (
-                            <> · сейчас: {o.tobacco.currentGrams}г</>
-                          )}
-                        </div>
-                        {o.note && (
-                          <div className="text-xs text-muted-foreground italic mt-1">
-                            {o.note}
-                          </div>
+      {/* Сводка */}
+      <div className="grid grid-cols-3 gap-3">
+        <StatCard label="Ожидают" value={pending.length} icon={Clock} accent={pending.length > 0} />
+        <StatCard label="Заказано" value={ordered.length} icon={ShoppingCart} />
+        <StatCard label="Получено" value={received.length} icon={CheckCircle2} />
+      </div>
+
+      {/* Список заявок */}
+      <div className="border border-border">
+        {loading ? (
+          <div className="p-8 text-center text-muted-foreground text-xs font-mono uppercase tracking-tight">
+            Загрузка...
+          </div>
+        ) : orders.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground text-sm body-sans">
+            Заявок пока нет. Скажите ассистенту «напиши чего осталось мало».
+          </div>
+        ) : (
+          <ScrollArea className="max-h-[60vh]">
+            <div>
+              {orders.map((o) => (
+                <div
+                  key={o.id}
+                  className="p-4 border-b border-border last:border-b-0 space-y-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-mono uppercase text-sm font-bold tracking-tight truncate">
+                        {o.tobacco
+                          ? `${o.tobacco.brand} ${o.tobacco.line} ${o.tobacco.flavor}`
+                          : '—'}
+                      </div>
+                      <div className="text-[11px] text-ink-faint mt-1 font-mono uppercase tracking-tight">
+                        Нужно: <span className="text-foreground font-bold">{o.gramsRequested}г</span>
+                        {o.tobacco && (
+                          <> · сейчас: <span className="text-foreground font-bold">{o.tobacco.currentGrams}г</span></>
                         )}
                       </div>
-                      <Badge variant="outline" className={`text-[10px] ${STATUS_STYLE[o.status]}`}>
-                        {ORDER_STATUS_LABELS[o.status]}
-                      </Badge>
+                      {o.note && (
+                        <div className="text-sm text-ink-soft italic mt-2 body-sans">
+                          {o.note}
+                        </div>
+                      )}
                     </div>
-                    {o.status === 'PENDING' && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 text-xs"
-                        onClick={() => updateStatus(o.id, 'ORDERED')}
-                      >
-                        <ShoppingCart className="h-3 w-3 mr-1" /> Заказал
-                      </Button>
-                    )}
-                    {o.status === 'ORDERED' && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 text-xs"
-                        onClick={() => updateStatus(o.id, 'RECEIVED')}
-                      >
-                        <CheckCircle2 className="h-3 w-3 mr-1" /> Получено
-                      </Button>
-                    )}
-                    <div className="text-[10px] text-muted-foreground">
-                      {formatTime(o.createdAt)}
-                    </div>
+                    <Badge variant="outline" className={STATUS_STYLE[o.status]}>
+                      {ORDER_STATUS_LABELS[o.status]}
+                    </Badge>
                   </div>
-                ))}
-              </div>
-            </ScrollArea>
-          )}
-        </CardContent>
-      </Card>
+                  {o.status === 'PENDING' && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-[11px]"
+                      onClick={() => updateStatus(o.id, 'ORDERED')}
+                    >
+                      <ShoppingCart className="h-3 w-3" /> Заказал
+                    </Button>
+                  )}
+                  {o.status === 'ORDERED' && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-[11px]"
+                      onClick={() => updateStatus(o.id, 'RECEIVED')}
+                    >
+                      <CheckCircle2 className="h-3 w-3" /> Получено
+                    </Button>
+                  )}
+                  <div className="text-[10px] text-ink-faint font-mono uppercase tracking-tight">
+                    {formatTime(o.createdAt)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        )}
+      </div>
     </div>
   )
 }

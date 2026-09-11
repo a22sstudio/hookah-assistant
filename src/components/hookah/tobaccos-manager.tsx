@@ -2,10 +2,10 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { Tobacco } from '@/lib/types'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Dialog,
@@ -16,7 +16,7 @@ import {
   DialogFooter,
   DialogClose,
 } from '@/components/ui/dialog'
-import { Plus, RefreshCw, Package2 } from 'lucide-react'
+import { Plus, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface TobaccosManagerProps {
@@ -88,22 +88,29 @@ export function TobaccosManager({ refreshKey, onRefresh }: TobaccosManagerProps)
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
+    <div className="space-y-6">
+      {/* Заголовок */}
+      <div className="flex items-end justify-between gap-4 border-b border-border pb-3">
         <div>
-          <h3 className="font-semibold">Справочник табаков</h3>
-          <p className="text-xs text-muted-foreground">
-            Гибридный режим: добавляйте вручную, новые позиции бот тоже учиться распознавать с накладных.
+          <span className="label-mono">Каталог</span>
+          <h2
+            className="heading-mono text-foreground leading-none mt-1"
+            style={{ fontSize: 'clamp(24px, 4vw, 36px)' }}
+          >
+            Справочник табаков
+          </h2>
+          <p className="body-sans text-xs text-ink-soft mt-2">
+            Гибридный режим: добавляйте вручную. Бот тоже учится распознавать с накладных.
           </p>
         </div>
         <div className="flex gap-2">
-          <Button size="icon" variant="outline" onClick={load}>
+          <Button size="icon" variant="outline" onClick={load} title="Обновить">
             <RefreshCw className="h-4 w-4" />
           </Button>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button size="sm">
-                <Plus className="h-4 w-4 mr-1" /> Добавить
+                <Plus className="h-4 w-4" /> Добавить
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
@@ -185,43 +192,56 @@ export function TobaccosManager({ refreshKey, onRefresh }: TobaccosManagerProps)
         </div>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="p-6 text-center text-muted-foreground text-sm">
-              Загрузка...
-            </div>
-          ) : tobaccos.length === 0 ? (
-            <div className="p-6 text-center text-muted-foreground text-sm">
-              Справочник пуст
-            </div>
-          ) : (
-            <ScrollArea className="max-h-[65vh]">
-              <div className="divide-y">
-                {tobaccos.map((t) => (
-                  <div key={t.id} className="flex items-center gap-3 p-3">
-                    <div className="rounded-lg bg-muted p-2">
-                      <Package2 className="h-4 w-4 text-muted-foreground" />
+      {/* Список */}
+      <div className="border border-border">
+        {loading ? (
+          <div className="p-8 text-center text-muted-foreground text-xs font-mono uppercase tracking-tight">
+            Загрузка...
+          </div>
+        ) : tobaccos.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground text-sm body-sans">
+            Справочник пуст.
+          </div>
+        ) : (
+          <ScrollArea className="max-h-[65vh]">
+            <div>
+              {tobaccos.map((t) => (
+                <div
+                  key={t.id}
+                  className="flex items-center gap-4 p-4 border-b border-border last:border-b-0 hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      <span className="font-mono uppercase text-sm font-bold tracking-tight truncate">
+                        {t.brand}
+                      </span>
+                      <span className="font-sans text-xs text-ink-soft truncate">
+                        · {t.line}
+                      </span>
+                      {t.isLow && (
+                        <Badge className="border-[#dc2f02] text-[#dc2f02] bg-transparent">
+                          мало
+                        </Badge>
+                      )}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm truncate">
-                        {t.brand} · {t.line}
-                      </div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        {t.flavor}
-                      </div>
-                    </div>
-                    <div className="text-right text-xs text-muted-foreground">
-                      <div>банка: <span className="font-medium text-foreground">{t.defaultJarGrams}г</span></div>
-                      <div>порог: <span className="font-medium text-foreground">{t.thresholdGrams}г</span></div>
+                    <div className="text-xs text-ink-soft truncate mt-1 body-sans">
+                      {t.flavor}
                     </div>
                   </div>
-                ))}
-              </div>
-            </ScrollArea>
-          )}
-        </CardContent>
-      </Card>
+                  <div className="text-right shrink-0">
+                    <div className="text-[11px] text-ink-faint font-mono uppercase tracking-tight">
+                      банка: <span className="font-bold text-foreground">{t.defaultJarGrams}г</span>
+                    </div>
+                    <div className="text-[11px] text-ink-faint font-mono uppercase tracking-tight">
+                      порог: <span className="font-bold text-foreground">{t.thresholdGrams}г</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        )}
+      </div>
     </div>
   )
 }

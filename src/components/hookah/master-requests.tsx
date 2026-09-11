@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
@@ -18,12 +17,9 @@ interface MasterRequestsProps {
 }
 
 const STATUS_STYLE: Record<MasterRequest['status'], string> = {
-  PENDING:
-    'bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-950 dark:text-amber-400',
-  ORDERED:
-    'bg-sky-100 text-sky-700 border-sky-300 dark:bg-sky-950 dark:text-sky-400',
-  DONE:
-    'bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-400',
+  PENDING: 'border-[#dc2f02] text-[#dc2f02] bg-transparent',
+  ORDERED: 'border-foreground text-foreground bg-transparent',
+  DONE: 'border-border text-ink-faint bg-transparent',
 }
 
 const NEXT_STATUS: Record<MasterRequest['status'], MasterRequest['status'] | null> = {
@@ -125,163 +121,158 @@ export function MasterRequests({ role, refreshKey, onRefresh }: MasterRequestsPr
   const orderedCount = items.filter((r) => r.status === 'ORDERED').length
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {/* Заголовок */}
+      <div className="flex items-end justify-between gap-4 border-b border-border pb-3">
+        <div>
+          <span className="label-mono">{isSenior ? 'Все заявки' : 'Мои заявки'}</span>
+          <h2
+            className="heading-mono text-foreground leading-none mt-1"
+            style={{ fontSize: 'clamp(24px, 4vw, 36px)' }}
+          >
+            {isSenior ? 'Заявки мастеров' : 'Заявки на закуп'}
+          </h2>
+        </div>
+      </div>
+
       {/* Форма добавления (только для обычных мастеров) */}
       {!isSenior && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Package className="h-4 w-4 text-emerald-600" />
-              Новая заявка на закуп
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Textarea
-              placeholder="Что закупить? Например: BlackBurn Energy 2 банки, угли Cocourth 26мм..."
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              rows={3}
-              disabled={submitting}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                  e.preventDefault()
-                  void submit()
-                }
-              }}
-            />
-            <Button
-              className="w-full bg-emerald-600 hover:bg-emerald-700"
-              disabled={!text.trim() || submitting}
-              onClick={submit}
-            >
-              {submitting ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4 mr-2" />
-              )}
-              Отправить старшему
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="frame p-5 space-y-3">
+          <div className="flex items-center gap-2 label-mono">
+            <Package className="h-3.5 w-3.5" />
+            Новая заявка
+          </div>
+          <Textarea
+            placeholder="Что закупить? Например: BlackBurn Energy 2 банки, угли Cocourth 26мм..."
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={3}
+            disabled={submitting}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault()
+                void submit()
+              }
+            }}
+          />
+          <Button
+            className="w-full"
+            disabled={!text.trim() || submitting}
+            onClick={submit}
+          >
+            {submitting ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+            Отправить старшему
+          </Button>
+        </div>
       )}
 
       {/* Сводка для старшего */}
       {isSenior && items.length > 0 && (
         <div className="grid grid-cols-2 gap-3">
-          <Card>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="rounded-lg bg-amber-100 dark:bg-amber-950 p-2">
-                <Inbox className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold leading-none">{pendingCount}</p>
-                <p className="text-xs text-muted-foreground mt-1">ожидают</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="rounded-lg bg-sky-100 dark:bg-sky-950 p-2">
-                <ShoppingCart className="h-4 w-4 text-sky-600 dark:text-sky-400" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold leading-none">{orderedCount}</p>
-                <p className="text-xs text-muted-foreground mt-1">заказано</p>
-              </div>
-            </CardContent>
-          </Card>
+          <div className={`border ${pendingCount > 0 ? 'frame' : 'border-border'} p-4 flex items-center gap-3`}>
+            <Inbox className={`h-4 w-4 ${pendingCount > 0 ? 'text-[#dc2f02]' : 'text-ink-faint'}`} />
+            <div>
+              <p className="text-2xl font-mono font-bold leading-none tabular-nums text-foreground">{pendingCount}</p>
+              <p className="label-mono mt-1">ожидают</p>
+            </div>
+          </div>
+          <div className="border border-border p-4 flex items-center gap-3">
+            <ShoppingCart className="h-4 w-4 text-ink-faint" />
+            <div>
+              <p className="text-2xl font-mono font-bold leading-none tabular-nums text-foreground">{orderedCount}</p>
+              <p className="label-mono mt-1">заказано</p>
+            </div>
+          </div>
         </div>
       )}
 
       {/* Список заявок */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">
-            {isSenior ? 'Заявки мастеров' : 'Мои заявки'}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="p-6 text-center text-muted-foreground text-sm flex items-center justify-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" /> Загрузка...
-            </div>
-          ) : items.length === 0 ? (
-            <div className="p-6 text-center text-muted-foreground text-sm">
-              {isSenior
-                ? 'Заявок от мастеров пока нет'
-                : 'Ты ещё не оставил заявок'}
-            </div>
-          ) : (
-            <ScrollArea className="max-h-[60vh]">
-              <div className="divide-y">
-                {items.map((r) => {
-                  const next = NEXT_STATUS[r.status]
-                  const NextIcon = NEXT_ICON[r.status]
-                  return (
-                    <div key={r.id} className="p-3 space-y-2">
-                      <div className="flex items-start gap-3">
-                        {/* Аватар мастера — только для старшего */}
+      <div className="border border-border">
+        {loading ? (
+          <div className="p-8 text-center text-muted-foreground text-xs font-mono uppercase tracking-tight flex items-center justify-center gap-2">
+            <Loader2 className="h-3 w-3 animate-spin" /> Загрузка...
+          </div>
+        ) : items.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground text-sm body-sans">
+            {isSenior
+              ? 'Заявок от мастеров пока нет.'
+              : 'Ты ещё не оставил заявок.'}
+          </div>
+        ) : (
+          <ScrollArea className="max-h-[60vh]">
+            <div>
+              {items.map((r) => {
+                const next = NEXT_STATUS[r.status]
+                const NextIcon = NEXT_ICON[r.status]
+                return (
+                  <div
+                    key={r.id}
+                    className="p-4 border-b border-border last:border-b-0 space-y-2"
+                  >
+                    <div className="flex items-start gap-3">
+                      {/* Аватар мастера — только для старшего */}
+                      {isSenior && (
+                        <div
+                          className={`mt-0.5 h-9 w-9 shrink-0 ${masterAvatarClass(
+                            r.master.color,
+                          )} flex items-center justify-center text-[10px] font-mono font-bold uppercase text-white`}
+                        >
+                          {initials(r.master.name)}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
                         {isSenior && (
-                          <div
-                            className={`mt-0.5 h-8 w-8 shrink-0 rounded-full ${masterAvatarClass(
-                              r.master.color,
-                            )} flex items-center justify-center text-[10px] font-bold text-white`}
-                          >
-                            {initials(r.master.name)}
+                          <div className="text-[11px] font-mono uppercase tracking-tight text-ink-soft mb-1">
+                            {r.master.name}
+                            {r.isMine && (
+                              <span className="ml-1.5 text-[#dc2f02]">· ты</span>
+                            )}
                           </div>
                         )}
-                        <div className="flex-1 min-w-0">
-                          {isSenior && (
-                            <div className="text-xs font-medium text-muted-foreground mb-0.5">
-                              {r.master.name}
-                              {r.isMine && (
-                                <span className="ml-1.5 text-emerald-600 dark:text-emerald-400">
-                                  · ты
-                                </span>
-                              )}
-                            </div>
-                          )}
-                          <p className="text-sm break-words">{r.text}</p>
-                          {r.grams != null && (
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              Нужно: <span className="font-medium">{r.grams}г</span>
-                            </p>
-                          )}
-                          <div className="flex items-center gap-2 mt-1.5">
-                            <Badge variant="outline" className={`text-[10px] ${STATUS_STYLE[r.status]}`}>
-                              {REQUEST_STATUS_LABELS[r.status]}
-                            </Badge>
-                            <span className="text-[10px] text-muted-foreground">
-                              {timeAgo(r.createdAt)}
-                            </span>
-                          </div>
+                        <p className="body-sans text-sm break-words">{r.text}</p>
+                        {r.grams != null && (
+                          <p className="text-[11px] text-ink-faint mt-1 font-mono uppercase tracking-tight">
+                            Нужно: <span className="text-foreground font-bold">{r.grams}г</span>
+                          </p>
+                        )}
+                        <div className="flex items-center gap-2 mt-2">
+                          <Badge variant="outline" className={STATUS_STYLE[r.status]}>
+                            {REQUEST_STATUS_LABELS[r.status]}
+                          </Badge>
+                          <span className="text-[10px] text-ink-faint font-mono uppercase tracking-tight">
+                            {timeAgo(r.createdAt)}
+                          </span>
                         </div>
                       </div>
-
-                      {isSenior && next && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-xs ml-11"
-                          disabled={updatingId === r.id}
-                          onClick={() => changeStatus(r.id, next)}
-                        >
-                          {updatingId === r.id ? (
-                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                          ) : (
-                            <NextIcon className="h-3 w-3 mr-1" />
-                          )}
-                          {NEXT_LABEL[r.status]}
-                        </Button>
-                      )}
                     </div>
-                  )
-                })}
-              </div>
-            </ScrollArea>
-          )}
-        </CardContent>
-      </Card>
+
+                    {isSenior && next && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-[11px] ml-12"
+                        disabled={updatingId === r.id}
+                        onClick={() => changeStatus(r.id, next)}
+                      >
+                        {updatingId === r.id ? (
+                          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                        ) : (
+                          <NextIcon className="h-3 w-3" />
+                        )}
+                        {NEXT_LABEL[r.status]}
+                      </Button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </ScrollArea>
+        )}
+      </div>
     </div>
   )
 }

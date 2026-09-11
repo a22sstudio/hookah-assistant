@@ -32,13 +32,13 @@ const NOTIF_ICON: Record<AppNotificationType, typeof Bell> = {
   LOW_STOCK: Package,
 }
 
-const NOTIF_COLOR: Record<AppNotificationType, string> = {
-  FINISHED: 'text-amber-600 bg-amber-100 dark:bg-amber-950 dark:text-amber-400',
-  REQUEST: 'text-sky-600 bg-sky-100 dark:bg-sky-950 dark:text-sky-400',
-  WISH: 'text-violet-600 bg-violet-100 dark:bg-violet-950 dark:text-violet-400',
-  SHIFT_OPEN: 'text-emerald-600 bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-400',
-  SHIFT_CLOSE: 'text-rose-600 bg-rose-100 dark:bg-rose-950 dark:text-rose-400',
-  LOW_STOCK: 'text-amber-600 bg-amber-100 dark:bg-amber-950 dark:text-amber-400',
+const NOTIF_LABEL: Record<AppNotificationType, string> = {
+  FINISHED: 'ЗАКОНЧИЛСЯ',
+  REQUEST: 'ЗАЯВКА',
+  WISH: 'ХОТЕЛКА',
+  SHIFT_OPEN: 'СМЕНА ОТКРЫТА',
+  SHIFT_CLOSE: 'СМЕНА ЗАКРЫТА',
+  LOW_STOCK: 'МАЛО',
 }
 
 export function NotificationsBell({ refreshKey }: NotificationsBellProps) {
@@ -104,12 +104,12 @@ export function NotificationsBell({ refreshKey }: NotificationsBellProps) {
         <Button
           variant="outline"
           size="icon"
-          className="relative h-10 w-10 rounded-full"
+          className="relative h-9 w-9"
           aria-label="Уведомления"
         >
           <Bell className="h-4 w-4" />
           {unread > 0 && (
-            <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center animate-in zoom-in">
+            <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 bg-[#dc2f02] text-white text-[10px] font-mono font-bold flex items-center justify-center animate-in zoom-in">
               {unread > 99 ? '99+' : unread}
             </span>
           )}
@@ -120,12 +120,12 @@ export function NotificationsBell({ refreshKey }: NotificationsBellProps) {
         className="w-[min(92vw,380px)] p-0"
         sideOffset={8}
       >
-        <div className="flex items-center justify-between px-3 py-2.5 border-b">
+        <div className="flex items-center justify-between px-3 py-2.5 border-b border-border bg-foreground text-background">
           <div className="flex items-center gap-2">
-            <Bell className="h-4 w-4 text-muted-foreground" />
-            <span className="font-semibold text-sm">Уведомления</span>
+            <Bell className="h-3.5 w-3.5" />
+            <span className="font-mono uppercase tracking-tight text-xs font-bold">Уведомления</span>
             {unread > 0 && (
-              <span className="text-[10px] rounded-full bg-rose-500 text-white px-1.5 py-0.5 font-bold">
+              <span className="text-[10px] bg-[#dc2f02] text-white px-1.5 py-0.5 font-mono font-bold">
                 {unread}
               </span>
             )}
@@ -134,7 +134,7 @@ export function NotificationsBell({ refreshKey }: NotificationsBellProps) {
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 text-xs"
+              className="h-7 text-[10px] text-background hover:bg-background/10 hover:text-background"
               disabled={loading}
               onClick={markAllRead}
             >
@@ -150,49 +150,60 @@ export function NotificationsBell({ refreshKey }: NotificationsBellProps) {
 
         <ScrollArea className="max-h-[60vh]">
           {items.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-              <Bell className="h-6 w-6 mx-auto mb-2 opacity-40" />
-              Пока тихо
+            <div className="px-4 py-10 text-center text-xs text-muted-foreground body-sans">
+              <Bell className="h-6 w-6 mx-auto mb-3 text-ink-faint" />
+              Пока тихо.
             </div>
           ) : (
-            <div className="divide-y">
+            <div>
               {items.map((n) => {
                 const Icon = NOTIF_ICON[n.type] ?? Bell
                 return (
                   <button
                     key={n.id}
                     onClick={() => !n.read && markRead(n.id)}
-                    className={`w-full flex items-start gap-3 p-3 text-left transition-colors hover:bg-muted/50 ${
-                      !n.read ? 'bg-emerald-50/50 dark:bg-emerald-950/20' : ''
+                    className={`w-full flex items-start gap-3 p-3 text-left transition-colors border-b border-border last:border-b-0 hover:bg-muted/50 ${
+                      !n.read ? 'bg-[#dc2f02]/[0.04]' : ''
                     }`}
                   >
-                    <div className={`mt-0.5 rounded-lg p-1.5 ${NOTIF_COLOR[n.type]}`}>
+                    <div
+                      className={`mt-0.5 flex items-center justify-center h-7 w-7 shrink-0 border ${
+                        !n.read
+                          ? 'border-[#dc2f02] text-[#dc2f02]'
+                          : 'border-border text-ink-faint'
+                      }`}
+                    >
                       <Icon className="h-3.5 w-3.5" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm leading-snug">{n.message}</p>
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-baseline gap-2 mb-0.5">
+                        <span className="text-[10px] font-mono uppercase tracking-tight text-ink-faint">
+                          {NOTIF_LABEL[n.type]}
+                        </span>
+                      </div>
+                      <p className="text-sm leading-snug body-sans text-foreground">{n.message}</p>
+                      <div className="flex items-center gap-2 mt-1.5">
                         {n.master && (
                           <div className="flex items-center gap-1">
                             <span
-                              className={`h-3.5 w-3.5 rounded-full ${masterAvatarClass(
+                              className={`h-3.5 w-3.5 ${masterAvatarClass(
                                 n.master.color,
-                              )} flex items-center justify-center text-[8px] font-bold text-white`}
+                              )} flex items-center justify-center text-[7px] font-mono font-bold text-white`}
                             >
                               {initials(n.master.name)}
                             </span>
-                            <span className="text-[10px] text-muted-foreground">
+                            <span className="text-[10px] text-ink-soft font-mono uppercase tracking-tight">
                               {n.master.name}
                             </span>
                           </div>
                         )}
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="text-[10px] text-ink-faint font-mono uppercase tracking-tight">
                           · {timeAgo(n.createdAt)}
                         </span>
                       </div>
                     </div>
                     {!n.read && (
-                      <span className="mt-1.5 h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                      <span className="mt-1.5 h-1.5 w-1.5 bg-[#dc2f02] shrink-0" />
                     )}
                   </button>
                 )
