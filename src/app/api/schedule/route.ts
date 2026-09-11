@@ -90,22 +90,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'date или dateText обязательны' }, { status: 400 })
   }
 
-  const entry = await db.scheduleEntry.upsert({
-    where: { masterId_date: { masterId, date: dateObj } },
-    update: {
-      startHour: startHour ?? 12,
-      endHour: endHour ?? 23,
-      note: note ?? null,
-    },
-    create: {
-      masterId,
-      date: dateObj,
-      startHour: startHour ?? 12,
-      endHour: endHour ?? 23,
-      note: note ?? null,
-    },
-    include: { master: true },
+  const existing = await db.scheduleEntry.findFirst({
+    where: { masterId, date: dateObj },
   })
+
+  let entry
+  if (existing) {
+    entry = await db.scheduleEntry.update({
+      where: { id: existing.id },
+      data: {
+        startHour: startHour ?? 12,
+        endHour: endHour ?? 23,
+        note: note ?? null,
+      },
+      include: { master: true },
+    })
+  } else {
+    entry = await db.scheduleEntry.create({
+      data: {
+        masterId,
+        date: dateObj,
+        startHour: startHour ?? 12,
+        endHour: endHour ?? 23,
+        note: note ?? null,
+      },
+      include: { master: true },
+    })
+  }
 
   return NextResponse.json({
     entry: {
