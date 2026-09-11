@@ -595,6 +595,99 @@ function createBot(): Telegraf {
     }
   })
 
+  // Документы (PDF накладные) → извлечение текста → AI
+  bot.on('document', async (ctx) => {
+    const master = (ctx.state as { master: SessionMaster | null }).master
+    const tgId = String((ctx.from as { id?: number })?.id || '')
+    if (!master) {
+      return ctx.reply(
+        `🔒 Вы не зарегистрированы.\n\nВаш Telegram ID: <code>${tgId}</code>\nОбратитесь к старшему мастеру.`,
+        { parse_mode: 'HTML' },
+      )
+    }
+
+    const doc = (ctx.message as { document?: { file_id: string; file_name?: string; mime_type?: string } }).document
+    if (!doc) return
+
+    const fileName = doc.file_name || ''
+    const mimeType = doc.mime_type || ''
+
+    // Обрабатываем PDF и изображения как документ
+    const isPdf = mimeType === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf')
+    const isImage = mimeType.startsWith('image/')
+
+    if (!isPdf && !isImage) {
+      return ctx.reply(`📄 Файл: ${fileName}\n\nПоддерживаются только PDF и изображения. Отправь накладную как PDF или фото.`)
+    }
+
+    await ctx.sendChatAction('typing')
+    const stop = { value: false }
+    const typingLoop = keepTyping(ctx, stop).catch(() => {})
+
+    try {
+      const fileLink = await bot.telegram.getFileLink(doc.file_id)
+      const res = await fetch(fileLink.toString())
+      const buf = Buffer.from(await res.arrayBuffer())
+
+      let items: Array<{ brand: string; line: string; flavor: string; grams: number }> = []
+
+      if (isPdf) {
+        // Извлекаем текст из PDF
+        const { pdfToText } = await import('@/lib/pdf-utils')
+        let pdfText = ''
+        try {
+          pdfText = await withTimeout(pdfToText(buf), 30000, 'PDF-extract')
+        } catch (pdfErr) {
+          stop.value = true; await typingLoop
+          return ctx.reply(`⚠️ Не удалось извлечь текст из PDF: ${(pdfErr as Error).message}\n\nПопробуй сделать фото накладной.`)
+        }
+
+        if (!pdfText.trim() || pdfText.length < 20) {
+          stop.value = true; await typingLoop
+          return ctx.reply('⚠️ PDF не содержит распознаваемого текста (возможно это скан). Сделай фото накладной.')
+        }
+
+        // Отправляем текст в AI для извлечения позиций
+        const result = await withTimeout(
+          processMasterMessage(`Распознай позиции табака из текста накладной и оформи приход. Если позиции нет в базе — добавь её (add_tobacco), потом сделай приход (add_incoming).\n\nТекст накладной:\n${pdfText}`, { source: 'PHOTO', masterId: master.id }),
+          60000,
+          'processMasterMessage',
+        )
+        stop.value = true; await typingLoop
+        return ctx.reply(`📄 PDF: ${fileName}\n\n${formatReply(result)}`)
+      }
+
+      // Изображение как документ
+      if (isImage) {
+        const imageBase64 = 'data:' + mimeType + ';base64,' + buf.toString('base64')
+        items = await withTimeout(recognizeInvoice(imageBase64), 30000, 'VLM')
+        if (items.length === 0) {
+          stop.value = true; await typingLoop
+          return ctx.reply('⚠️ Не удалось распознать позиции на изображении.')
+        }
+
+        const result = await withTimeout(
+          processMasterMessage('оформи приход по накладной', { source: 'PHOTO', invoiceItems: items, masterId: master.id }),
+          50000,
+          'processMasterMessage',
+        )
+
+        let reply = `🖼 Распознал ${items.length} поз.:\n`
+        for (const i of items) reply += `• ${i.brand} ${i.line} ${i.flavor} — ${i.grams}г\n`
+        reply += `\n${formatReply(result)}`
+        stop.value = true; await typingLoop
+        return ctx.reply(reply)
+      }
+
+      stop.value = true; await typingLoop
+      return ctx.reply('⚠️ Не удалось обработать файл.')
+    } catch (e) {
+      stop.value = true; await typingLoop
+      console.error('Document error:', (e as Error).message)
+      return ctx.reply('⚠️ Не удалось обработать файл (таймаут или ошибка).')
+    }
+  })
+
   return bot
 }
 
