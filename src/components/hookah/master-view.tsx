@@ -11,6 +11,7 @@ import { ShiftPanel } from '@/components/hookah/shift-panel'
 import { MasterRequests } from '@/components/hookah/master-requests'
 import { WishesPanel } from '@/components/hookah/wishes-panel'
 import { AIChat } from '@/components/hookah/ai-chat'
+import { ScheduleCalendar } from '@/components/hookah/schedule-calendar'
 import { Tobacco } from '@/lib/types'
 import { masterAvatarClass, initials } from '@/lib/master-utils'
 import {
@@ -22,6 +23,7 @@ import {
   RefreshCw,
   AlertTriangle,
   Loader2,
+  CalendarRange,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -48,7 +50,7 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <header className="sticky top-0 z-40 border-b border-border bg-background">
         <div className="mx-auto max-w-[1400px] px-4 sm:px-6 h-[60px] flex items-center gap-4">
           <div
             className={`h-9 w-9 shrink-0 ${masterAvatarClass(
@@ -89,7 +91,7 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
 
             {/* Табы */}
             <Tabs defaultValue="requests" className="w-full">
-              <TabsList className="grid w-full grid-cols-3 h-auto">
+              <TabsList className="grid w-full grid-cols-4 h-auto">
                 <TabsTrigger
                   value="requests"
                   className="flex flex-col gap-1 py-2.5"
@@ -111,6 +113,13 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
                   <Package className="h-4 w-4" />
                   <span>Склад</span>
                 </TabsTrigger>
+                <TabsTrigger
+                  value="schedule"
+                  className="flex flex-col gap-1 py-2.5"
+                >
+                  <CalendarRange className="h-4 w-4" />
+                  <span>График</span>
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="requests" className="pt-4">
@@ -129,6 +138,13 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
               </TabsContent>
               <TabsContent value="stock" className="pt-4">
                 <MasterStockReadOnly refreshKey={refreshKey} />
+              </TabsContent>
+              <TabsContent value="schedule" className="pt-4">
+                <ScheduleCalendar
+                  canEdit={false}
+                  refreshKey={refreshKey}
+                  onRefresh={refresh}
+                />
               </TabsContent>
             </Tabs>
           </div>

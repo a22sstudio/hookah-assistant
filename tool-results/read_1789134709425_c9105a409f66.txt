@@ -1,0 +1,687 @@
+     1→import { db } from '@/lib/db'
+     2→import type { SessionMaster } from '@/lib/auth'
+     3→import { pushToSeniors } from '@/lib/notify'
+     4→
+     5→// ───────────────────────────────────────────
+     6→// Hugging Face Router (OpenAI-compatible)
+     7→// Бесплатные модели: Qwen/Qwen3.8-27B (LLM), inclusionAI/Ling-3.0-flash-VL (Vision)
+     8→// ───────────────────────────────────────────
+     9→const HF_API = 'https://router.huggingface.co/v1/chat/completions'
+    10→const LLM_MODEL = process.env.HF_LLM_MODEL || 'Qwen/Qwen3.8-27B'
+    11→const LLM_PROVIDER = process.env.HF_LLM_PROVIDER || 'ovhcloud'
+    12→const VISION_MODEL = process.env.HF_VISION_MODEL || 'inclusionAI/Ling-3.0-flash-VL'
+    13→const VISION_PROVIDER = process.env.HF_VISION_PROVIDER || 'novita'
+    14→
+    15→function getHfToken(): string {
+    16→  const t = process.env.HF_TOKEN
+    17→  if (!t) throw new Error('HF_TOKEN не задан в переменных окружения')
+    18→  return t
+    19→}
+    20→
+    21→interface HFChatMessage {
+    22→  role: 'system' | 'user' | 'assistant'
+    23→  content: string | Array<
+    24→    | { type: 'text'; text: string }
+    25→    | { type: 'image_url'; image_url: { url: string } }
+    26→  >
+    27→}
+    28→
+    29→interface HFChatResponse {
+    30→  choices?: Array<{
+    31→    message?: { content?: string; reasoning?: string }
+    32→    finish_reason?: string
+    33→  }>
+    34→  error?: { message: string }
+    35→}
+    36→
+    37→async function hfChat(messages: HFChatMessage[], opts: { vision?: boolean; maxTokens?: number } = {}): Promise<string> {
+    38→  const model = opts.vision ? VISION_MODEL : LLM_MODEL
+    39→  const provider = opts.vision ? VISION_PROVIDER : LLM_PROVIDER
+    40→
+    41→  const body: Record<string, unknown> = {
+    42→    model,
+    43→    provider,
+    44→    messages,
+    45→    max_tokens: opts.maxTokens ?? 1500,
+    46→  }
+    47→
+    48→  const res = await fetch(HF_API, {
+    49→    method: 'POST',
+    50→    headers: {
+    51→      Authorization: `Bearer ${getHfToken()}`,
+    52→      'Content-Type': 'application/json',
+    53→    },
+    54→    body: JSON.stringify(body),
+    55→  })
+    56→
+    57→  const data = (await res.json()) as HFChatResponse
+    58→  if (!res.ok || data.error) {
+    59→    throw new Error(data.error?.message || `HF API ${res.status}`)
+    60→  }
+    61→
+    62→  const content = data.choices?.[0]?.message?.content ?? ''
+    63→  // Qwen3.8 возвращает reasoning вместо content для reasoning-моделей
+    64→  if (!content && data.choices?.[0]?.message?.reasoning) {
+    65→    return data.choices[0].message.reasoning
+    66→  }
+    67→  return content
+    68→}
+    69→
+    70→// Типы для результата работы AI
+    71→export type AIAction =
+    72→  | { tool: 'update_stock'; args: { brand: string; line: string; flavor: string; grams: number; note?: string } }
+    73→  | { tool: 'add_incoming'; args: { brand: string; line: string; flavor: string; grams: number; note?: string } }
+    74→  | { tool: 'add_tobacco'; args: { brand: string; line: string; flavor: string; defaultJarGrams?: number } }
+    75→  | { tool: 'create_order'; args: { brand: string; line: string; flavor: string; grams: number; note?: string } }
+    76→  | { tool: 'create_request'; args: { text: string; grams?: number } }
+    77→  | { tool: 'create_wish'; args: { text: string } }
+    78→  | { tool: 'add_hookah_batch'; args: { count: number } }
+    79→  | { tool: 'query'; args: { what: 'low_stock' | 'all_stock' | 'specific' | 'shift'; brand?: string; line?: string; flavor?: string } }
+    80→
+    81→export interface AIResult {
+    82→  reply: string
+    83→  actions: AIAction[]
+    84→  executedActions: Array<{ tool: string; success: boolean; message: string; data?: unknown }>
+    85→  transcribedText?: string
+    86→  invoiceItems?: Array<{ brand: string; line: string; flavor: string; grams: number }>
+    87→}
+    88→
+    89→// Системный промпт для ассистента (с учётом роли мастера)
+    90→function buildSystemPrompt(stockContext: string, master: SessionMaster, shiftContext: string): string {
+    91→  const isSenior = master.role === 'SENIOR'
+    92→  const roleDesc = isSenior
+    93→    ? 'Старший кальянный мастер. Полный доступ: учёт табака, приход, заявки, управление сменой.'
+    94→    : 'Обычный кальянный мастер. Отмечаешь остатки, подаёшь заявки на закуп и хотелки. НЕ оформляешь приход и не создаёшь новые позиции в справочнике — это делает старший.'
+    95→
+    96→  const allowedTools = isSenior
+    97→    ? `1. update_stock — установить точный остаток табака
+    98→2. add_incoming — добавить приход (накладная/партия, прибавить граммы)
+    99→3. add_tobacco — добавить НОВУЮ позицию в справочник
+   100→4. create_order — создать заявку на закуп конкретного табака (по граммам)
+   101→5. create_request — заявка на закуп свободной формы ("BlackBurn Energy 2 банки")
+   102→6. create_wish — хотелка/пожелание
+   103→7. add_hookah_batch — добавить N кальянов к смене ("забил 5", "сделал 3", "накрутил 10")
+   104→8. query — low_stock (что мало), all_stock (все остатки), shift (кто на смене и активные заявки)`
+   105→    : `1. update_stock — отметить остаток табака (обычно когда "закончился" = 0, "мало осталось" = мало). Это списывает остаток и пушит старшему.
+   106→2. create_request — заявка на закуп свободной формы ("BlackBurn Energy 2 банки")
+   107→3. create_wish — хотелка/пожелание
+   108→4. add_hookah_batch — добавить N кальянов к смене ("забил 5", "сделал 3", "накрутил 10")
+   109→5. query — low_stock (что мало), all_stock (все остатки), shift (кто на смене)
+   110→НЕ используй add_incoming, add_tobacco, create_order — это для старшего мастера.`
+   111→
+   112→  return `Ты — умный ассистент кальянной. Сейчас с тобой работает: ${master.name} (${roleDesc}).
+   113→
+   114→КОНТЕКСТ — текущие остатки склада:
+   115→${stockContext}
+   116→
+   117→ПОРОГ «МАЛО»: по умолчанию 70 грамм. Если остаток ниже порога — позиция идёт в заявку.
+   118→
+   119→${shiftContext}
+   120→
+   121→ЧТО ТЫ УМЕЕШЬ (вызывай через actions):
+   122→${allowedTools}
+   123→
+   124→ПРАВИЛА ПОНИМАНИЯ РЕЧИ МАСТЕРА:
+   125→- "пол банки" → grams = defaultJarGrams / 2 (если банка 250г, то 125г)
+   126→- "треть банки" → grams = defaultJarGrams / 3
+   127→- "четверть" → grams = defaultJarGrams / 4
+   128→- "почти пусто" / "на донышке" → grams = 20
+   129→- "пусто" / "кончился" / "всё" → grams = 0
+   130→- "осталось X грамм" → grams = X (точное значение)
+   131→- "пришла накладная, N банок по M грамм" → add_incoming с grams = N * M (только старший)
+   132→- "закажи X" → create_order (старший) или create_request (обычный)
+   133→- "хочу X" / "было бы круто X" → create_wish
+   134→- "чего мало?" / "что заказать?" → query low_stock
+   135→- "покажи остатки" → query all_stock
+   136→- "что на смене?" / "как смена?" / "кто работает?" → query shift
+   137→- "забил N кальянов" / "сделал N" / "накрутил N" / "сварил N" → add_hookah_batch с count=N
+   138→  (N может быть числом или словом: "пять", "десять")
+   139→  (без числа = +1: "забил кальян")
+   140→
+   141→СТРУКТУРА ТАБАКА — ВАЖНО! У каждого табака 3 поля:
+   142→- brand — бренд/производитель (Darkside, Tangiers, Musthave, Daily Hookah, Burn, BlackBurn)
+   143→- line — линейка/серия (Core, Supernova, Rare, Base, Original, Lucid, Medium)
+   144→- flavor — вкус (Ice Grape, Cola, Energy, Watermelon Mint, Cane Mint, Pineapple)
+   145→
+   146→ПРИМЕРЫ правильного разделения:
+   147→- "дарксайд кора кола" → brand=Darkside, line=Core, flavor=Cola
+   148→- "дарксайд супнова айс грейп" → brand=Darkside, line=Supernova, flavor=Ice Grape
+   149→- "танжерс лучид кейн мята" → brand=Tangiers, line=Lucid, flavor=Cane Mint
+   150→- "мустхейв оригинал бласт" → brand=Musthave, line=Original, flavor=Blast
+   151→- "дейли хука бейз грейпфрут" → brand=Daily Hookah, line=Base, flavor=Grapefruit
+   152→- "блэкберн" → brand=BlackBurn, line=, flavor= (нужно уточнить линейку и вкус)
+   153→- "дарксайд супнова" без вкуса → уточни вкус! Supernova — это линейка, не вкус.
+   154→
+   155→Если мастер сказал только бренд или только часть названия — УТОЧНИ что именно нужно:
+   156→- "дарксайд" → "Какой вкус? У нас есть Darkside Core (Cola, Medium, Pineapple) и Darkside Supernova (Ice Grape, Cola)"
+   157→- "танж" → "Какой именно? Tangiers Lucid (Cane Mint, ...) — уточни вкус"
+   158→
+   159→ВАЖНО:
+   160→- update_stock УСТАНАВЛИВАЕТ остаток (абсолют), add_incoming — ПРИБАВЛЯЕТ к текущему
+   161→- Если мастер сообщает об остатке голосом/текстом → update_stock
+   162→- Используй fuzzy matching: "дарксайд супнова" = Darkside Supernova, "танж" = Tangiers
+   163→- Если табака нет в базе и мастер — старший, сначала add_tobacco, потом работай с ним. Если обычный — скажи что нужно попросить старшего добавить.
+   164→- Когда обычный мастер отмечает "закончился" (0г) или остаток стал ниже порога — это важно, старший получит автоматический пуш.
+   165→- Отвечай кратко, по делу, по-человечески, можно с эмодзи. Обращайся к мастеру по имени.
+   166→- ВАЖНО: отвечай ТОЛЬКО на русском языке.
+   167→
+   168→ФОРМАТ ОТВЕТА — СТРОГО JSON (без markdown, без пояснений, без рассуждений):
+   169→{
+   170→  "actions": [
+   171→    { "tool": "update_stock", "args": { "brand": "Darkside", "line": "Supernova", "flavor": "Ice Grape", "grams": 125, "note": "пол банки" } }
+   172→  ],
+   173→  "reply": "✓ Записал: Darkside Supernova Ice Grape = 125г (пол банки)"
+   174→}
+   175→
+   176→Если запрос мастера — просто вопрос или диалог без действия, верни пустой actions и reply с ответом.
+   177→Если нужно несколько действий — положи все в массив actions.`
+   178→}
+   179→
+   180→// Fuzzy поиск табака в базе по названию
+   181→async function findTobacco(brand: string, line: string, flavor: string) {
+   182→  const all = await db.tobacco.findMany({ where: { active: true }, include: { stock: true } })
+   183→
+   184→  const normalize = (s: string) => s.toLowerCase().trim()
+   185→  const b = normalize(brand)
+   186→  const l = normalize(line)
+   187→  const f = normalize(flavor)
+   188→
+   189→  let match = all.find(
+   190→    (t) => normalize(t.brand) === b && normalize(t.line) === l && normalize(t.flavor) === f,
+   191→  )
+   192→  if (match) return match
+   193→
+   194→  match = all.find((t) => normalize(t.brand) === b && normalize(t.flavor) === f)
+   195→  if (match) return match
+   196→
+   197→  if (!flavor) {
+   198→    match = all.find((t) => normalize(t.brand) === b && normalize(t.line) === l)
+   199→    if (match) return match
+   200→  }
+   201→
+   202→  match = all.find(
+   203→    (t) =>
+   204→      normalize(t.brand).includes(b) ||
+   205→      (b && b.includes(normalize(t.brand))) ||
+   206→      normalize(t.flavor).includes(f) ||
+   207→      (f && f.includes(normalize(t.flavor))),
+   208→  )
+   209→  return match
+   210→}
+   211→
+   212→// Контекст склада для промпта
+   213→async function buildStockContext(): Promise<string> {
+   214→  const tobaccos = await db.tobacco.findMany({
+   215→    where: { active: true },
+   216→    include: { stock: true },
+   217→    orderBy: [{ brand: 'asc' }, { line: 'asc' }, { flavor: 'asc' }],
+   218→  })
+   219→
+   220→  if (tobaccos.length === 0) return '(справочник пуст)'
+   221→
+   222→  const lines = tobaccos.map((t) => {
+   223→    const grams = t.stock?.currentGrams ?? 0
+   224→    const status = grams < t.thresholdGrams ? ' ⚠️ МАЛО' : ''
+   225→    return `- ${t.brand} / ${t.line} / ${t.flavor} | банка=${t.defaultJarGrams}г | остаток=${grams}г | порог=${t.thresholdGrams}г${status}`
+   226→  })
+   227→  return lines.join('\n')
+   228→}
+   229→
+   230→// Контекст смены для промпта
+   231→async function buildShiftContext(master: SessionMaster): Promise<string> {
+   232→  const openShifts = await db.shift.findMany({
+   233→    where: { status: 'OPEN' },
+   234→    include: { master: true },
+   235→    orderBy: { openedAt: 'asc' },
+   236→  })
+   237→
+   238→  const activeRequests = await db.masterRequest.findMany({
+   239→    where: { status: 'PENDING' },
+   240→    include: { master: true },
+   241→    orderBy: { createdAt: 'desc' },
+   242→    take: 10,
+   243→  })
+   244→
+   245→  const pendingWishes = await db.wish.findMany({
+   246→    where: { status: 'PENDING' },
+   247→    include: { master: true },
+   248→    orderBy: { createdAt: 'desc' },
+   249→    take: 10,
+   250→  })
+   251→
+   252→  // Недавние операции за текущие смены (что мастера отметили)
+   253→  const recentOps: string[] = []
+   254→  if (openShifts.length > 0) {
+   255→    const shiftMasterIds = openShifts.map((s) => s.masterId)
+   256→    const earliestOpen = openShifts.reduce((min, s) => (s.openedAt < min ? s.openedAt : min), openShifts[0].openedAt)
+   257→
+   258→    const ops = await db.operation.findMany({
+   259→      where: {
+   260→        createdAt: { gte: earliestOpen },
+   261→        type: 'ADJUSTMENT',
+   262→      },
+   263→      include: { tobacco: true },
+   264→      orderBy: { createdAt: 'desc' },
+   265→      take: 15,
+   266→    })
+   267→
+   268→    // Группируем по мастерам (но operation не имеет masterId напрямую — берём из ChatMessage)
+   269→    // Проще: показать все недавние операции с заметками
+   270→    for (const op of ops) {
+   271→      const time = new Date(op.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+   272→      const t = op.tobacco
+   273→      recentOps.push(`  [${time}] ${t.brand} ${t.line} ${t.flavor}: ${op.gramsBefore}г → ${op.gramsAfter}г${op.note ? ` (${op.note})` : ''}`)
+   274→    }
+   275→  }
+   276→
+   277→  const lines: string[] = []
+   278→  lines.push('ТЕКУЩАЯ СМЕНА:')
+   279→  if (openShifts.length === 0) {
+   280→    lines.push('(никого на смене)')
+   281→  } else {
+   282→    for (const s of openShifts) {
+   283→      const hoursAgo = Math.floor((Date.now() - s.openedAt.getTime()) / 3600000)
+   284→      const minsAgo = Math.floor((Date.now() - s.openedAt.getTime()) / 60000)
+   285→      const dur = hoursAgo > 0 ? `${hoursAgo}ч` : `${minsAgo}м`
+   286→      const mine = s.masterId === master.id ? ' (ты)' : ''
+   287→      lines.push(`- ${s.master.name}${mine} | на смене ${dur} | ${s.hookahCount} кальянов`)
+   288→    }
+   289→  }
+   290→
+   291→  if (recentOps.length > 0) {
+   292→    lines.push('\nНЕДАВНИЕ ОПЕРАЦИИ ПО ОСТАТКАМ (за смену):')
+   293→    lines.push(...recentOps)
+   294→  }
+   295→
+   296→  if (activeRequests.length > 0) {
+   297→    lines.push('\nАКТИВНЫЕ ЗАЯВКИ МАСТЕРОВ:')
+   298→    for (const r of activeRequests) {
+   299→      lines.push(`- ${r.master.name}: "${r.text}"${r.grams ? ` (${r.grams}г)` : ''}`)
+   300→    }
+   301→  }
+   302→
+   303→  if (pendingWishes.length > 0) {
+   304→    lines.push('\nХОТЕЛКИ МАСТЕРОВ:')
+   305→    for (const w of pendingWishes) {
+   306→      lines.push(`- ${w.master.name}: "${w.text}"`)
+   307→    }
+   308→  }
+   309→
+   310→  return lines.join('\n')
+   311→}
+   312→
+   313→// Парсинг JSON из ответа LLM (с защитой от markdown обёртки и reasoning)
+   314→function parseAIResponse(content: string): { actions: AIAction[]; reply: string } {
+   315→  let cleaned = content.trim()
+   316→
+   317→  // Убираем markdown обёртку ```json ... ```
+   318→  const jsonMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/)
+   319→  if (jsonMatch) {
+   320→    cleaned = jsonMatch[1].trim()
+   321→  }
+   322→
+   323→  // Ищем JSON объект в тексте (модели иногда добавляют рассуждения до/после)
+   324→  const jsonObj = cleaned.match(/\{[\s\S]*\}/)
+   325→  if (jsonObj) {
+   326→    cleaned = jsonObj[0]
+   327→  }
+   328→
+   329→  try {
+   330→    const parsed = JSON.parse(cleaned)
+   331→    return {
+   332→      actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+   333→      reply: typeof parsed.reply === 'string' ? parsed.reply : 'Готово.',
+   334→    }
+   335→  } catch {
+   336→    return { actions: [], reply: content }
+   337→  }
+   338→}
+   339→
+   340→// Выполнение одного action
+   341→async function executeAction(action: AIAction, master: SessionMaster): Promise<{ success: boolean; message: string; data?: unknown }> {
+   342→  try {
+   343→    switch (action.tool) {
+   344→      case 'update_stock': {
+   345→        const { brand, line, flavor, grams, note } = action.args
+   346→        const tobacco = await findTobacco(brand, line, flavor)
+   347→        if (!tobacco) {
+   348→          return { success: false, message: `Табак "${brand} ${line} ${flavor}" не найден в базе` }
+   349→        }
+   350→        const before = tobacco.stock?.currentGrams ?? 0
+   351→        await db.stockItem.upsert({
+   352→          where: { tobaccoId: tobacco.id },
+   353→          update: { currentGrams: grams },
+   354→          create: { tobaccoId: tobacco.id, currentGrams: grams },
+   355→        })
+   356→        await db.operation.create({
+   357→          data: {
+   358→            tobaccoId: tobacco.id,
+   359→            type: 'ADJUSTMENT',
+   360→            gramsBefore: before,
+   361→            gramsAfter: grams,
+   362→            delta: grams - before,
+   363→            source: 'TEXT',
+   364→            note: note ?? null,
+   365→          },
+   366→        })
+   367→        if (master.role !== 'SENIOR' && (grams === 0 || grams < tobacco.thresholdGrams)) {
+   368→          const reason = grams === 0 ? 'закончился' : `мало осталось (${grams}г)`
+   369→          const notifMsg = `⚠️ ${master.name} отметил: ${reason} ${tobacco.brand} ${tobacco.line} ${tobacco.flavor}`
+   370→          await db.notification.create({
+   371→            data: {
+   372→              type: 'FINISHED',
+   373→              message: notifMsg,
+   374→              masterId: master.id,
+   375→            },
+   376→          })
+   377→          // Push в Telegram старшему
+   378→          await pushToSeniors(notifMsg)
+   379→        }
+   380→        return {
+   381→          success: true,
+   382→          message: `${tobacco.brand} ${tobacco.line} ${tobacco.flavor}: ${before}г → ${grams}г`,
+   383→          data: { before, after: grams, tobaccoId: tobacco.id },
+   384→        }
+   385→      }
+   386→
+   387→      case 'add_incoming': {
+   388→        const { brand, line, flavor, grams, note } = action.args
+   389→        const tobacco = await findTobacco(brand, line, flavor)
+   390→        if (!tobacco) {
+   391→          return { success: false, message: `Табак "${brand} ${line} ${flavor}" не найден в базе` }
+   392→        }
+   393→        const before = tobacco.stock?.currentGrams ?? 0
+   394→        const after = before + grams
+   395→        await db.stockItem.upsert({
+   396→          where: { tobaccoId: tobacco.id },
+   397→          update: { currentGrams: after },
+   398→          create: { tobaccoId: tobacco.id, currentGrams: after },
+   399→        })
+   400→        await db.operation.create({
+   401→          data: {
+   402→            tobaccoId: tobacco.id,
+   403→            type: 'INCOMING',
+   404→            gramsBefore: before,
+   405→            gramsAfter: after,
+   406→            delta: grams,
+   407→            source: 'TEXT',
+   408→            note: note ?? 'Приход',
+   409→          },
+   410→        })
+   411→        return {
+   412→          success: true,
+   413→          message: `Приход ${tobacco.brand} ${tobacco.flavor}: +${grams}г (стало ${after}г)`,
+   414→          data: { before, after, added: grams, tobaccoId: tobacco.id },
+   415→        }
+   416→      }
+   417→
+   418→      case 'add_tobacco': {
+   419→        const { brand, line, flavor, defaultJarGrams = 250 } = action.args
+   420→        const existing = await db.tobacco.findFirst({ where: { brand, line, flavor } })
+   421→        if (existing) {
+   422→          return { success: true, message: `Табак уже в базе`, data: { tobaccoId: existing.id } }
+   423→        }
+   424→        const tobacco = await db.tobacco.create({
+   425→          data: { brand, line, flavor, defaultJarGrams, thresholdGrams: 70 },
+   426→        })
+   427→        await db.stockItem.create({ data: { tobaccoId: tobacco.id, currentGrams: 0 } })
+   428→        return {
+   429→          success: true,
+   430→          message: `Добавлен новый табак: ${brand} ${line} ${flavor} (банка ${defaultJarGrams}г)`,
+   431→          data: { tobaccoId: tobacco.id },
+   432→        }
+   433→      }
+   434→
+   435→      case 'create_order': {
+   436→        const { brand, line, flavor, grams, note } = action.args
+   437→        const tobacco = await findTobacco(brand, line, flavor)
+   438→        if (!tobacco) {
+   439→          return { success: false, message: `Табак "${brand} ${line} ${flavor}" не найден` }
+   440→        }
+   441→        const order = await db.orderRequest.create({
+   442→          data: { tobaccoId: tobacco.id, gramsRequested: grams, status: 'PENDING', note: note ?? null },
+   443→        })
+   444→        return {
+   445→          success: true,
+   446→          message: `Заявка: ${tobacco.brand} ${tobacco.flavor} ${grams}г`,
+   447→          data: { orderId: order.id },
+   448→        }
+   449→      }
+   450→
+   451→      case 'create_request': {
+   452→        const { text, grams } = action.args
+   453→        const request = await db.masterRequest.create({
+   454→          data: { masterId: master.id, text, grams: grams ?? null },
+   455→        })
+   456→        if (master.role !== 'SENIOR') {
+   457→          const notifMsg = `📋 ${master.name}: заявка на закуп — "${text}"`
+   458→          await db.notification.create({
+   459→            data: { type: 'REQUEST', message: notifMsg, masterId: master.id },
+   460→          })
+   461→          await pushToSeniors(notifMsg)
+   462→        }
+   463→        return { success: true, message: `Заявка принята: "${text}"`, data: { requestId: request.id } }
+   464→      }
+   465→
+   466→      case 'create_wish': {
+   467→        const { text } = action.args
+   468→        const wish = await db.wish.create({ data: { masterId: master.id, text } })
+   469→        if (master.role !== 'SENIOR') {
+   470→          const notifMsg = `💡 ${master.name}: хотелка — "${text}"`
+   471→          await db.notification.create({
+   472→            data: { type: 'WISH', message: notifMsg, masterId: master.id },
+   473→          })
+   474→          await pushToSeniors(notifMsg)
+   475→        }
+   476→        return { success: true, message: `Хотелка добавлена: "${text}"`, data: { wishId: wish.id } }
+   477→      }
+   478→
+   479→      case 'add_hookah_batch': {
+   480→        const count = Math.max(1, Math.min(100, action.args.count))
+   481→        const shift = await db.shift.findFirst({ where: { masterId: master.id, status: 'OPEN' } })
+   482→        if (!shift) {
+   483→          return { success: false, message: 'Смена не открыта. /shift чтобы открыть.' }
+   484→        }
+   485→        const newCount = shift.hookahCount + count
+   486→        await db.shift.update({ where: { id: shift.id }, data: { hookahCount: newCount } })
+   487→        return {
+   488→          success: true,
+   489→          message: `+${count} кальянов (всего за смену: ${newCount})`,
+   490→          data: { added: count, total: newCount },
+   491→        }
+   492→      }
+   493→
+   494→      case 'query': {
+   495→        const { what } = action.args
+   496→        const w = String(what).toLowerCase().replace(/[\s_-]+/g, '')
+   497→        if (w.includes('low')) {
+   498→          const low = await db.tobacco.findMany({ where: { active: true }, include: { stock: true } })
+   499→          const filtered = low
+   500→            .filter((t) => (t.stock?.currentGrams ?? 0) < t.thresholdGrams)
+   501→            .map((t) => ({ brand: t.brand, line: t.line, flavor: t.flavor, current: t.stock?.currentGrams ?? 0, threshold: t.thresholdGrams }))
+   502→          return { success: true, message: `Найдено ${filtered.length} позиций "мало"`, data: filtered }
+   503→        }
+   504→        if (w.includes('all') || w.includes('stock') || w.includes('full')) {
+   505→          const all = await db.tobacco.findMany({ where: { active: true }, include: { stock: true }, orderBy: [{ brand: 'asc' }, { flavor: 'asc' }] })
+   506→          return { success: true, message: `Всего ${all.length} позиций`, data: all.map((t) => ({ brand: t.brand, line: t.line, flavor: t.flavor, current: t.stock?.currentGrams ?? 0 })) }
+   507→        }
+   508→        if (w.includes('shift')) {
+   509→          const shiftContext = await buildShiftContext(master)
+   510→          return { success: true, message: 'Контекст смены загружен', data: { shiftContext } }
+   511→        }
+   512→        const low = await db.tobacco.findMany({ where: { active: true }, include: { stock: true } })
+   513→        const filtered = low
+   514→          .filter((t) => (t.stock?.currentGrams ?? 0) < t.thresholdGrams)
+   515→          .map((t) => ({ brand: t.brand, line: t.line, flavor: t.flavor, current: t.stock?.currentGrams ?? 0, threshold: t.thresholdGrams }))
+   516→        return { success: true, message: `Показано ${filtered.length} позиций "мало" (fallback)`, data: filtered }
+   517→      }
+   518→
+   519→      default:
+   520→        return { success: false, message: 'Неизвестное действие' }
+   521→    }
+   522→  } catch (e) {
+   523→    return { success: false, message: `Ошибка: ${(e as Error).message}` }
+   524→  }
+   525→}
+   526→
+   527→// ───────────────────────────────────────────
+   528→// Главная функция обработки сообщения мастера
+   529→// ───────────────────────────────────────────
+   530→export async function processMasterMessage(
+   531→  message: string,
+   532→  options?: { source?: 'TEXT' | 'VOICE' | 'PHOTO'; transcribedText?: string; invoiceItems?: AIResult['invoiceItems']; masterId?: string },
+   533→): Promise<AIResult> {
+   534→  let master: SessionMaster | null = null
+   535→
+   536→  if (options?.masterId) {
+   537→    const m = await db.master.findFirst({ where: { id: options.masterId, active: true } })
+   538→    if (m) {
+   539→      master = { id: m.id, name: m.name, role: m.role as 'SENIOR' | 'REGULAR', color: m.color }
+   540→    }
+   541→  } else {
+   542→    const { getCurrentMaster } = await import('@/lib/auth')
+   543→    master = await getCurrentMaster()
+   544→  }
+   545→
+   546→  if (!master) {
+   547→    return { reply: '⚠️ Вы не авторизованы. Войдите по PIN.', actions: [], executedActions: [] }
+   548→  }
+   549→
+   550→  const stockContext = await buildStockContext()
+   551→  const shiftContext = await buildShiftContext(master)
+   552→  const systemPrompt = buildSystemPrompt(stockContext, master, shiftContext)
+   553→
+   554→  let userContent = message
+   555→  if (options?.transcribedText && options.source === 'VOICE') {
+   556→    userContent = `[ГОЛОСОВОЕ СООБЩЕНИЕ, расшифровано]: ${options.transcribedText}`
+   557→  }
+   558→  if (options?.invoiceItems && options.invoiceItems.length > 0) {
+   559→    const itemsStr = options.invoiceItems
+   560→      .map((i) => `- ${i.brand} / ${i.line} / ${i.flavor} — ${i.grams}г`)
+   561→      .join('\n')
+   562→    userContent = `[РАСПОЗНАНО ИЗ НАКЛАДНОЙ]:\n${itemsStr}\n\nДействие мастера: ${message || 'оформи приход'}`
+   563→  }
+   564→
+   565→  const content = await hfChat([
+   566→    { role: 'system', content: systemPrompt },
+   567→    { role: 'user', content: userContent },
+   568→  ])
+   569→
+   570→  const { actions, reply } = parseAIResponse(content)
+   571→
+   572→  const executedActions = []
+   573→  for (const action of actions) {
+   574→    const result = await executeAction(action, master)
+   575→    executedActions.push({ tool: action.tool, ...result })
+   576→  }
+   577→
+   578→  await db.chatMessage.create({
+   579→    data: { role: 'USER', content: userContent, masterId: master.id },
+   580→  })
+   581→  await db.chatMessage.create({
+   582→    data: {
+   583→      role: 'ASSISTANT',
+   584→      content: reply,
+   585→      toolName: executedActions.length > 0 ? executedActions.map((a) => a.tool).join(',') : null,
+   586→      toolResult: JSON.stringify(executedActions),
+   587→      masterId: master.id,
+   588→    },
+   589→  })
+   590→
+   591→  return {
+   592→    reply,
+   593→    actions,
+   594→    executedActions,
+   595→    transcribedText: options?.transcribedText,
+   596→    invoiceItems: options?.invoiceItems,
+   597→  }
+   598→}
+   599→
+   600→// ───────────────────────────────────────────
+   601→// Распознавание накладной через HF Vision (Ling-3.0-flash-VL)
+   602→// ВНИМАНИЕ: Vision-модель может нестабильно работать через HF router.
+   603→// Если будет ошибка — пользователю вернётся сообщение.
+   604→// ───────────────────────────────────────────
+   605→export async function recognizeInvoice(imageBase64: string): Promise<Array<{ brand: string; line: string; flavor: string; grams: number }>> {
+   606→  const prompt = `Ты распознаёшь накладную на кальянный табак. Найди ВСЕ позиции табака на изображении.
+   607→Для каждой позиции верни: brand (бренд/производитель), line (линейка, если есть), flavor (вкус), grams (вес в граммах одной банки/упаковки).
+   608→Если вес указан в граммах — верни число. Если в банках/штуках — верни вес одной банки.
+   609→
+   610→Верни СТРОГО JSON массив без markdown:
+   611→[
+   612→  { "brand": "Darkside", "line": "Supernova", "flavor": "Ice Grape", "grams": 250 }
+   613→]`
+   614→
+   615→  const isDataUrl = imageBase64.startsWith('data:')
+   616→  const base64Data = isDataUrl ? imageBase64.split(',')[1] : imageBase64
+   617→  const mimeType = imageBase64.match(/data:(image\/[\w+]+);/)?.[1] || 'image/jpeg'
+   618→
+   619→  const content = await hfChat(
+   620→    [
+   621→      { role: 'user', content: [
+   622→        { type: 'text', text: prompt },
+   623→        { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Data}` } },
+   624→      ] },
+   625→    ],
+   626→    { vision: true, maxTokens: 1000 },
+   627→  )
+   628→
+   629→  let cleaned = content.trim()
+   630→  const jsonMatch = cleaned.match(/\[[\s\S]*\]/)
+   631→  if (jsonMatch) cleaned = jsonMatch[0]
+   632→
+   633→  try {
+   634→    const parsed = JSON.parse(cleaned)
+   635→    if (Array.isArray(parsed)) {
+   636→      return parsed.filter(
+   637→        (i: { brand?: string; flavor?: string; grams?: number }) => i.brand && i.flavor && i.grams,
+   638→      )
+   639→    }
+   640→    return []
+   641→  } catch {
+   642→    return []
+   643→  }
+   644→}
+   645→
+   646→// ───────────────────────────────────────────
+   647→// Транскрипция голоса через HF Whisper Large V3 Turbo (бесплатно)
+   648→// ───────────────────────────────────────────
+   649→const WHISPER_API = 'https://router.huggingface.co/hf-inference/models/openai/whisper-large-v3-turbo'
+   650→
+   651→export async function transcribeAudio(audioBase64: string): Promise<string> {
+   652→  const token = getHfToken()
+   653→
+   654→  // Определяем формат аудио (Telegram присылает OGG/Opus)
+   655→  let mimeType = 'audio/wav'
+   656→  if (audioBase64.startsWith('data:')) {
+   657→    const match = audioBase64.match(/^data:(audio\/[\w+.-]+);/)
+   658→    if (match) {
+   659→      mimeType = match[1]
+   660→      audioBase64 = audioBase64.split(',')[1]
+   661→    }
+   662→  } else {
+   663→    // Telegram OGG начинается с байтов 'OggS'
+   664→    try {
+   665→      const head = Buffer.from(audioBase64.slice(0, 8), 'base64').toString('ascii')
+   666→      if (head.startsWith('OggS')) mimeType = 'audio/ogg'
+   667→    } catch {}
+   668→  }
+   669→
+   670→  const audioBuffer = Buffer.from(audioBase64, 'base64')
+   671→
+   672→  const res = await fetch(WHISPER_API, {
+   673→    method: 'POST',
+   674→    headers: {
+   675→      Authorization: `Bearer ${token}`,
+   676→      'Content-Type': mimeType,
+   677→    },
+   678→    body: audioBuffer,
+   679→  })
+   680→
+   681→  const data = (await res.json()) as { text?: string; error?: { message?: string } }
+   682→  if (!res.ok || data.error) {
+   683→    throw new Error(`Whisper: ${data.error?.message || res.status}`)
+   684→  }
+   685→  return (data.text || '').trim()
+   686→}
+   687→

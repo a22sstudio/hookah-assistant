@@ -1,0 +1,677 @@
+     1→import 'server-only'
+     2→import { Telegraf, Markup } from 'telegraf'
+     3→import { db } from '@/lib/db'
+     4→import { processMasterMessage, recognizeInvoice, transcribeAudio } from '@/lib/ai'
+     5→import type { SessionMaster } from '@/lib/auth'
+     6→
+     7→// ───────────────────────────────────────────
+     8→// Singleton: запускаем бота один раз внутри процесса Next.js
+     9→// globalThis защищает от HMR-переинициализации в dev-режиме
+    10→// ───────────────────────────────────────────
+    11→const globalForBot = globalThis as unknown as {
+    12→  __botStarted?: boolean
+    13→  __botInstance?: Telegraf | null
+    14→}
+    15→
+    16→function humanDuration(openedAt: Date): string {
+    17→  const ms = Date.now() - openedAt.getTime()
+    18→  const mins = Math.floor(ms / 60000)
+    19→  if (mins < 60) return `${mins} мин`
+    20→  const h = Math.floor(mins / 60)
+    21→  const m = mins % 60
+    22→  return `${h}ч ${m}м`
+    23→}
+    24→
+    25→function roleEmoji(role: string): string {
+    26→  return role === 'SENIOR' ? '⭐️' : '🌿'
+    27→}
+    28→function toSessionMaster(m: {
+    29→  id: string
+    30→  name: string
+    31→  role: string
+    32→  color: string
+    33→}): SessionMaster {
+    34→  return { id: m.id, name: m.name, role: m.role as 'SENIOR' | 'REGULAR', color: m.color }
+    35→}
+    36→
+    37→// ───────────────────────────────────────────
+    38→// Создаём и настраиваем бота
+    39→// ───────────────────────────────────────────
+    40→function createBot(): Telegraf {
+    41→  const token = process.env.TELEGRAM_BOT_TOKEN
+    42→  if (!token) {
+    43→    console.error('❌ TELEGRAM_BOT_TOKEN не задан — бот не запущен')
+    44→    throw new Error('No TELEGRAM_BOT_TOKEN')
+    45→  }
+    46→
+    47→  const bot = new Telegraf(token)
+    48→
+    49→  // Middleware: идентифицируем мастера по telegramId
+    50→  bot.use(async (ctx, next) => {
+    51→    const tgId = String((ctx.from as { id?: number } | undefined)?.id || '')
+    52→    if (tgId) {
+    53→      const master = await db.master.findFirst({
+    54→        where: { telegramId: tgId, active: true },
+    55→      })
+    56→      ;(ctx as { state: Record<string, unknown> }).state.master = master
+    57→        ? toSessionMaster(master)
+    58→        : null
+    59→    }
+    60→    return next()
+    61→  })
+    62→
+    63→  // /claim <PIN> — привязать Telegram к мастеру по PIN
+    64→  bot.command('claim', async (ctx) => {
+    65→    const tgId = String((ctx.from as { id?: number })?.id || '')
+    66→    if (!tgId) return
+    67→
+    68→    const pin = (ctx.message as { text: string }).text.split(/\s+/)[1]
+    69→    if (!pin) {
+    70→      return ctx.reply(
+    71→        'Формат: /claim PIN\n\nНапример: /claim 1111\n\nPIN выдаёт старший мастер.',
+    72→      )
+    73→    }
+    74→
+    75→    const existing = await db.master.findFirst({ where: { telegramId: tgId } })
+    76→    if (existing) {
+    77→      return ctx.reply(
+    78→        `Этот Telegram уже привязан к мастеру «${existing.name}». Используйте /start.`,
+    79→      )
+    80→    }
+    81→
+    82→    const master = await db.master.findFirst({
+    83→      where: { pin: pin.trim(), active: true },
+    84→    })
+    85→    if (!master) {
+    86→      return ctx.reply('⚠️ Неверный PIN. Обратитесь к старшему мастеру.')
+    87→    }
+    88→
+    89→    const updated = await db.master.update({
+    90→      where: { id: master.id },
+    91→      data: { telegramId: tgId },
+    92→    })
+    93→
+    94→    return ctx.reply(
+    95→      `✅ Готово!\n\n${roleEmoji(updated.role)} ${updated.name}\nРоль: ${updated.role === 'SENIOR' ? 'Старший мастер' : 'Мастер'}\n\nТеперь можете пользоваться ботом. /help — список команд.`,
+    96→    )
+    97→  })
+    98→
+    99→  // /start
+   100→  bot.command('start', async (ctx) => {
+   101→    const tgId = String((ctx.from as { id?: number })?.id || '')
+   102→    const master = (ctx.state as { master: SessionMaster | null }).master
+   103→
+   104→    if (!master) {
+   105→      return ctx.reply(
+   106→        `🔒 Доступ запрещён\n\nВы не зарегистрированы в системе кальянной.\n\nВаш Telegram ID: <code>${tgId}</code>\n\nЕсли у вас есть PIN-код мастера — отправьте:\n<code>/claim ВАШ_PIN</code>\n\nНапример: <code>/claim 1111</code>`,
+   107→        { parse_mode: 'HTML' },
+   108→      )
+   109→    }
+   110→
+   111→    const isSenior = master.role === 'SENIOR'
+   112→    return ctx.reply(
+   113→      `${roleEmoji(master.role)} Привет, ${master.name}!\n\n` +
+   114→        `Роль: ${isSenior ? 'Старший мастер' : 'Мастер'}\n\n` +
+   115→        `Я умею:\n` +
+   116→        `• 📝 Слушать команды про табак ("пол банки дарксайд супнова")\n` +
+   117→        `• 🎤 Принимать голосовые сообщения\n` +
+   118→        `• 📸 Распознавать накладные по фото\n` +
+   119→        `• 💬 Создавать заявки на закуп и хотелки\n` +
+   120→        `• 📊 Считать кальяны и вести смену\n\n` +
+   121→        `Команды:\n` +
+   122→        `/shift — открыть/закрыть смену\n` +
+   123→        `/+1 — добавить кальян\n` +
+   124→        `/status — кто на смене\n` +
+   125→        (isSenior ? '/register — добавить мастера\n/masters — список мастеров\n' : '') +
+   126→        `/whoami — кто я\n/help — помощь`,
+   127→    )
+   128→  })
+   129→
+   130→  // /help
+   131→  bot.command('help', async (ctx) => {
+   132→    const master = (ctx.state as { master: SessionMaster | null }).master
+   133→    if (!master) return ctx.reply('🔒 Вы не зарегистрированы. /start')
+   134→
+   135→    const isSenior = master.role === 'SENIOR'
+   136→    return ctx.reply(
+   137→      `📋 Команды\n\n` +
+   138→        `• /shift — открыть или закрыть смену\n` +
+   139→        `• /+1 или "+1" — добавить 1 кальян\n` +
+   140→        `• "забил 5" / "сделал 3" / "накрутил 10" — пакетно\n` +
+   141→        `• /status — кто сейчас на смене\n` +
+   142→        `• /schedule — график на 30 дней\n` +
+   143→        `• /schedule 23 или /schedule четверг — кто работает\n` +
+   144→        `• /summary — сводка за сегодня\n` +
+   145→        `• /summary вчера — сводка за другой день\n` +
+   146→        `• /whoami — кто я\n` +
+   147→        `• /help — эта справка\n\n` +
+   148→        `💬 Можно просто писать текстом:\n` +
+   149→        `  "пол банки дарксайд супнова кола"\n` +
+   150→        `  "закажи blackburn energy 2 банки"\n` +
+   151→        `  "хочу новые шланги"\n` +
+   152→        `  "чего мало?"\n\n` +
+   153→        `🎤 Голосовое — распознаю и обработаю.\n` +
+   154→        `📸 Фото накладной — распознаю и оформлю приход.\n` +
+   155→        (isSenior
+   156→          ? `\n⭐️ Старший:\n• /register Имя РОЛЬ [telegramId] — добавить мастера\n• /masters — список`
+   157→          : ''),
+   158→    )
+   159→  })
+   160→
+   161→  // /whoami
+   162→  bot.command('whoami', async (ctx) => {
+   163→    const tgId = String((ctx.from as { id?: number })?.id || '')
+   164→    const master = (ctx.state as { master: SessionMaster | null }).master
+   165→    if (!master) {
+   166→      return ctx.reply(
+   167→        `🔒 Вы не зарегистрированы.\n\nВаш Telegram ID: <code>${tgId}</code>\nОбратитесь к старшему мастеру.`,
+   168→        { parse_mode: 'HTML' },
+   169→      )
+   170→    }
+   171→    return ctx.reply(
+   172→      `${roleEmoji(master.role)} ${master.name}\nРоль: ${master.role === 'SENIOR' ? 'Старший мастер' : 'Мастер'}\nTelegram ID: <code>${tgId}</code>`,
+   173→      { parse_mode: 'HTML' },
+   174→    )
+   175→  })
+   176→
+   177→  // /status — кто на смене
+   178→  bot.command('status', async (ctx) => {
+   179→    const master = (ctx.state as { master: SessionMaster | null }).master
+   180→    if (!master) return ctx.reply('🔒 Вы не зарегистрированы. /start')
+   181→
+   182→    const openShifts = await db.shift.findMany({
+   183→      where: { status: 'OPEN' },
+   184→      include: { master: true },
+   185→      orderBy: { openedAt: 'asc' },
+   186→    })
+   187→    const myShift = openShifts.find((s) => s.masterId === master.id) || null
+   188→
+   189→    const lines: string[] = []
+   190→    if (openShifts.length > 0) {
+   191→      lines.push('👥 На смене сейчас:')
+   192→      for (const s of openShifts) {
+   193→        const mine = s.masterId === master.id ? ' (вы)' : ''
+   194→        lines.push(
+   195→          `  ${roleEmoji(s.master.role)} ${s.master.name}${mine} — ${s.hookahCount} кальянов · ${humanDuration(s.openedAt)}`,
+   196→        )
+   197→      }
+   198→    } else {
+   199→      lines.push('🚪 Никого на смене.')
+   200→    }
+   201→    if (myShift) {
+   202→      lines.push(`\n📊 Ваша смена: ${myShift.hookahCount} кальянов · ${humanDuration(myShift.openedAt)}`)
+   203→    } else {
+   204→      lines.push('\n✅ Можете открыть смену: /shift')
+   205→    }
+   206→    return ctx.reply(lines.join('\n'))
+   207→  })
+   208→
+   209→  // /schedule — график (без аргумента = на 30 дней, /schedule 23 или /schedule четверг)
+   210→  bot.command('schedule', async (ctx) => {
+   211→    const master = (ctx.state as { master: SessionMaster | null }).master
+   212→    if (!master) return ctx.reply('🔒 Вы не зарегистрированы. /start')
+   213→
+   214→    const args = (ctx.message as { text: string }).text.split(/\s+/).slice(1)
+   215→    const arg = args.join(' ').trim()
+   216→    await ctx.sendChatAction('typing')
+   217→
+   218→    const BOT_SECRET = process.env.BOT_SECRET || ''
+   219→    const tgId = String((ctx.from as { id?: number })?.id || '')
+   220→
+   221→    if (arg) {
+   222→      // Кто работает в конкретную дату
+   223→      const res = await fetch(`http://localhost:${process.env.PORT || 3000}/api/bot/schedule`, {
+   224→        method: 'POST',
+   225→        headers: { 'Content-Type': 'application/json', 'X-Bot-Secret': BOT_SECRET },
+   226→        body: JSON.stringify({ telegramId: tgId, action: 'date', dateText: arg }),
+   227→      })
+   228→      const data = await res.json()
+   229→      return ctx.reply(data.message || data.error || 'Не удалось получить график')
+   230→    }
+   231→
+   232→    // График на 30 дней
+   233→    const res = await fetch(`http://localhost:${process.env.PORT || 3000}/api/bot/schedule`, {
+   234→      method: 'POST',
+   235→      headers: { 'Content-Type': 'application/json', 'X-Bot-Secret': BOT_SECRET },
+   236→      body: JSON.stringify({ telegramId: tgId, action: 'list', days: 30 }),
+   237→    })
+   238→    const data = await res.json()
+   239→    return ctx.reply(data.message || data.error || 'Не удалось получить график')
+   240→  })
+   241→
+   242→  // /summary — сводка дня (без аргумента = сегодня)
+   243→  bot.command('summary', async (ctx) => {
+   244→    const master = (ctx.state as { master: SessionMaster | null }).master
+   245→    if (!master) return ctx.reply('🔒 Вы не зарегистрированы. /start')
+   246→
+   247→    const args = (ctx.message as { text: string }).text.split(/\s+/).slice(1)
+   248→    const arg = args.join(' ').trim()
+   249→    await ctx.sendChatAction('typing')
+   250→
+   251→    const BOT_SECRET = process.env.BOT_SECRET || ''
+   252→    const tgId = String((ctx.from as { id?: number })?.id || '')
+   253→
+   254→    const res = await fetch(`http://localhost:${process.env.PORT || 3000}/api/bot/summary`, {
+   255→      method: 'POST',
+   256→      headers: { 'Content-Type': 'application/json', 'X-Bot-Secret': BOT_SECRET },
+   257→      body: JSON.stringify({ telegramId: tgId, dateText: arg || undefined }),
+   258→    })
+   259→    const data = await res.json()
+   260→    return ctx.reply(data.message || data.error || 'Не удалось получить сводку')
+   261→  })
+   262→
+   263→  // /shift — открыть/закрыть
+   264→  bot.command('shift', async (ctx) => {
+   265→    const master = (ctx.state as { master: SessionMaster | null }).master
+   266→    if (!master) return ctx.reply('🔒 Вы не зарегистрированы. /start')
+   267→
+   268→    const myShift = await db.shift.findFirst({
+   269→      where: { masterId: master.id, status: 'OPEN' },
+   270→    })
+   271→
+   272→    if (myShift) {
+   273→      return ctx.reply(
+   274→        `Ваша смена открыта.\nКальянов: ${myShift.hookahCount}\nДлительность: ${humanDuration(myShift.openedAt)}\n\nЗакрыть смену?`,
+   275→        Markup.inlineKeyboard([
+   276→          [Markup.button.callback('✅ Закрыть смену', 'shift_close')],
+   277→        ]),
+   278→      )
+   279→    }
+   280→    return ctx.reply(
+   281→      'Открыть смену?',
+   282→      Markup.inlineKeyboard([
+   283→        [Markup.button.callback('🌿 Открыть смену', 'shift_open')],
+   284→      ]),
+   285→    )
+   286→  })
+   287→
+   288→  bot.action('shift_open', async (ctx) => {
+   289→    await ctx.answerCbQuery()
+   290→    const master = (ctx.state as { master: SessionMaster | null }).master
+   291→    if (!master) return ctx.editMessageText('⚠️ Сессия истекла')
+   292→
+   293→    const existing = await db.shift.findFirst({
+   294→      where: { masterId: master.id, status: 'OPEN' },
+   295→    })
+   296→    if (existing) {
+   297→      return ctx.editMessageText('⚠️ У вас уже открыта смена.')
+   298→    }
+   299→    await db.shift.create({ data: { masterId: master.id, status: 'OPEN' } })
+   300→    if (master.role !== 'SENIOR') {
+   301→      const notifMsg = `🌿 ${master.name} открыл смену`
+   302→      await db.notification.create({
+   303→        data: { type: 'SHIFT_OPEN', message: notifMsg, masterId: master.id },
+   304→      })
+   305→      // Push старшему в Telegram
+   306→      const { pushToSeniors } = await import('@/lib/notify')
+   307→      await pushToSeniors(notifMsg)
+   308→    }
+   309→    return ctx.editMessageText('✅ Смена открыта! Считай кальяны командой /+1 или просто "+1".')
+   310→  })
+   311→
+   312→  bot.action('shift_close', async (ctx) => {
+   313→    await ctx.answerCbQuery()
+   314→    const master = (ctx.state as { master: SessionMaster | null }).master
+   315→    if (!master) return ctx.editMessageText('⚠️ Сессия истекла')
+   316→
+   317→    const shift = await db.shift.findFirst({
+   318→      where: { masterId: master.id, status: 'OPEN' },
+   319→    })
+   320→    if (!shift) {
+   321→      return ctx.editMessageText('⚠️ Нет открытой смены.')
+   322→    }
+   323→    await db.shift.update({
+   324→      where: { id: shift.id },
+   325→      data: { status: 'CLOSED', closedAt: new Date() },
+   326→    })
+   327→    if (master.role !== 'SENIOR') {
+   328→      await db.notification.create({
+   329→        data: {
+   330→          type: 'SHIFT_CLOSE',
+   331→          message: `${master.name} закрыл смену (${shift.hookahCount} кальянов)`,
+   332→          masterId: master.id,
+   333→        },
+   334→      })
+   335→    }
+   336→    return ctx.editMessageText(`✅ Смена закрыта. Кальянов за смену: ${shift.hookahCount}`)
+   337→  })
+   338→
+   339→  // /+1 кальян
+   340→  bot.command(['+1', 'hookah', 'kalyan'], async (ctx) => {
+   341→    const master = (ctx.state as { master: SessionMaster | null }).master
+   342→    if (!master) return ctx.reply('🔒 Вы не зарегистрированы. /start')
+   343→    const result = await addHookah(master.id)
+   344→    return ctx.reply(result.message)
+   345→  })
+   346→
+   347→  // Реагируем на текст "+1"
+   348→  bot.hears(/^\+\s?1(\s+кальян)?$/i, async (ctx) => {
+   349→    const master = (ctx.state as { master: SessionMaster | null }).master
+   350→    if (!master) return ctx.reply('🔒 Вы не зарегистрированы. /start')
+   351→    const result = await addHookah(master.id)
+   352→    return ctx.reply(result.message)
+   353→  })
+   354→
+   355→  // /register (только старший)
+   356→  bot.command('register', async (ctx) => {
+   357→    const master = (ctx.state as { master: SessionMaster | null }).master
+   358→    if (!master) return ctx.reply('🔒 Вы не зарегистрированы. /start')
+   359→    if (master.role !== 'SENIOR') return ctx.reply('⛔ Только старший может регистрировать мастеров.')
+   360→
+   361→    const args = (ctx.message as { text: string }).text.split(/\s+/).slice(1)
+   362→    if (args.length < 2) {
+   363→      return ctx.reply(
+   364→        'Формат: /register Имя РОЛЬ [telegramId]\n\nПримеры:\n' +
+   365→          '/register Айрат REGULAR 123456789\n' +
+   366→          '/register Тимур SENIOR\n' +
+   367→          `\nВаш Telegram ID: <code>${(ctx.from as { id: number }).id}</code>`,
+   368→        { parse_mode: 'HTML' },
+   369→      )
+   370→    }
+   371→
+   372→    const name = args[0]
+   373→    const role = args[1].toUpperCase() === 'SENIOR' ? 'SENIOR' : 'REGULAR'
+   374→    const telegramId = args[2] || undefined
+   375→
+   376→    const existingName = await db.master.findFirst({ where: { name } })
+   377→    if (existingName) {
+   378→      return ctx.reply(`⚠️ Мастер с именем "${name}" уже есть.`)
+   379→    }
+   380→    if (telegramId) {
+   381→      const existingTg = await db.master.findFirst({ where: { telegramId: String(telegramId) } })
+   382→      if (existingTg) {
+   383→        return ctx.reply(`⚠️ Telegram ID ${telegramId} уже привязан к ${existingTg.name}`)
+   384→      }
+   385→    }
+   386→
+   387→    const pin = String(Math.floor(1000 + Math.random() * 9000))
+   388→    const newMaster = await db.master.create({
+   389→      data: { name, role, telegramId: telegramId ? String(telegramId) : null, pin, color: 'sky' },
+   390→    })
+   391→
+   392→    return ctx.reply(
+   393→      `✅ Зарегистрирован!\n\nИмя: ${newMaster.name}\nРоль: ${newMaster.role === 'SENIOR' ? 'Старший' : 'Мастер'}\nTelegram: ${newMaster.telegramId || '(не привязан)'}\nPIN для веб-входа: ${newMaster.pin}`,
+   394→    )
+   395→  })
+   396→
+   397→  // /masters (только старший)
+   398→  bot.command('masters', async (ctx) => {
+   399→    const master = (ctx.state as { master: SessionMaster | null }).master
+   400→    if (!master) return ctx.reply('🔒 Вы не зарегистрированы. /start')
+   401→    if (master.role !== 'SENIOR') return ctx.reply('⛔ Только старший.')
+   402→
+   403→    const masters = await db.master.findMany({
+   404→      where: { active: true },
+   405→      orderBy: [{ role: 'asc' }, { name: 'asc' }],
+   406→    })
+   407→    const lines = masters.map(
+   408→      (m) =>
+   409→        `${roleEmoji(m.role)} ${m.name} — ${m.role === 'SENIOR' ? 'старший' : 'мастер'} | tg: ${m.telegramId || '—'} | pin: ${m.pin}`,
+   410→    )
+   411→    return ctx.reply(`👥 Мастера (${masters.length}):\n\n${lines.join('\n')}`)
+   412→  })
+   413→
+   414→  // Хелпер: запустить AI с таймаутом 50 сек (чтобы успеть ответить до Telegram retry)
+   415→  function withTimeout<T>(promise: Promise<T>, ms = 50000, label = 'AI'): Promise<T> {
+   416→    return new Promise<T>((resolve, reject) => {
+   417→      const timer = setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms)
+   418→      promise.then(
+   419→        (v) => { clearTimeout(timer); resolve(v) },
+   420→        (e) => { clearTimeout(timer); reject(e) },
+   421→      )
+   422→    })
+   423→  }
+   424→
+   425→  // Цикл "typing..." пока идёт долгая AI-обработка (каждые 4 сек, пока Telegram не сбросит)
+   426→  async function keepTyping(ctx: { sendChatAction: (a: string) => Promise<unknown> }, stopFlag: { value: boolean }) {
+   427→    while (!stopFlag.value) {
+   428→      try { await ctx.sendChatAction('typing') } catch {}
+   429→      await new Promise((r) => setTimeout(r, 4000))
+   430→    }
+   431→  }
+   432→
+   433→  // Текстовые сообщения → AI
+   434→  bot.on('text', async (ctx) => {
+   435→    const master = (ctx.state as { master: SessionMaster | null }).master
+   436→    const tgId = String((ctx.from as { id?: number })?.id || '')
+   437→    if (!master) {
+   438→      return ctx.reply(
+   439→        `🔒 Вы не зарегистрированы.\n\nВаш Telegram ID: <code>${tgId}</code>\nОбратитесь к старшему мастеру или используйте /claim PIN.`,
+   440→        { parse_mode: 'HTML' },
+   441→      )
+   442→    }
+   443→
+   444→    const text = (ctx.message as { text: string }).text
+   445→    if (text.startsWith('/')) return // команды уже обработаны
+   446→
+   447→    // Быстрый парсинг: "забил 5 кальянов", "сделал 3", "накрутил 10"
+   448→    const { parseHookahCount } = await import('@/lib/datetime-utils')
+   449→    const hookahCount = parseHookahCount(text)
+   450→
+   451→    // Если похоже на отчёт о кальянах и нет других ключевых слов AI
+   452→    const lowerText = text.toLowerCase()
+   453→    const hasOtherIntent = /сколько|чего|какой|какая|закажи|хочу|заканчивается|осталось|приход|накладн/.test(lowerText)
+   454→
+   455→    if (hookahCount !== null && hookahCount > 1 && !hasOtherIntent) {
+   456→      // Пакетное добавление кальянов (минуя AI — быстро)
+   457→      const shift = await db.shift.findFirst({ where: { masterId: master.id, status: 'OPEN' } })
+   458→      if (!shift) {
+   459→        return ctx.reply('⚠️ Смена не открыта. /shift чтобы открыть.')
+   460→      }
+   461→      const newCount = shift.hookahCount + hookahCount
+   462→      await db.shift.update({ where: { id: shift.id }, data: { hookahCount: newCount } })
+   463→      return ctx.reply(`🪔 +${hookahCount} кальянов\nВсего за смену: ${newCount}`)
+   464→    }
+   465→
+   466→    await ctx.sendChatAction('typing')
+   467→    const stop = { value: false }
+   468→    const typingLoop = keepTyping(ctx, stop).catch(() => {})
+   469→
+   470→    try {
+   471→      const result = await withTimeout(
+   472→        processMasterMessage(text, { source: 'TEXT', masterId: master.id }),
+   473→        50000,
+   474→        'processMasterMessage',
+   475→      )
+   476→      stop.value = true
+   477→      await typingLoop
+   478→      return ctx.reply(formatReply(result))
+   479→    } catch (e) {
+   480→      stop.value = true
+   481→      await typingLoop
+   482→      console.error('Text/AI error:', (e as Error).message)
+   483→      return ctx.reply('⚠️ Не удалось обработать (AI не ответил вовремя). Попробуй ещё раз.')
+   484→    }
+   485→  })
+   486→
+   487→  // Голосовые → ASR → AI
+   488→  bot.on('voice', async (ctx) => {
+   489→    const master = (ctx.state as { master: SessionMaster | null }).master
+   490→    const tgId = String((ctx.from as { id?: number })?.id || '')
+   491→    if (!master) {
+   492→      return ctx.reply(
+   493→        `🔒 Вы не зарегистрированы.\n\nВаш Telegram ID: <code>${tgId}</code>\nОбратитесь к старшему мастеру.`,
+   494→        { parse_mode: 'HTML' },
+   495→      )
+   496→    }
+   497→
+   498→    await ctx.sendChatAction('typing')
+   499→    const stop = { value: false }
+   500→    const typingLoop = keepTyping(ctx, stop).catch(() => {})
+   501→
+   502→    try {
+   503→      const fileId = (ctx.message as { voice: { file_id: string } }).voice.file_id
+   504→      const fileLink = await bot.telegram.getFileLink(fileId)
+   505→      const res = await fetch(fileLink.toString())
+   506→      const buf = Buffer.from(await res.arrayBuffer())
+   507→      const audioBase64 = buf.toString('base64')
+   508→
+   509→      let transcribedText = ''
+   510→      try {
+   511→        transcribedText = await withTimeout(transcribeAudio(audioBase64), 30000, 'ASR')
+   512→      } catch (asrErr) {
+   513→        stop.value = true; await typingLoop
+   514→        const msg = (asrErr as Error).message
+   515→        return ctx.reply('🎤 Не удалось распознать речь: ' + msg + '\n\nНапиши текстом, пожалуйста.')
+   516→      }
+   517→      if (!transcribedText) {
+   518→        stop.value = true; await typingLoop
+   519→        return ctx.reply('⚠️ Не удалось распознать речь (пустой ответ).')
+   520→      }
+   521→
+   522→      // Быстрый парсинг кальянов из распознанного голоса
+   523→      const { parseHookahCount } = await import('@/lib/datetime-utils')
+   524→      const hookahCount = parseHookahCount(transcribedText)
+   525→      const hasOtherIntent = /сколько|чего|какой|какая|закажи|хочу|заканчивается|осталось|приход|накладн/.test(transcribedText.toLowerCase())
+   526→
+   527→      if (hookahCount !== null && hookahCount > 1 && !hasOtherIntent) {
+   528→        const shift = await db.shift.findFirst({ where: { masterId: master.id, status: 'OPEN' } })
+   529→        if (shift) {
+   530→          const newCount = shift.hookahCount + hookahCount
+   531→          await db.shift.update({ where: { id: shift.id }, data: { hookahCount: newCount } })
+   532→          stop.value = true; await typingLoop
+   533→          return ctx.reply(`🎙 Распознал: «${transcribedText}»\n\n🪔 +${hookahCount} кальянов\nВсего за смену: ${newCount}`)
+   534→        }
+   535→      }
+   536→
+   537→      const result = await withTimeout(
+   538→        processMasterMessage(transcribedText, { source: 'VOICE', transcribedText, masterId: master.id }),
+   539→        50000,
+   540→        'processMasterMessage',
+   541→      )
+   542→      stop.value = true; await typingLoop
+   543→      return ctx.reply(`🎙 Распознал: «${transcribedText}»\n\n${formatReply(result)}`)
+   544→    } catch (e) {
+   545→      stop.value = true; await typingLoop
+   546→      console.error('Voice error:', (e as Error).message)
+   547→      return ctx.reply('⚠️ Не удалось обработать голосовое (таймаут или ошибка AI).')
+   548→    }
+   549→  })
+   550→
+   551→  // Фото → VLM → AI
+   552→  bot.on('photo', async (ctx) => {
+   553→    const master = (ctx.state as { master: SessionMaster | null }).master
+   554→    const tgId = String((ctx.from as { id?: number })?.id || '')
+   555→    if (!master) {
+   556→      return ctx.reply(
+   557→        `🔒 Вы не зарегистрированы.\n\nВаш Telegram ID: <code>${tgId}</code>\nОбратитесь к старшему мастеру.`,
+   558→        { parse_mode: 'HTML' },
+   559→      )
+   560→    }
+   561→
+   562→    await ctx.sendChatAction('typing')
+   563→    const stop = { value: false }
+   564→    const typingLoop = keepTyping(ctx, stop).catch(() => {})
+   565→
+   566→    try {
+   567→      const photos = (ctx.message as { photo: { file_id: string }[] }).photo
+   568→      const biggest = photos[photos.length - 1]
+   569→      const fileLink = await bot.telegram.getFileLink(biggest.file_id)
+   570→      const res = await fetch(fileLink.toString())
+   571→      const buf = Buffer.from(await res.arrayBuffer())
+   572→      const imageBase64 = 'data:image/jpeg;base64,' + buf.toString('base64')
+   573→
+   574→      const items = await withTimeout(recognizeInvoice(imageBase64), 30000, 'VLM')
+   575→      if (items.length === 0) {
+   576→        stop.value = true; await typingLoop
+   577→        return ctx.reply('⚠️ Не удалось распознать позиции на фото.')
+   578→      }
+   579→
+   580→      const result = await withTimeout(
+   581→        processMasterMessage('оформи приход по накладной', { source: 'PHOTO', invoiceItems: items, masterId: master.id }),
+   582→        50000,
+   583→        'processMasterMessage',
+   584→      )
+   585→
+   586→      let reply = `📸 Распознал ${items.length} поз.:\n`
+   587→      for (const i of items) reply += `• ${i.brand} ${i.line} ${i.flavor} — ${i.grams}г\n`
+   588→      reply += `\n${formatReply(result)}`
+   589→      stop.value = true; await typingLoop
+   590→      return ctx.reply(reply)
+   591→    } catch (e) {
+   592→      stop.value = true; await typingLoop
+   593→      console.error('Photo error:', (e as Error).message)
+   594→      return ctx.reply('⚠️ Не удалось обработать фото (таймаут или ошибка AI).')
+   595→    }
+   596→  })
+   597→
+   598→  return bot
+   599→}
+   600→
+   601→// Вспомогательные функции
+   602→async function addHookah(masterId: string): Promise<{ success: boolean; message: string }> {
+   603→  const shift = await db.shift.findFirst({ where: { masterId, status: 'OPEN' } })
+   604→  if (!shift) {
+   605→    return { success: false, message: '⚠️ Смена не открыта. /shift чтобы открыть.' }
+   606→  }
+   607→  const newCount = shift.hookahCount + 1
+   608→  await db.shift.update({ where: { id: shift.id }, data: { hookahCount: newCount } })
+   609→  return { success: true, message: `🪔 +1 кальян\nВсего за смену: ${newCount}` }
+   610→}
+   611→
+   612→function formatReply(result: {
+   613→  reply: string
+   614→  executedActions?: Array<{ tool: string; success: boolean; message: string }>
+   615→}): string {
+   616→  let reply = result.reply || 'Готово.'
+   617→  if (result.executedActions && result.executedActions.length > 0) {
+   618→    reply += '\n\n'
+   619→    for (const a of result.executedActions) {
+   620→      reply += `${a.success ? '✅' : '❌'} ${a.message}\n`
+   621→    }
+   622→  }
+   623→  return reply.trim()
+   624→}
+   625→
+   626→// ───────────────────────────────────────────
+   627→// Запуск бота (один раз на процесс Next.js)
+   628→// ───────────────────────────────────────────
+   629→// USE_POLLING=1 — запускать long-polling внутри процесса (для локальной разработки)
+   630→// Иначе — webhook режим: Telegram сам присылает Update на /api/telegram/webhook,
+   631→// обработка через handleUpdate(). Не нужен постоянный процесс.
+   632→const USE_POLLING = process.env.USE_POLLING === '1'
+   633→
+   634→export async function ensureBotRunning(): Promise<void> {
+   635→  if (globalForBot.__botStarted) return
+   636→  globalForBot.__botStarted = true
+   637→
+   638→  try {
+   639→    const bot = createBot()
+   640→    globalForBot.__botInstance = bot
+   641→
+   642→    // НЕ блокируем рендер страницы — getMe и launch в фоне
+   643→    void (async () => {
+   644→      try {
+   645→        const me = await bot.telegram.getMe()
+   646→        console.log(`🤖 Telegram бот инициализирован: @${me.username}`)
+   647→
+   648→        if (USE_POLLING) {
+   649→          bot.launch()
+   650→          console.log('✅ Polling активен (USE_POLLING=1).')
+   651→          process.once('SIGINT', () => bot.stop('SIGINT'))
+   652→          process.once('SIGTERM', () => bot.stop('SIGTERM'))
+   653→        } else {
+   654→          console.log('✅ Webhook режим. Ожидаем Update на /api/telegram/webhook')
+   655→        }
+   656→      } catch (e) {
+   657→        console.error('⚠️ Фоновая инициализация бота не удалась:', (e as Error).message)
+   658→      }
+   659→    })()
+   660→
+   661→    console.log('🔄 Бот инициализируется в фоне (не блокирует запросы)')
+   662→  } catch (e) {
+   663→    console.error('❌ Ошибка инициализации бота:', (e as Error).message)
+   664→    globalForBot.__botStarted = false
+   665→  }
+   666→}
+   667→
+   668→// Получить инстанс бота (для webhook endpoint)
+   669→export function getBot(): Telegraf | null {
+   670→  return globalForBot.__botInstance ?? null
+   671→}
+   672→
+   673→// Проверка статуса бота (для API)
+   674→export function isBotRunning(): boolean {
+   675→  return globalForBot.__botStarted === true
+   676→}
+   677→

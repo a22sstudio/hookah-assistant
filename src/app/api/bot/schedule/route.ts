@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
 
       if (entries.length === 0) {
         return NextResponse.json({
-          message: `📅 График на ${days} дней пуст.\nСтарший ещё не составил расписание.`,
+          message: `📅 График на ${days} дней пуст.\nСтарший ещё не составил расписание.\n\nЧтобы добавить: просто напишите боту — «поставь Марата на завтра с 12 до 22».`,
         })
       }
 
@@ -44,11 +44,11 @@ export async function POST(req: NextRequest) {
         byDate[key].push({ masterName: e.master.name, startHour: e.startHour, endHour: e.endHour })
       }
 
-      const lines = [`📅 График на ${days} дней:`]
+      const lines = [`📅 График на ${days} дней`, '─────────────']
       for (const [date, masters] of Object.entries(byDate)) {
         lines.push(`\n${date}:`)
         for (const m of masters) {
-          lines.push(`  • ${m.masterName} — ${m.startHour}:00-${m.endHour}:00`)
+          lines.push(`  ▪️ ${m.masterName} ${m.startHour}:00–${m.endHour}:00`)
         }
       }
 

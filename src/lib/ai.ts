@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import type { SessionMaster } from '@/lib/auth'
 import { pushToSeniors } from '@/lib/notify'
+import { parseDateFromText, startOfDay, formatDateRu } from '@/lib/datetime-utils'
 
 // ───────────────────────────────────────────
 // Hugging Face Router (OpenAI-compatible)
@@ -76,6 +77,7 @@ export type AIAction =
   | { tool: 'create_request'; args: { text: string; grams?: number } }
   | { tool: 'create_wish'; args: { text: string } }
   | { tool: 'add_hookah_batch'; args: { count: number } }
+  | { tool: 'update_schedule'; args: { masterName: string; dateText: string; startHour?: number; endHour?: number; action: 'add' | 'remove' } }
   | { tool: 'query'; args: { what: 'low_stock' | 'all_stock' | 'specific' | 'shift'; brand?: string; line?: string; flavor?: string } }
 
 export interface AIResult {
@@ -101,13 +103,14 @@ function buildSystemPrompt(stockContext: string, master: SessionMaster, shiftCon
 5. create_request — заявка на закуп свободной формы ("BlackBurn Energy 2 банки")
 6. create_wish — хотелка/пожелание
 7. add_hookah_batch — добавить N кальянов к смене ("забил 5", "сделал 3", "накрутил 10")
-8. query — low_stock (что мало), all_stock (все остатки), shift (кто на смене и активные заявки)`
+8. update_schedule — редактировать график мастера: action="add" или "remove". masterName (имя мастера, fuzzy), dateText ("завтра", "пятница", "23 числа"), startHour/endHour (опционально, по умолчанию 12-23). Примеры: "поставь Марата на завтра с 12 до 22" → action=add, masterName="Марат", dateText="завтра", startHour=12, endHour=22. "убери Марата с пятницы" → action=remove, masterName="Марат", dateText="пятница".
+9. query — low_stock (что мало), all_stock (все остатки), shift (кто на смене и активные заявки)`
     : `1. update_stock — отметить остаток табака (обычно когда "закончился" = 0, "мало осталось" = мало). Это списывает остаток и пушит старшему.
 2. create_request — заявка на закуп свободной формы ("BlackBurn Energy 2 банки")
 3. create_wish — хотелка/пожелание
 4. add_hookah_batch — добавить N кальянов к смене ("забил 5", "сделал 3", "накрутил 10")
 5. query — low_stock (что мало), all_stock (все остатки), shift (кто на смене)
-НЕ используй add_incoming, add_tobacco, create_order — это для старшего мастера.`
+НЕ используй add_incoming, add_tobacco, create_order, update_schedule — это для старшего мастера.`
 
   return `Ты — умный ассистент кальянной. Сейчас с тобой работает: ${master.name} (${roleDesc}).
 
@@ -137,6 +140,9 @@ ${allowedTools}
 - "забил N кальянов" / "сделал N" / "накрутил N" / "сварил N" → add_hookah_batch с count=N
   (N может быть числом или словом: "пять", "десять")
   (без числа = +1: "забил кальян")
+- "поставь МАРТА на ЗАВТРА с 12 до 22" → update_schedule action=add
+- "убери МАРТА с ПЯТНИЦЫ" → update_schedule action=remove
+- "поставь Айрата на четверг с 16 до 23" → update_schedule add
 
 СТРУКТУРА ТАБАКА — ВАЖНО! У каждого табака 3 поля:
 - brand — бренд/производитель (Darkside, Tangiers, Musthave, Daily Hookah, Burn, BlackBurn)
@@ -488,6 +494,67 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
           success: true,
           message: `+${count} кальянов (всего за смену: ${newCount})`,
           data: { added: count, total: newCount },
+        }
+      }
+
+      case 'update_schedule': {
+        if (master.role !== 'SENIOR') {
+          return { success: false, message: 'Только старший может редактировать график' }
+        }
+        const { masterName, dateText, startHour, endHour, action: scheduleAction } = action.args
+        const dateObj = parseDateFromText(dateText)
+        if (!dateObj) {
+          return { success: false, message: `Не удалось распознать дату: "${dateText}"` }
+        }
+        const date = startOfDay(dateObj)
+
+        // Fuzzy поиск мастера по имени
+        const allMasters = await db.master.findMany({ where: { active: true } })
+        const norm = (s: string) => s.toLowerCase().trim()
+        const target = norm(masterName)
+        let masterRec = allMasters.find((m) => norm(m.name) === target)
+        if (!masterRec) {
+          masterRec = allMasters.find((m) => norm(m.name).includes(target) || target.includes(norm(m.name)))
+        }
+        if (!masterRec) {
+          return { success: false, message: `Мастер "${masterName}" не найден. Доступные: ${allMasters.map((m) => m.name).join(', ')}` }
+        }
+
+        if (scheduleAction === 'remove') {
+          const existing = await db.scheduleEntry.findFirst({
+            where: { masterId: masterRec.id, date },
+          })
+          if (!existing) {
+            return { success: false, message: `${masterRec.name} не был запланирован на ${formatDateRu(date)}` }
+          }
+          await db.scheduleEntry.delete({ where: { id: existing.id } })
+          return {
+            success: true,
+            message: `Убрал ${masterRec.name} с графика за ${formatDateRu(date)}`,
+          }
+        }
+
+        // action === 'add'
+        const sh = startHour ?? 12
+        const eh = endHour ?? 23
+        const existing = await db.scheduleEntry.findFirst({
+          where: { masterId: masterRec.id, date },
+        })
+        let entry
+        if (existing) {
+          entry = await db.scheduleEntry.update({
+            where: { id: existing.id },
+            data: { startHour: sh, endHour: eh },
+          })
+        } else {
+          entry = await db.scheduleEntry.create({
+            data: { masterId: masterRec.id, date, startHour: sh, endHour: eh },
+          })
+        }
+        void entry
+        return {
+          success: true,
+          message: `${masterRec.name} работает ${formatDateRu(date)} с ${sh}:00 до ${eh}:00`,
         }
       }
 

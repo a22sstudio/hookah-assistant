@@ -14,8 +14,10 @@ import { OperationsList } from '@/components/hookah/operations-list'
 import { MastersManager } from '@/components/hookah/masters-manager'
 import { NotificationsBell } from '@/components/hookah/notifications-bell'
 import { AIChat } from '@/components/hookah/ai-chat'
+import { ScheduleCalendar } from '@/components/hookah/schedule-calendar'
+import { ShiftHistory } from '@/components/hookah/shift-history'
 import { Leaf } from 'lucide-react'
-import { MessageCircle, LayoutDashboard, History, ShoppingCart, Star, BookOpen, Clock, LogOut, Users } from 'lucide-react'
+import { MessageCircle, LayoutDashboard, History, ShoppingCart, Star, BookOpen, Clock, LogOut, Users, CalendarRange, ListChecks } from 'lucide-react'
 import { masterAvatarClass, initials } from '@/lib/master-utils'
 import { toast } from 'sonner'
 import { Master } from '@/lib/types'
@@ -43,7 +45,7 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <header className="sticky top-0 z-40 border-b border-border bg-background">
         <div className="mx-auto max-w-[1400px] px-4 sm:px-6 h-[60px] flex items-center gap-4">
           <div className="flex items-center gap-2">
             <Leaf className="h-5 w-5 text-[#dc2f02]" />
@@ -88,13 +90,20 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
           {/* Левая колонка */}
           <div className="min-w-0">
             <Tabs defaultValue="shift" className="w-full">
-              <TabsList className="grid w-full grid-cols-4 sm:grid-cols-7 h-auto mb-6">
+              <TabsList className="grid w-full grid-cols-4 sm:grid-cols-9 h-auto mb-6">
                 <TabsTrigger
                   value="shift"
                   className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]"
                 >
                   <Clock className="h-4 w-4" />
                   <span>Смена</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="schedule"
+                  className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]"
+                >
+                  <CalendarRange className="h-4 w-4" />
+                  <span>График</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="dashboard"
@@ -132,11 +141,18 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
                   <span>Справочник</span>
                 </TabsTrigger>
                 <TabsTrigger
+                  value="shifts-history"
+                  className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]"
+                >
+                  <ListChecks className="h-4 w-4" />
+                  <span>Смены</span>
+                </TabsTrigger>
+                <TabsTrigger
                   value="history"
                   className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]"
                 >
                   <History className="h-4 w-4" />
-                  <span>История</span>
+                  <span>Операции</span>
                 </TabsTrigger>
               </TabsList>
 
@@ -147,6 +163,9 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
                   onRefresh={refresh}
                   masterName={master.name}
                 />
+              </TabsContent>
+              <TabsContent value="schedule">
+                <ScheduleCalendar canEdit refreshKey={refreshKey} onRefresh={refresh} />
               </TabsContent>
               <TabsContent value="dashboard">
                 <Dashboard refreshKey={refreshKey} onRefresh={refresh} />
@@ -170,6 +189,9 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
               </TabsContent>
               <TabsContent value="catalog">
                 <TobaccosManager refreshKey={refreshKey} onRefresh={refresh} />
+              </TabsContent>
+              <TabsContent value="shifts-history">
+                <ShiftHistory refreshKey={refreshKey} onRefresh={refresh} />
               </TabsContent>
               <TabsContent value="history">
                 <OperationsList refreshKey={refreshKey} />

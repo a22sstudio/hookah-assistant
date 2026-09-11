@@ -532,3 +532,91 @@ Stage Summary:
 - Типографика: Fragment Mono (uppercase) для всех заголовков/лейблов/навигации/бейджей/кнопок. Archivo для body-текста.
 - Острые углы везде (--radius:0), 1px границы (border-border = rgba(0,0,0,0.18)), без shadow.
 - Демо-доступ: Старший Тимур PIN 1111, мастера Айрат 2222 / Марат 3333.
+
+---
+
+Task ID: redesign-2
+Agent: main (Z.ai Code)
+Task: Redesign-2 — детальное редактирование склада, визуальный график, история смен с фильтрами и AI-команды для графика. + фикс критических визуальных багов.
+
+Контекст: прочёл worklog.md (Task ID 1). Editorial style: Fragment Mono + Archivo, ember #dc2f02, --radius:0, .frame для ember-рамки. Изучил существующие компоненты: dashboard.tsx, senior-view.tsx, master-view.tsx, ai.ts, bot-runner.ts, schema.prisma (ScheduleEntry, Master, Shift, Operation), api/tobaccos (GET/POST only), api/schedule (GET/POST/DELETE), api/shifts (GET/POST/PATCH — только OPEN смены), api/masters.
+
+CRITICAL VISUAL BUGS — ИСПРАВЛЕНО:
+1. Bug 1 (Stock list frame cuts off): убрал `<ScrollArea className="max-h-[60vh]">` из dashboard.tsx — теперь список табаков рендерится прямо внутри `<div className="border border-border">` без max-height. Внешняя рамка оборачивает все 11+ позиций, бордеры между строками через `border-b last:border-b-0`. Список тянется на полную высоту, страница скроллит естественно. Аналогично сохранил подход в MasterStockReadOnly.
+2. Bug 2 (Sticky header overlap): убрал `bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80` в senior-view.tsx и master-view.tsx — теперь header полностью непрозрачный `bg-background`. Контент под ним не просвечивает. z-40 сохранён, border-b сохранён.
+
+TASK 1 — СКЛАД: ДЕТАЛЬНОЕ РЕДАКТИРОВАНИЕ:
+- Переписал `src/components/hookah/dashboard.tsx`:
+  - Убрал quickAdjust и кнопки ±25г.
+  - Заменил `<Progress>` на тонкую 2px линию (div с bg-foreground или bg-[#dc2f02] если isLow).
+  - Каждая строка табака теперь `<button>` — клик открывает Dialog (sharp corners, sm:max-w-[480px]).
+  - Поля диалога: Brand (Input mono), Line (Input), Flavor (Input), Default jar grams (number), Threshold grams (number), Current stock grams (number с placeholder "например, 147"), Notes (Textarea).
+  - Кнопки: "Сохранить" (primary, ink bg), "Удалить позицию" (outline с ember border/text, вложена в AlertDialog с confirm "Удалить [brand] [flavor]? Это нельзя отменить."), "Отмена" (ghost).
+  - Сохранил layout: `[brand mono bold] [line mono faint] [flavor sans] ... [badge МАЛО] [grams mono tabular-nums] [Pencil icon]`. Pencil появляется на hover.
+  - Hover:bg-muted/50. Удалил plus/minus кнопки из строки.
+- Расширил `src/app/api/tobaccos/route.ts`:
+  - PATCH: body `{ id, brand?, line?, flavor?, defaultJarGrams?, thresholdGrams?, currentGrams?, notes? }`. Только SENIOR (403 иначе). Если currentGrams изменился — upsert StockItem + создаёт Operation (type=CORRECTION, source=MANUAL, note="Ручное редактирование", gramsBefore/gramsAfter/delta). Возвращает обновлённый tobacco.
+  - DELETE: body `{ id }`. Мягкое удаление (active: false). Только SENIOR.
+  - GET остался без auth (каталог виден всем), POST теперь тоже SENIOR-only.
+
+TASK 2 — КАЛЕНДАРЬ ГРАФИКА:
+- Создал `src/components/hookah/schedule-calendar.tsx`:
+  - Сетка месяца 7×5-6 ячеек (ПН ВТ СР ЧТ ПТ СБ ВС).
+  - Editorial: тонкие 1px границы между ячейками, .label-mono uppercase для заголовков дней недели и чисел.
+  - Каждая ячейка: число в верхнем левом углу (font-mono tabular-nums, ember в выходные), записи ниже (color square + master name truncated + hours "12-23").
+  - Сегодня: ember border (frame класс) на ячейке.
+  - Навигация: prev/next month (ChevronLeft/Right), "Сегодня" (только на sm+).
+  - Клик по дню открывает Dialog: существующие записи + (если canEdit) форма добавления (Select master из /api/masters, Input startHour, endHour, note). Кнопка "Добавить смену" → POST /api/schedule с {masterId, date, startHour, endHour, note}. Существующие записи с × (ember) для удаления → DELETE /api/schedule?id=.
+  - canEdit: только SENIOR. REGULAR видит график read-only (клик показывает диалог без формы добавления и без × удаления).
+  - Fetch: GET /api/schedule?from=YYYY-MM-01&to=YYYY-MM-last. Группировка по ISO-date.
+- Интеграция:
+  - senior-view.tsx: новый таб "ГРАФИК" (CalendarRange icon) между СМЕНА и СКЛАД. TabsList теперь grid-cols-9 (sm). render `<ScheduleCalendar canEdit refreshKey={refreshKey} onRefresh={refresh} />`.
+  - master-view.tsx: новый таб "ГРАФИК" в REGULAR-вкладках (TabsList grid-cols-4). render `<ScheduleCalendar canEdit={false} ... />`.
+
+TASK 3 — ИСТОРИЯ СМЕН С ФИЛЬТРАМИ:
+- Создал endpoint `src/app/api/shifts/history/route.ts`:
+  - GET ?masterId=&from=&to=&sort=date_desc|date_asc|hookah_desc|hookah_asc
+  - Возвращает закрытые + открытые смены в диапазоне (по умолчанию последние 30 дней).
+  - Для каждой смены: master info, hookahCount, openedAt, closedAt, requestsCount, wishesCount (query by createdAt between openedAt и closedAt).
+  - totals: shifts, hookahs, requests, wishes.
+- Создал `src/components/hookah/shift-history.tsx`:
+  - Фильтр-бар: Master Select (Все/по имени), Период Select (Неделя/Месяц/Период), при "Период" → 2 date input (С даты / По дату). Сортировка Select (По дате ↓/↑, По кальянам ↓/↑). Итоговая плашка.
+  - Таблица editorial: 1px границы, no rounded, no shadow. Колонки: Дата / Мастер / Кальяны (большое mono-число) / Длит. (8ч 15м) / Заяв. / Хот. / Смена (opened-closed HH:MM, LIVE badge для OPEN).
+  - Master cell: square avatar (color) + name (mono uppercase).
+  - Footer row: totals row с border-t-2 border-foreground и bg-muted/30.
+  - Export CSV (Download icon): собирает текущие filtered shifts в CSV с BOM (для Excel-кирилицы), разделитель ';', триггерит download через Blob+createObjectURL.
+- Интеграция в senior-view.tsx: переименовал таб "История" → "Операции" (OperationsList оставил), добавил новый таб "Смены" (ListChecks icon) → `<ShiftHistory refreshKey={refreshKey} onRefresh={refresh} />`. TabsList теперь grid-cols-9 (sm).
+
+TASK 4 — AI: update_schedule + БОТ:
+- `src/lib/ai.ts`:
+  - Добавил import { parseDateFromText, startOfDay, formatDateRu }.
+  - Новый AIAction: `{ tool: 'update_schedule', args: { masterName, dateText, startHour?, endHour?, action: 'add'|'remove' } }`.
+  - В allowedTools для SENIOR добавил пункт 8 (update_schedule) с примерами. REGULAR явно запрещён.
+  - В system prompt добавил правила речи: "поставь МАРТА на ЗАВТРА с 12 до 22" → add; "убери МАРТА с ПЯТНИЦЫ" → remove; "поставь Айрата на четверг с 16 до 23" → add.
+  - В executeAction добавил case 'update_schedule': проверка SENIOR (403 иначе), parseDateFromText, fuzzy find мастера по имени (точное → includes → included в имени), add → upsert ScheduleEntry, remove → delete если есть. Возвращает человекочитаемое сообщение.
+- `src/lib/bot-runner.ts`:
+  - В обработчике `bot.on('text')` и голосового: добавил в hasOtherIntent regex ключевые слова `поставь|убери|график|поставить|сним|сними` — чтобы "поставь Марата на завтра с 12 до 22" не перехватывался быстрым hookah-counter-парсером (число 12 не становилось "+12 кальянов").
+  - Через processMasterMessage AI теперь корректно вызывает update_schedule. Бот сам обрабатывает естественный язык.
+- `src/app/api/bot/schedule/route.ts`: улучшил визуальный формат ответа /schedule (разделитель '─────────────', '▪️' вместо '•', '–' вместо '-', hint про natural language "поставь Марата на завтра с 12 до 22" в пустом ответе).
+
+ФАЙЛЫ СОЗДАНЫ:
+- `src/components/hookah/schedule-calendar.tsx` (новый, ~470 строк)
+- `src/components/hookah/shift-history.tsx` (новый, ~470 строк)
+- `src/app/api/shifts/history/route.ts` (новый, ~110 строк)
+
+ФАЙЛЫ ИЗМЕНЕНЫ:
+- `src/components/hookah/dashboard.tsx` (полная переработка под редактирование)
+- `src/components/hookah/senior-view.tsx` (новые табы, schedule + shift-history, переименование)
+- `src/components/hookah/master-view.tsx` (новый таб schedule, header bg solid)
+- `src/app/api/tobaccos/route.ts` (+PATCH, +DELETE, requireSenior)
+- `src/lib/ai.ts` (+update_schedule action, system prompt rule)
+- `src/lib/bot-runner.ts` (+ключевые слова для hasOtherIntent)
+- `src/app/api/bot/schedule/route.ts` (визуальный формат вывода)
+
+ВЕРИФИКАЦИЯ:
+- `bun run lint` → EXIT 0 (без ошибок и предупреждений).
+- `dev.log` → ✓ Compiled in 131-478ms, без ошибок/предупреждений. (TELEGRAM_BOT_TOKEN не задан — ожидаемо, не блокирует.)
+- Sticky footer паттерн сохранён (min-h-screen flex flex-col + mt-auto на footer в senior/master-view).
+- Editorial стиль сохранён: Fragment Mono uppercase, sharp corners, 1px borders, ember только для важных состояний (LIVE, МАЛО, сегодня, ember-text).
+- Mobile-first responsive: TabsList grid-cols-4 (mobile) → grid-cols-9 (sm) для senior; grid-cols-4 для master; таблица shift-history горизонтально скроллит на мобиле (min-w-[720px] + overflow-x-auto).
+- 100% существующей функциональности сохранено: shift-panel, master-requests, wishes-panel, masters-manager, tobaccos-manager, operations-list, ai-chat, notifications-bell — без изменений.
