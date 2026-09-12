@@ -212,7 +212,7 @@ export function TobaccosManager({ refreshKey, onRefresh }: TobaccosManagerProps)
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-baseline gap-2 flex-wrap">
-                      <span className="font-mono uppercase text-sm font-bold tracking-tight truncate">
+                      <span className="font-mono text-sm font-bold tracking-tight truncate">
                         {t.brand}
                       </span>
                       <span className="font-sans text-xs text-muted-foreground truncate">

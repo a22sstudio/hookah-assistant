@@ -184,7 +184,7 @@ export function WishesPanel({ role, refreshKey, onRefresh }: WishesPanelProps) {
                       <div
                         className={`mt-0.5 h-9 w-9 shrink-0 ${masterAvatarClass(
                           w.master.color,
-                        )} flex items-center justify-center text-[10px] font-mono font-bold uppercase text-white rounded-md`}
+                        )} flex items-center justify-center text-[10px] font-mono font-bold text-white rounded-md`}
                       >
                         {initials(w.master.name)}
                       </div>

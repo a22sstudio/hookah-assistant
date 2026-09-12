@@ -478,13 +478,13 @@ export function SalaryCalculator({ refreshKey }: SalaryCalculatorProps) {
               <span
                 className={`h-7 w-7 shrink-0 ${masterAvatarClass(
                   currentMaster.color,
-                )} flex items-center justify-center text-[10px] font-mono font-bold uppercase text-white rounded-md`}
+                )} flex items-center justify-center text-[10px] font-mono font-bold text-white rounded-md`}
               >
                 {initials(currentMaster.name)}
               </span>
             )}
             <div>
-              <p className="font-mono text-sm font-bold uppercase tracking-tight">
+              <p className="body-sans text-sm font-bold tracking-tight">
                 {data.master.name}
               </p>
               <p className="label-mono-sm text-muted-foreground">

@@ -17,8 +17,13 @@ import {
 import { MasterRequest, REQUEST_STATUS_LABELS } from '@/lib/types'
 import { Tobacco } from '@/lib/types'
 import { masterAvatarClass, timeAgo, initials } from '@/lib/master-utils'
-import { Send, Loader2, Inbox, ShoppingCart, CheckCircle2, Package, Plus } from 'lucide-react'
+import { Send, Loader2, Inbox, ShoppingCart, CheckCircle2, Package, Plus, Tag } from 'lucide-react'
 import { toast } from 'sonner'
+
+interface ConsumableRef {
+  id: string
+  name: string
+}
 
 interface MasterRequestsProps {
   role: 'SENIOR' | 'REGULAR'
@@ -55,6 +60,7 @@ const NEXT_ICON = {
 export function MasterRequests({ role, refreshKey, onRefresh }: MasterRequestsProps) {
   const [items, setItems] = useState<MasterRequest[]>([])
   const [tobaccos, setTobaccos] = useState<Tobacco[]>([])
+  const [consumables, setConsumables] = useState<ConsumableRef[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<FilterChip>('all')
 
@@ -89,6 +95,12 @@ export function MasterRequests({ role, refreshKey, onRefresh }: MasterRequestsPr
         const tData = await tRes.json()
         setTobaccos(tData.tobaccos ?? [])
       }
+      // Загружаем список расходников (для тегов)
+      const cRes = await fetch('/api/consumables')
+      if (cRes.ok) {
+        const cData = await cRes.json()
+        setConsumables(cData.consumables ?? [])
+      }
     } catch {
       toast.error('Не удалось загрузить заявки')
     } finally {
@@ -120,6 +132,25 @@ export function MasterRequests({ role, refreshKey, onRefresh }: MasterRequestsPr
     if (filter === 'done') return items.filter((r) => r.status === 'DONE')
     return items
   }, [items, filter])
+
+  // Поиск расходника в тексте заявки (case-insensitive, по имени)
+  const findConsumableInText = useCallback(
+    (text: string): ConsumableRef | null => {
+      const lower = text.toLowerCase()
+      // Сначала ищем точное совпадение имени
+      let found = consumables.find((c) => lower.includes(c.name.toLowerCase()))
+      if (!found) {
+        // Частичное: первые 5+ символов имени
+        found = consumables.find(
+          (c) =>
+            c.name.length >= 5 &&
+            lower.includes(c.name.toLowerCase().slice(0, 5)),
+        )
+      }
+      return found ?? null
+    },
+    [consumables],
+  )
 
   const submit = async () => {
     const t = text.trim()
@@ -519,7 +550,7 @@ export function MasterRequests({ role, refreshKey, onRefresh }: MasterRequestsPr
                         <div
                           className={`mt-0.5 h-9 w-9 shrink-0 ${masterAvatarClass(
                             r.master.color,
-                          )} flex items-center justify-center text-[10px] font-mono font-bold uppercase text-white rounded-md`}
+                          )} flex items-center justify-center text-[10px] font-mono font-bold text-white rounded-md`}
                         >
                           {initials(r.master.name)}
                         </div>
@@ -534,6 +565,14 @@ export function MasterRequests({ role, refreshKey, onRefresh }: MasterRequestsPr
                           </div>
                         )}
                         <p className="body-sans text-sm break-words">{r.text}</p>
+                        {findConsumableInText(r.text) && (
+                          <div className="mt-1.5 inline-flex items-center gap-1 border border-border rounded-sm px-1.5 py-0.5 bg-muted/50">
+                            <Tag className="h-2.5 w-2.5 text-muted-foreground" />
+                            <span className="label-mono-sm text-muted-foreground">
+                              {findConsumableInText(r.text)!.name}
+                            </span>
+                          </div>
+                        )}
                         {r.grams != null && (
                           <p className="label-mono-sm mt-1">
                             Нужно: <span className="text-foreground font-bold">{r.grams}г</span>

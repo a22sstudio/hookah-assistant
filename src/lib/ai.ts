@@ -80,6 +80,8 @@ export type AIAction =
   | { tool: 'update_schedule'; args: { masterName: string; dateText: string; action: 'add' | 'remove' } }
   | { tool: 'add_schedule_multi'; args: { masterNames: string[]; dateText: string } }
   | { tool: 'calc_salary'; args: { masterName: string; dateText?: string } }
+  | { tool: 'update_consumable'; args: { name: string; qty: number; note?: string } }
+  | { tool: 'create_consumable_request'; args: { name: string; qty?: number } }
   | { tool: 'query'; args: { what: 'low_stock' | 'all_stock' | 'specific' | 'shift'; brand?: string; line?: string; flavor?: string } }
 
 export interface AIResult {
@@ -91,7 +93,7 @@ export interface AIResult {
 }
 
 // Системный промпт для ассистента (с учётом роли мастера)
-function buildSystemPrompt(stockContext: string, master: SessionMaster, shiftContext: string): string {
+function buildSystemPrompt(stockContext: string, master: SessionMaster, shiftContext: string, consumablesContext: string): string {
   const isSenior = master.role === 'SENIOR'
   const roleDesc = isSenior
     ? 'Старший кальянный мастер. Полный доступ: учёт табака, приход, заявки, управление сменой.'
@@ -108,12 +110,16 @@ function buildSystemPrompt(stockContext: string, master: SessionMaster, shiftCon
 8. update_schedule — редактировать график мастера: action="add" или "remove". masterName (имя мастера, fuzzy), dateText ("завтра", "пятница", "23 числа"). Примеры: "поставь Марата на завтра" → action=add, masterName="Марат", dateText="завтра". "убери Марата с пятницы" → action=remove, masterName="Марат", dateText="пятница".
 9. add_schedule_multi — поставить НЕСКОЛЬКО мастеров на один день. masterNames: массив имён, dateText. Пример: "поставь Марата и Айрата на завтра" → masterNames=["Марат","Айрат"], dateText="завтра".
 10. calc_salary — посчитать зарплату мастера за период. masterName (имя), dateText (опционально, по умолчанию текущий месяц). Примеры: "зарплата Марата за сентябрь" → masterName="Марат", dateText="сентябрь". "зарплата Айрата" → masterName="Айрат" (текущий месяц).
-11. query — low_stock (что мало), all_stock (все остатки), shift (кто на смене и активные заявки)`
+11. update_consumable — обновить точный остаток расходника (угли, мундштуки, фольга). name (имя расходника из контекста), qty (точное количество, число). Пример: "закончились угли cocourth" → name="Угли Cocourth 26мм", qty=0. "осталось 3 упаковки мундштуков" → name="Мундштуки", qty=3.
+12. create_consumable_request — создать заявку на закуп расходника. name (имя расходника), qty (опционально, сколько закупить). Пример: "закажи мундштуки" → name="Мундштуки", qty=не указано.
+13. query — low_stock (что мало), all_stock (все остатки), shift (кто на смене и активные заявки)`
     : `1. update_stock — отметить остаток табака (обычно когда "закончился" = 0, "мало осталось" = мало). Это списывает остаток и пушит старшему.
 2. create_request — заявка на закуп свободной формы ("BlackBurn Energy 2 банки")
 3. create_wish — хотелка/пожелание
 4. add_hookah_batch — добавить N кальянов к смене ("забил 5", "сделал 3", "накрутил 10")
-5. query — low_stock (что мало), all_stock (все остатки), shift (кто на смене)
+5. update_consumable — отметить остаток расходника (угли, мундштуки, фольга). name (из контекста расходников), qty (точное число). "закончились угли" → qty=0.
+6. create_consumable_request — создать заявку на закуп расходника. name (из контекста), qty (опционально).
+7. query — low_stock (что мало), all_stock (все остатки), shift (кто на смене)
 НЕ используй add_incoming, add_tobacco, create_order, update_schedule, add_schedule_multi, calc_salary — это для старшего мастера.`
 
   return `Ты — умный ассистент кальянной. Сейчас с тобой работает: ${master.name} (${roleDesc}).
@@ -122,6 +128,9 @@ function buildSystemPrompt(stockContext: string, master: SessionMaster, shiftCon
 ${stockContext}
 
 ПОРОГ «МАЛО»: по умолчанию 70 грамм. Если остаток ниже порога — позиция идёт в заявку.
+
+КОНТЕКСТ — расходники (угли, мундштуки, фольга и т.д.):
+${consumablesContext}
 
 ${shiftContext}
 
@@ -149,6 +158,10 @@ ${allowedTools}
 - "поставь Марата и Айрата на завтра" → add_schedule_multi masterNames=["Марат","Айрат"], dateText="завтра"
 - "зарплата Марата за сентябрь" → calc_salary masterName="Марат", dateText="сентябрь"
 - "зарплата Айрата" → calc_salary masterName="Айрат" (текущий месяц)
+- "закончились угли" / "кончились мундштуки" → update_consumable qty=0 + create_consumable_request
+- "мало мундштуков" / "мало углей" → update_consumable с qty из контекста (если известен) и create_consumable_request
+- "осталось N упаковок углей" → update_consumable name="..." qty=N
+- "закажи угли" / "закажи мундштуки" → create_consumable_request (если расходник есть в контексте) иначе create_request
 
 СТРУКТУРА ТАБАКА — ВАЖНО! У каждого табака 3 поля:
 - brand — бренд/производитель (Darkside, Tangiers, Musthave, Daily Hookah, Burn, BlackBurn)
@@ -179,6 +192,7 @@ ${allowedTools}
   Делай так ДЛЯ КАЖДОЙ позиции из накладной, которой нет в базе.
 - Если обычный мастер сообщает о табаке, которого нет в базе — скажи что нужно попросить старшего добавить.
 - Когда обычный мастер отмечает "закончился" (0г) или остаток стал ниже порога — это важно, старший получит автоматический пуш.
+- Когда обычный мастер отмечает расходник как закончился/мало — старший получает пуш автоматически.
 - Отвечай кратко, по делу, по-человечески, можно с эмодзи. Обращайся к мастеру по имени.
 - ВАЖНО: отвечай ТОЛЬКО на русском языке.
 
@@ -234,6 +248,34 @@ async function findTobacco(brand: string, line: string, flavor: string) {
   return match
 }
 
+// Fuzzy поиск расходника по имени
+async function findConsumable(name: string) {
+  const all = await db.consumable.findMany({ where: { active: true } })
+  const norm = (s: string) => s.toLowerCase().trim()
+  const target = norm(name)
+  if (!target) return null
+
+  // 1) Точное совпадение
+  let match = all.find((c) => norm(c.name) === target)
+  if (match) return match
+
+  // 2) Includes — расходник в имени запроса или наоборот
+  match = all.find(
+    (c) => norm(c.name).includes(target) || target.includes(norm(c.name)),
+  )
+  if (match) return match
+
+  // 3) Первые 5+ символов совпадают (для длинных имён)
+  if (target.length >= 5) {
+    match = all.find((c) =>
+      c.name.length >= 5 && norm(c.name).slice(0, 5) === target.slice(0, 5),
+    )
+    if (match) return match
+  }
+
+  return null
+}
+
 // Контекст склада для промпта
 async function buildStockContext(): Promise<string> {
   const tobaccos = await db.tobacco.findMany({
@@ -248,6 +290,20 @@ async function buildStockContext(): Promise<string> {
     const grams = t.stock?.currentGrams ?? 0
     const status = grams < t.thresholdGrams ? ' ⚠️ МАЛО' : ''
     return `- ${t.brand} / ${t.line} / ${t.flavor} | банка=${t.defaultJarGrams}г | остаток=${grams}г | порог=${t.thresholdGrams}г${status}`
+  })
+  return lines.join('\n')
+}
+
+// Контекст расходников для промпта
+async function buildConsumablesContext(): Promise<string> {
+  const items = await db.consumable.findMany({
+    where: { active: true },
+    orderBy: { name: 'asc' },
+  })
+  if (items.length === 0) return '(расходников пока нет)'
+  const lines = items.map((c) => {
+    const status = c.currentQty < c.threshold ? ' ⚠️ МАЛО' : ''
+    return `- ${c.name} | остаток=${c.currentQty} ${c.unit} | порог=${c.threshold}${status}`
   })
   return lines.join('\n')
 }
@@ -717,6 +773,59 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
         return { success: true, message: `Показано ${filtered.length} позиций "мало" (fallback)`, data: filtered }
       }
 
+      case 'update_consumable': {
+        const { name, qty, note } = action.args
+        const consumable = await findConsumable(name)
+        if (!consumable) {
+          return { success: false, message: `Расходник "${name}" не найден в базе` }
+        }
+        const before = consumable.currentQty
+        const newQty = Math.max(0, Math.min(100000, qty))
+        await db.consumable.update({
+          where: { id: consumable.id },
+          data: { currentQty: newQty },
+        })
+        const isLow = newQty < consumable.threshold
+        // Пуш старшему если обычный мастер отмечает «мало/закончился»
+        if (master.role !== 'SENIOR' && (newQty === 0 || isLow)) {
+          const reason = newQty === 0 ? 'закончился' : `мало осталось (${newQty} ${consumable.unit})`
+          const notifMsg = `📦 ${master.name} отметил: ${reason} — ${consumable.name}`
+          await db.notification.create({
+            data: {
+              type: 'LOW_STOCK',
+              message: notifMsg,
+              masterId: master.id,
+            },
+          })
+          await pushToSeniors(notifMsg)
+        }
+        return {
+          success: true,
+          message: `${consumable.name}: ${before} ${consumable.unit} → ${newQty} ${consumable.unit}${note ? ` (${note})` : ''}`,
+          data: { before, after: newQty, consumableId: consumable.id, unit: consumable.unit },
+        }
+      }
+
+      case 'create_consumable_request': {
+        const { name, qty } = action.args
+        const consumable = await findConsumable(name)
+        const unit = consumable?.unit ?? 'шт'
+        const text = consumable
+          ? `${consumable.name} — ${qty ?? 1} ${unit}`
+          : `${name} — ${qty ?? 1} ${unit}`
+        const request = await db.masterRequest.create({
+          data: { masterId: master.id, text },
+        })
+        if (master.role !== 'SENIOR') {
+          const notifMsg = `📋 ${master.name}: заявка на расходник — "${text}"`
+          await db.notification.create({
+            data: { type: 'REQUEST', message: notifMsg, masterId: master.id },
+          })
+          await pushToSeniors(notifMsg)
+        }
+        return { success: true, message: `Заявка принята: "${text}"`, data: { requestId: request.id } }
+      }
+
       default:
         return { success: false, message: 'Неизвестное действие' }
     }
@@ -750,7 +859,8 @@ export async function processMasterMessage(
 
   const stockContext = await buildStockContext()
   const shiftContext = await buildShiftContext(master)
-  const systemPrompt = buildSystemPrompt(stockContext, master, shiftContext)
+  const consumablesContext = await buildConsumablesContext()
+  const systemPrompt = buildSystemPrompt(stockContext, master, shiftContext, consumablesContext)
 
   let userContent = message
   if (options?.transcribedText && options.source === 'VOICE') {

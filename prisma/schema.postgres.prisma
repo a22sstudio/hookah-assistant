@@ -221,3 +221,20 @@ model DailySummary {
   @@unique([masterId, date])
   @@index([date])
 }
+
+// ============================================
+// Расходники (угли, мундштуки, и т.д.)
+// ============================================
+
+model Consumable {
+  id          String   @id @default(cuid())
+  name        String   @unique // "Угли Cocourth 26мм", "Мундштуки"
+  unit        String   @default("шт") // шт, упаковка, пачка
+  currentQty  Int      @default(0) // текущий остаток
+  threshold   Int      @default(5) // порог "мало"
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active])
+}

@@ -1041,3 +1041,103 @@ Task: Доработка таба СКЛАД — пустая линейка, р
 - src/components/hookah/dashboard.tsx (каскадные Select, brand edit dialog, empty line display)
 
 Lint: 0 ошибок. TypeScript: 0 ошибок в изменённых файлах.
+
+---
+Task ID: redesign-6
+Agent: main (Z.ai Code)
+
+Task: 3 фичи в Hookah Assistant CRM:
+1. Consumables (Расходники) — модель уже в Prisma, нужен API + UI + интеграция в senior/master views + AI integration
+2. Mobile calendar fix — schedule-calendar.tsx на <640px переключается в LIST view
+3. Typography cleanup — убрать избыточный uppercase (всё Caps на близких элементах путает)
+Плюс: JetBrains Mono заменяет Fragment Mono (поддерживает кириллицу), `.heading-mono` уже `text-transform: none`.
+
+Work Log:
+- Прочитал worklog.md (Tasks 1, 5, 7, 4 и т.д.) — понял контекст: PIN-логин, роли SENIOR/REGULAR, существующие табы в senior-view (8 шт.) и master-view (4 шт.), AI-движок в src/lib/ai.ts с ReAct через JSON {actions, reply}, существующие паттерны (requireSenior, masterAvatarClass, initials, label-mono/heading-mono).
+- Проверил globals.css — `.heading-mono` уже `text-transform: none`, `.label-mono` остаётся uppercase для микро-лейблов. Обновил шапку-коммент: «Fragment Mono» → «JetBrains Mono» (переменная `--font-fragment-mono` уже указывает на JetBrains Mono через layout.tsx).
+
+1. Consumables API (`src/app/api/consumables/route.ts`):
+   - `requireSenior()` helper — cookie-auth через `getCurrentMaster()`, 401 если нет, 403 если не SENIOR.
+   - GET — список активных расходников, сортировка по name, возвращает `{ consumables, canEdit }`.
+   - POST `{ name, unit?, threshold? }` — SENIOR only. Уникальность имени среди активных. Defaults: unit="шт", threshold=5, currentQty=0.
+   - PATCH `{ id, name?, unit?, currentQty?, threshold? }` — SENIOR only. Если меняется name — проверка уникальности среди активных (NOT id).
+   - DELETE `?id=<itemId>` — soft delete (active: false) — SENIOR only.
+
+2. ConsumablesPanel UI (`src/components/hookah/consumables-panel.tsx`):
+   - Простой плоский список (НЕ accordion).
+   - Props: `{ role, refreshKey, onRefresh }`. `role="REGULAR"` → readOnly, но quick-order работает.
+   - Stats: 4 карточки (Позиций, Мало, Достаточно, Всего шт.) — ember-accent на «Мало» если >0.
+   - Filter chips: «Все», «Мало», «Достаточно» (uppercase — ОК по правилам).
+   - Список расходников: каждая строка = name (body-sans, normal case) + unit + прогресс-бар (currentQty/threshold*2) + «→ заказ» кнопка на isLow позициях + Pencil для SENIOR.
+   - Клик по строке (SENIOR) → edit dialog (name, unit, currentQty, threshold, delete через AlertDialog).
+   - Кнопка «Добавить» (SENIOR only) → dialog с name + unit + threshold.
+   - Quick-order создаёт MasterRequest с текстом "{name} — 1 {unit}".
+
+3. Интеграция в senior-view.tsx:
+   - Добавил таб «Расход» (value="consumables", Boxes-иконка) — ПОСЛЕ «Склад», ПЕРЕД «Заявки».
+   - TabsList теперь `grid-cols-3 sm:grid-cols-9` (раньше было `grid-cols-4 sm:grid-cols-8`).
+   - TabsContent value="consumables" → `<ConsumablesPanel role="SENIOR" refreshKey={refreshKey} onRefresh={refresh} />`.
+   - Убрал `uppercase` с h1 masterName (теперь heading-mono, normal case) и с аватара.
+
+4. Интеграция в master-view.tsx:
+   - Добавил таб «Расход» (value="consumables") — после «Склад», перед «График».
+   - TabsList теперь `grid-cols-5` (раньше было `grid-cols-4`).
+   - `<ConsumablesPanel role="REGULAR" ... />` — read-only для обычного мастера, quick-order работает.
+   - Убрал `uppercase` с h1 masterName и аватара.
+
+5. MasterRequests + consumable tag matching:
+   - Загружает `/api/consumables` при `load()`.
+   - `findConsumableInText(text)` — двух-проходный fuzzy: точное includes имени, потом первые 5+ символов.
+   - В строке заявки, если текст содержит имя расходника, показывает inline-тег: иконка `Tag` + имя в label-mono-sm.
+   - Убрал `uppercase` с аватара мастера.
+
+6. AI integration (src/lib/ai.ts):
+   - Добавил 2 новых AIAction: `update_consumable` (name, qty, note?) и `create_consumable_request` (name, qty?).
+   - Добавил `findConsumable(name)` — fuzzy-поиск по имени (точное → includes → prefix-5).
+   - Добавил `buildConsumablesContext()` — список активных расходников с currentQty/threshold/unit + ⚠️ МАЛО badge в тексте.
+   - `buildSystemPrompt()` теперь принимает `consumablesContext` как 4-й параметр.
+   - allowedTools обновлён для BOTH ролей: SENIOR (13 tools, новые 11-12), REGULAR (7 tools, новые 5-6).
+   - Добавил правила в промпт: «закончились угли/мало мундштуков» → update_consumable qty=0 (или значение) + create_consumable_request; «закажи угли» → create_consumable_request если расходник есть в контексте.
+   - executeAction для `update_consumable`: fuzzy-поиск расходника → update currentQty → если обычный мастер и qty=0 или ниже порога → создаёт Notification type=LOW_STOCK + pushToSeniors.
+   - executeAction для `create_consumable_request`: fuzzy-поиск расходника для определения unit → создаёт MasterRequest с текстом "{name} — {qty ?? 1} {unit}" → если не SENIOR → создаёт Notification type=REQUEST + pushToSeniors.
+
+7. Mobile calendar fix (`src/components/hookah/schedule-calendar.tsx`):
+   - Десктоп-сетку обернул в `hidden sm:block` (видна на ≥640px). min-h клеток теперь 110px на всех размерах (раньше 88px мобиль / 110px десктоп).
+   - Новый мобильный list-view (`sm:hidden`): показывает ТОЛЬКО дни с запланированными сменами. Каждая строка: weekday short (Пн/Вт/...), число (font-mono bold), месяц genitive short (сен/окт/...), и список мастеров с цветной точкой + именем. SENIOR отмечен ⭐. Plus-иконка справа.
+   - Тап по строке открывает тот же DayDialog (через openDay(iso)).
+   - Если в месяце нет смен — показывает empty state «В этом месяце смен не запланировано.»
+   - Добавил `daysWithEntries` useMemo — фильтрация grid по дням с entries.
+   - Убрал `uppercase` с masterName в DayDialog (теперь body-sans normal case).
+
+8. Typography cleanup — `uppercase` removed из non-label/non-tab/non-chip/non-badge/non-button элементов:
+   - `senior-view.tsx` h1 masterName (теперь heading-mono), аватар
+   - `master-view.tsx` h1 masterName, аватар
+   - `master-requests.tsx` аватар
+   - `dashboard.tsx` brand-name в accordion trigger (font-mono normal case)
+   - `tobaccos-manager.tsx` brand-name в строке
+   - `masters-manager.tsx` master name + аватар
+   - `wishes-panel.tsx` аватар
+   - `shift-history.tsx` masterName, аватар, и cell «время сессии» (font-mono text-[10px])
+   - `salary-calculator.tsx` master name в summary + аватар
+   - `senior-shift-view.tsx` «Никого на смене.», ShiftCard masterName, аватар
+   - `orders-list.tsx` tobacco name в строке (теперь body-sans)
+   - `operations-list.tsx` tobacco name в строке (теперь body-sans)
+   - `notifications-bell.tsx` «Уведомления» в popover header
+   - `login-screen.tsx` error message (динамический серверный текст)
+   - `ai-chat.tsx` «AI ASSISTANT» (source-текст уже uppercase, класс redundant)
+   - `schedule-calendar.tsx` masterName в DayDialog
+   - ОСТАВЛЕНО uppercase: filter chips в consumables-panel, master-requests, dashboard (Все/Мало/Достаточно, Всё/Заказано/Получено, Весь склад/Мало/Достаточно) — это chips по правилам. Tab triggers без uppercase класса (используют `label-mono` семейство само).
+
+Verification:
+- `bun run lint` → exit 0, 0 ошибок, 0 предупреждений ✓
+- `bunx tsc --noEmit` → 0 ошибок в моих файлах; pre-existing ошибки в `bot-runner.ts`, `pdf-utils.ts`, `setup/route.ts`, `telegram/webhook/route.ts` не тронуты
+- dev.log: `✓ Compiled in 138ms`, но Google Fonts fetch fails (`fonts.gstatic.com` blocked в sandbox) — это pre-existing environmental issue, НЕ связано с моими изменениями, влияет только на первичный SSR/layout compilation.
+- Финальный grep `uppercase` в hookah-компонентах → только 9 совпадений, все на filter chip кнопках (корректно по правилам).
+
+Stage Summary:
+- 3 фичи полностью реализованы: расходники (CRUD + UI + AI), мобильный календарь (list view <640px), типографика (убран избыточный uppercase).
+- Добавлено 2 новых файла (consumables API route + ConsumablesPanel).
+- Изменено 15 файлов (views, ai.ts, schedule-calendar, typography cleanup).
+- PIN-коды для демо не изменились: старший Тимур=1111, мастера Айрат=2222, Марат=3333.
+- Старший видит 9 табов (Смена/График/Зарплата/Склад/Расход/Заявки/Хотелки/Мастера/Смены), обычный мастер — 5 табов (Заявки/Хотелки/Склад/Расход/График).
+- AI теперь понимает: «закончились угли cocourth» → update_consumable qty=0 + create_consumable_request, с авто-пушем старшему (тип LOW_STOCK).

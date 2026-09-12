@@ -404,11 +404,11 @@ export function ShiftHistory({ refreshKey, onRefresh }: ShiftHistoryProps) {
                       <span
                         className={`h-6 w-6 shrink-0 ${masterAvatarClass(
                           s.masterColor,
-                        )} flex items-center justify-center text-[10px] font-mono font-bold uppercase text-white rounded-sm`}
+                        )} flex items-center justify-center text-[10px] font-mono font-bold text-white rounded-sm`}
                       >
                         {initials(s.masterName)}
                       </span>
-                      <span className="font-mono text-xs font-bold uppercase tracking-tight truncate">
+                      <span className="body-sans text-xs font-bold tracking-tight truncate">
                         {s.masterName}
                       </span>
                     </div>
@@ -430,7 +430,7 @@ export function ShiftHistory({ refreshKey, onRefresh }: ShiftHistoryProps) {
                   <td className="py-3 px-3 border-r border-border text-right font-mono text-xs tabular text-muted-foreground">
                     {s.wishesCount}
                   </td>
-                  <td className="py-3 px-3 font-mono text-[10px] uppercase tracking-tight whitespace-nowrap">
+                  <td className="py-3 px-3 font-mono text-[10px] tracking-tight whitespace-nowrap">
                     <span className="text-muted-foreground/70">
                       {fmtTime(s.openedAt)} — {s.closedAt ? fmtTime(s.closedAt) : 'сейчас'}
                     </span>

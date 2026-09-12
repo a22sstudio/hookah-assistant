@@ -104,7 +104,7 @@ export function OperationsList({ refreshKey }: OperationsListProps) {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-baseline gap-2 flex-wrap">
-                        <span className="font-mono uppercase text-sm font-bold tracking-tight truncate">
+                        <span className="body-sans text-sm font-bold tracking-tight truncate">
                           {op.tobacco ? `${op.tobacco.brand} ${op.tobacco.flavor}` : '—'}
                         </span>
                         <span className="label-mono">{OPERATION_LABELS[op.type]}</span>

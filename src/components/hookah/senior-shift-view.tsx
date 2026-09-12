@@ -117,7 +117,7 @@ export function SeniorShiftView({ refreshKey, onRefresh }: SeniorShiftViewProps)
       {shifts.length === 0 ? (
         <div className="border border-border rounded-md p-12 text-center shadow-sm-soft">
           <Users className="h-8 w-8 mx-auto mb-4 text-muted-foreground/70" />
-          <p className="font-mono uppercase text-sm font-bold tracking-tight text-foreground">Никого на смене.</p>
+          <p className="body-sans text-sm font-bold tracking-tight text-foreground">Никого на смене.</p>
           <p className="body-sans text-sm text-muted-foreground mt-2">
             Когда мастера откроют смены, они появятся здесь.
           </p>
@@ -147,13 +147,13 @@ function ShiftCard({ shift }: { shift: ShiftInfo }) {
           <div
             className={`h-12 w-12 shrink-0 ${masterAvatarClass(
               shift.masterColor,
-            )} flex items-center justify-center text-sm font-mono font-bold uppercase text-white rounded-md`}
+            )} flex items-center justify-center text-sm font-mono font-bold text-white rounded-md`}
           >
             {initials(shift.masterName)}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-baseline gap-2">
-              <p className="font-mono uppercase text-sm font-bold tracking-tight truncate text-foreground">
+              <p className="body-sans text-sm font-bold tracking-tight truncate text-foreground">
                 {shift.masterName}
               </p>
               {shift.masterRole === 'SENIOR' && (

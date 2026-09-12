@@ -283,7 +283,7 @@ export function AIChat({ onAction }: AIChatProps) {
       <div className="flex items-center gap-2 px-4 h-[60px] border-b border-border bg-foreground text-background">
         <Sparkles className="h-4 w-4 text-ember" />
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-mono uppercase tracking-tight leading-none font-bold">
+          <p className="text-xs font-mono tracking-tight leading-none font-bold">
             AI ASSISTANT
           </p>
           <p className="label-mono-sm mt-0.5 text-background/60">

@@ -123,7 +123,7 @@ export function NotificationsBell({ refreshKey }: NotificationsBellProps) {
         <div className="flex items-center justify-between px-3 py-2.5 border-b border-border bg-foreground text-background rounded-t-md">
           <div className="flex items-center gap-2">
             <Bell className="h-3.5 w-3.5" />
-            <span className="font-mono uppercase tracking-tight text-xs font-bold">Уведомления</span>
+            <span className="font-mono tracking-tight text-xs font-bold">Уведомления</span>
             {unread > 0 && (
               <span className="text-[10px] bg-ember text-ember-foreground px-1.5 py-0.5 font-mono font-bold rounded-sm">
                 {unread}

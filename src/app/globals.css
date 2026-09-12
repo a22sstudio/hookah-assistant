@@ -5,8 +5,10 @@
 
 /* ═══════════════════════════════════════════════════════════
    HOOKAH ASSISTANT — Design System
-   Гибрид: editorial identity (Fragment Mono + ember) +
+   Гибрид: editorial identity (JetBrains Mono + ember) +
    Linear principles (3-tier tokens, dark-native, motion, shadows)
+   Шрифт-переменная --font-fragment-mono указывает на JetBrains Mono
+   (имя переменной сохранено для обратной совместимости; supports Cyrillic).
    ═══════════════════════════════════════════════════════════ */
 
 @theme inline {
@@ -310,31 +312,31 @@
    TIER 3: COMPONENT-LEVEL UTILITIES (editorial identity preserved)
    ═══════════════════════════════════════════════════════════ */
 @layer utilities {
-  /* Type utilities — editorial identity via Fragment Mono */
+  /* Type utilities — JetBrains Mono для labels/headings, Inter для body */
   .label-mono {
     font-family: var(--font-fragment-mono), ui-monospace, monospace;
     text-transform: uppercase;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.04em;
     font-size: var(--text-xs);
-    font-weight: 400;
+    font-weight: 500;
     color: var(--muted-foreground);
     line-height: 1.4;
   }
   .label-mono-sm {
     font-family: var(--font-fragment-mono), ui-monospace, monospace;
     text-transform: uppercase;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.04em;
     font-size: 10px;
-    font-weight: 400;
+    font-weight: 500;
     color: var(--muted-foreground);
     line-height: 1.4;
   }
   .heading-mono {
     font-family: var(--font-fragment-mono), ui-monospace, monospace;
-    text-transform: uppercase;
+    text-transform: none; /* НЕ uppercase для крупных заголовков — лучше читается */
     letter-spacing: -0.02em;
-    font-weight: 700;
-    line-height: 1.1;
+    font-weight: 600;
+    line-height: 1.15;
   }
   .body-sans {
     font-family: var(--font-inter), system-ui, sans-serif;

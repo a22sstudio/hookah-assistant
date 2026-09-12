@@ -182,7 +182,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
           </div>
 
           {error && (
-            <p className="text-sm text-destructive font-mono uppercase tracking-tight fade-in">
+            <p className="text-sm text-destructive font-mono tracking-tight fade-in">
               {error}
             </p>
           )}

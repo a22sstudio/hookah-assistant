@@ -58,6 +58,12 @@ const MONTHS_NOM = [
   'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
 ]
+// Короткий формат дня для мобильного списка: «Пн, 15 сен»
+const WEEKDAYS_MOBILE = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'] // 0=вс
+const MONTHS_GEN_SHORT = [
+  'янв', 'фев', 'мар', 'апр', 'май', 'июн',
+  'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
+]
 
 function startOfMonth(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), 1)
@@ -163,6 +169,17 @@ export function ScheduleCalendar({
     onRefresh?.()
   }
 
+  // Список дней с событиями для мобильного view (скрытый на десктопе)
+  const daysWithEntries = useMemo(() => {
+    return grid
+      .filter((c): c is { date: Date; iso: string } => !!c.date && !!c.iso && (entriesByDate[c.iso]?.length ?? 0) > 0)
+      .map((c) => ({
+        ...c,
+        entries: entriesByDate[c.iso] ?? [],
+        isToday: c.iso === todayIso,
+      }))
+  }, [grid, entriesByDate, todayIso])
+
   return (
     <div className="space-y-4">
       {/* Заголовок + навигация */}
@@ -194,8 +211,8 @@ export function ScheduleCalendar({
         </div>
       </div>
 
-      {/* День недели заголовки */}
-      <div className="border border-border rounded-md shadow-sm-soft overflow-hidden">
+      {/* День недели заголовки + сетка (десктоп ≥640px) */}
+      <div className="hidden sm:block border border-border rounded-md shadow-sm-soft overflow-hidden">
         <div className="grid grid-cols-7">
           {WEEKDAYS_SHORT.map((d) => (
             <div
@@ -218,7 +235,7 @@ export function ScheduleCalendar({
                 return (
                   <div
                     key={`empty-${i}`}
-                    className="border-b border-r border-border last:border-r-0 min-h-[88px] sm:min-h-[110px] bg-muted/30"
+                    className="border-b border-r border-border last:border-r-0 min-h-[110px] bg-muted/30"
                   />
                 )
               }
@@ -233,7 +250,7 @@ export function ScheduleCalendar({
                   type="button"
                   key={cell.iso}
                   onClick={() => openDay(cell.iso!)}
-                  className={`group text-left border-b border-r border-border last:border-r-0 min-h-[88px] sm:min-h-[110px] p-1.5 sm:p-2 hover:bg-muted/40 transition-base transition-colors flex flex-col gap-1 ${
+                  className={`group text-left border-b border-r border-border last:border-r-0 min-h-[110px] p-2 hover:bg-muted/40 transition-base transition-colors flex flex-col gap-1 ${
                     isToday ? 'frame-ember' : ''
                   }`}
                 >
@@ -273,6 +290,69 @@ export function ScheduleCalendar({
                       </div>
                     )}
                   </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Мобильный список (только дни с запланированными сменами) */}
+      <div className="sm:hidden border border-border rounded-md shadow-sm-soft overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-center text-muted-foreground label-mono flex items-center justify-center gap-2">
+            <Loader2 className="h-3 w-3 animate-spin" /> Загрузка...
+          </div>
+        ) : daysWithEntries.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground text-sm body-sans">
+            В этом месяце смен не запланировано.
+          </div>
+        ) : (
+          <div className="stagger-children">
+            {daysWithEntries.map(({ date, iso, entries: dayEntries, isToday }) => {
+              const wdShort = WEEKDAYS_MOBILE[date.getDay()]
+              const monthShort = MONTHS_GEN_SHORT[date.getMonth()]
+              return (
+                <button
+                  type="button"
+                  key={iso}
+                  onClick={() => openDay(iso)}
+                  className={`w-full text-left p-3 border-b border-border last:border-b-0 hover:bg-muted/40 transition-base transition-colors flex items-start gap-3 ${
+                    isToday ? 'frame-ember' : ''
+                  }`}
+                >
+                  <div className="shrink-0 w-16">
+                    <div className="label-mono-sm text-muted-foreground capitalize">
+                      {wdShort}
+                    </div>
+                    <div className="font-mono text-lg font-bold leading-none tabular text-foreground mt-0.5">
+                      {date.getDate()}
+                    </div>
+                    <div className="label-mono-sm text-muted-foreground mt-0.5">
+                      {monthShort}
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0 space-y-1">
+                    {dayEntries.map((e) => (
+                      <div
+                        key={e.id}
+                        className="flex items-center gap-1.5"
+                      >
+                        <span
+                          className={`h-2 w-2 shrink-0 ${masterAvatarClass(
+                            e.masterColor,
+                          )} rounded-sm`}
+                        />
+                        <span className="body-sans text-sm truncate text-foreground">
+                          {e.masterName}
+                        </span>
+                        {e.masterRole === 'SENIOR' && (
+                          <span className="label-mono-sm text-ember font-bold">⭐</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <Plus className="h-3 w-3 text-muted-foreground/70 mt-1" />
                 </button>
               )
             })}
@@ -425,7 +505,7 @@ function DayDialog({
                   )} rounded-sm`}
                 />
                 <div className="flex-1 min-w-0">
-                  <p className="font-mono text-sm font-bold uppercase tracking-tight truncate">
+                  <p className="body-sans text-sm font-bold tracking-tight truncate">
                     {e.masterName}
                   </p>
                   {e.note && (

@@ -13,11 +13,12 @@ import { MastersManager } from '@/components/hookah/masters-manager'
 import { NotificationsBell } from '@/components/hookah/notifications-bell'
 import { AIChat } from '@/components/hookah/ai-chat'
 import { ScheduleCalendar } from '@/components/hookah/schedule-calendar'
+import { ConsumablesPanel } from '@/components/hookah/consumables-panel'
 import { ShiftHistory } from '@/components/hookah/shift-history'
 import { SalaryCalculator } from '@/components/hookah/salary-calculator'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { Leaf } from 'lucide-react'
-import { MessageCircle, LayoutDashboard, ShoppingCart, Star, Clock, LogOut, Users, CalendarRange, ListChecks, Wallet } from 'lucide-react'
+import { MessageCircle, LayoutDashboard, ShoppingCart, Star, Clock, LogOut, Users, CalendarRange, ListChecks, Wallet, Boxes } from 'lucide-react'
 import { masterAvatarClass, initials } from '@/lib/master-utils'
 import { toast } from 'sonner'
 import { Master } from '@/lib/types'
@@ -54,7 +55,7 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
           <div className="h-6 w-px bg-border hidden sm:block" />
           <div className="flex-1 min-w-0">
             <span className="label-mono">Senior /</span>
-            <h1 className="font-mono uppercase font-bold tracking-tight text-sm sm:text-base leading-tight truncate text-foreground">
+            <h1 className="heading-mono font-bold tracking-tight text-sm sm:text-base leading-tight truncate text-foreground">
               {master.name}
             </h1>
           </div>
@@ -69,7 +70,7 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
           <div
             className={`h-9 w-9 shrink-0 ${masterAvatarClass(
               master.color,
-            )} flex items-center justify-center text-xs font-mono font-bold uppercase text-white rounded-md`}
+            )} flex items-center justify-center text-xs font-mono font-bold text-white rounded-md`}
             title={master.name}
           >
             {initials(master.name)}
@@ -93,7 +94,7 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
           {/* Левая колонка */}
           <div className="min-w-0">
             <Tabs defaultValue="shift" className="w-full">
-              <TabsList className="grid w-full grid-cols-4 sm:grid-cols-8 h-auto mb-6">
+              <TabsList className="grid w-full grid-cols-3 sm:grid-cols-9 h-auto mb-6">
                 <TabsTrigger
                   value="shift"
                   className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]"
@@ -121,6 +122,13 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
                 >
                   <LayoutDashboard className="h-4 w-4" />
                   <span>Склад</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="consumables"
+                  className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]"
+                >
+                  <Boxes className="h-4 w-4" />
+                  <span>Расход</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="requests"
@@ -168,6 +176,13 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
               </TabsContent>
               <TabsContent value="dashboard">
                 <Dashboard refreshKey={refreshKey} onRefresh={refresh} />
+              </TabsContent>
+              <TabsContent value="consumables">
+                <ConsumablesPanel
+                  role="SENIOR"
+                  refreshKey={refreshKey}
+                  onRefresh={refresh}
+                />
               </TabsContent>
               <TabsContent value="requests">
                 <MasterRequests

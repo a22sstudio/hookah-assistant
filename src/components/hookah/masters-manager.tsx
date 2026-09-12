@@ -391,13 +391,13 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                       <div
                         className={`h-10 w-10 shrink-0 ${masterAvatarClass(
                           m.color,
-                        )} flex items-center justify-center text-xs font-mono font-bold uppercase text-white border-2 ${colors.ring}/30 rounded-md`}
+                        )} flex items-center justify-center text-xs font-mono font-bold text-white border-2 ${colors.ring}/30 rounded-md`}
                       >
                         {initials(m.name)}
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline gap-2 flex-wrap">
-                          <span className="font-mono uppercase text-sm font-bold tracking-tight truncate text-foreground">
+                          <span className="body-sans text-sm font-bold tracking-tight truncate text-foreground">
                             {m.name}
                           </span>
                           {m.role === 'SENIOR' ? (

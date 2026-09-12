@@ -9,6 +9,7 @@ import { ShiftPanel } from '@/components/hookah/shift-panel'
 import { MasterRequests } from '@/components/hookah/master-requests'
 import { WishesPanel } from '@/components/hookah/wishes-panel'
 import { Dashboard } from '@/components/hookah/dashboard'
+import { ConsumablesPanel } from '@/components/hookah/consumables-panel'
 import { AIChat } from '@/components/hookah/ai-chat'
 import { ScheduleCalendar } from '@/components/hookah/schedule-calendar'
 import { masterAvatarClass, initials } from '@/lib/master-utils'
@@ -19,6 +20,7 @@ import {
   Package,
   LogOut,
   CalendarRange,
+  Boxes,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -50,13 +52,13 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
           <div
             className={`h-9 w-9 shrink-0 ${masterAvatarClass(
               master.color,
-            )} flex items-center justify-center text-xs font-mono font-bold uppercase text-white rounded-md`}
+            )} flex items-center justify-center text-xs font-mono font-bold text-white rounded-md`}
           >
             {initials(master.name)}
           </div>
           <div className="flex-1 min-w-0">
             <span className="label-mono">Привет,</span>
-            <h1 className="font-mono uppercase font-bold tracking-tight text-sm sm:text-base leading-tight truncate text-foreground">
+            <h1 className="heading-mono font-bold tracking-tight text-sm sm:text-base leading-tight truncate text-foreground">
               {master.name}
             </h1>
           </div>
@@ -87,7 +89,7 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
 
             {/* Табы */}
             <Tabs defaultValue="requests" className="w-full">
-              <TabsList className="grid w-full grid-cols-4 h-auto">
+              <TabsList className="grid w-full grid-cols-5 h-auto">
                 <TabsTrigger
                   value="requests"
                   className="flex flex-col gap-1 py-2.5"
@@ -108,6 +110,13 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
                 >
                   <Package className="h-4 w-4" />
                   <span>Склад</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="consumables"
+                  className="flex flex-col gap-1 py-2.5"
+                >
+                  <Boxes className="h-4 w-4" />
+                  <span>Расход</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="schedule"
@@ -135,6 +144,13 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
               <TabsContent value="stock" className="pt-4">
                 <Dashboard
                   readOnly
+                  refreshKey={refreshKey}
+                  onRefresh={refresh}
+                />
+              </TabsContent>
+              <TabsContent value="consumables" className="pt-4">
+                <ConsumablesPanel
+                  role="REGULAR"
                   refreshKey={refreshKey}
                   onRefresh={refresh}
                 />

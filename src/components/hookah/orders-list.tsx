@@ -132,7 +132,7 @@ export function OrdersList({ refreshKey, onRefresh }: OrdersListProps) {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <div className="font-mono uppercase text-sm font-bold tracking-tight truncate">
+                      <div className="body-sans text-sm font-bold tracking-tight truncate">
                         {o.tobacco
                           ? `${o.tobacco.brand} ${o.tobacco.line} ${o.tobacco.flavor}`
                           : '—'}
