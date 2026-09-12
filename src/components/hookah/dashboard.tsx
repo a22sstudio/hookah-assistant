@@ -743,9 +743,29 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
                 <AccordionItem
                   key={brand}
                   value={brand}
-                  className={`border-border ${groupIndex > 0 ? 'border-t-2' : 'border-t'}`}
+                  className={`relative border-border ${groupIndex > 0 ? 'border-t-2' : 'border-t'}`}
                 >
-                  <AccordionTrigger className="px-4 py-4 bg-muted hover:bg-muted/80 transition-base transition-colors group border-b border-border data-[state=open]:border-b-0">
+                  {/* Кнопка редактирования бренда — абсолютно позиционирована, ВНЕ AccordionTrigger */}
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      aria-label={`Настройки бренда ${brand}`}
+                      title="Настройки бренда"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        openBrandEdit(brand)
+                      }}
+                      onPointerDown={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                      }}
+                      className="absolute top-1 right-1 z-10 flex items-center justify-center w-11 h-11 rounded-md text-muted-foreground hover:text-foreground hover:bg-background transition-base cursor-pointer opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 touch-manipulation"
+                    >
+                      <Settings2 className="h-4 w-4" />
+                    </button>
+                  )}
+                  <AccordionTrigger className="px-4 py-4 pr-12 bg-muted hover:bg-muted/80 transition-base transition-colors group border-b border-border data-[state=open]:border-b-0">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <span className="font-mono text-base font-bold tracking-tight truncate text-foreground">
                         {brand}
@@ -759,33 +779,6 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
                         </Badge>
                       )}
                     </div>
-                    {!readOnly && (
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        aria-label={`Настройки бренда ${brand}`}
-                        title="Настройки бренда"
-                        onPointerDown={(e) => {
-                          e.stopPropagation()
-                          e.preventDefault()
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          e.preventDefault()
-                          openBrandEdit(brand)
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.stopPropagation()
-                            e.preventDefault()
-                            openBrandEdit(brand)
-                          }
-                        }}
-                        className="ml-auto inline-flex items-center justify-center w-11 h-11 -mr-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-background transition-base cursor-pointer opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 shrink-0 touch-manipulation"
-                      >
-                        <Settings2 className="h-4 w-4" />
-                      </span>
-                    )}
                   </AccordionTrigger>
                   <AccordionContent className="p-0 bg-background">
                     <div className="stagger-children border-l-2 border-border ml-4">
