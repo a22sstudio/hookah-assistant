@@ -169,10 +169,10 @@ export function ScheduleCalendar({
     onRefresh?.()
   }
 
-  // Список дней с событиями для мобильного view (скрытый на десктопе)
-  const daysWithEntries = useMemo(() => {
+  // Список ВСЕХ дней месяца для мобильного view (включая пустые — чтобы можно было добавить мастера)
+  const allDaysMobile = useMemo(() => {
     return grid
-      .filter((c): c is { date: Date; iso: string } => !!c.date && !!c.iso && (entriesByDate[c.iso]?.length ?? 0) > 0)
+      .filter((c): c is { date: Date; iso: string } => !!c.date && !!c.iso)
       .map((c) => ({
         ...c,
         entries: entriesByDate[c.iso] ?? [],
@@ -297,21 +297,18 @@ export function ScheduleCalendar({
         )}
       </div>
 
-      {/* Мобильный список (только дни с запланированными сменами) */}
+      {/* Мобильный список — ВСЕ дни месяца (пустые тоже, для добавления мастеров) */}
       <div className="sm:hidden border border-border rounded-md shadow-sm-soft overflow-hidden">
         {loading ? (
           <div className="p-8 text-center text-muted-foreground label-mono flex items-center justify-center gap-2">
             <Loader2 className="h-3 w-3 animate-spin" /> Загрузка...
           </div>
-        ) : daysWithEntries.length === 0 ? (
-          <div className="p-8 text-center text-muted-foreground text-sm body-sans">
-            В этом месяце смен не запланировано.
-          </div>
         ) : (
           <div className="stagger-children">
-            {daysWithEntries.map(({ date, iso, entries: dayEntries, isToday }) => {
+            {allDaysMobile.map(({ date, iso, entries: dayEntries, isToday }) => {
               const wdShort = WEEKDAYS_MOBILE[date.getDay()]
               const monthShort = MONTHS_GEN_SHORT[date.getMonth()]
+              const isEmpty = dayEntries.length === 0
               return (
                 <button
                   type="button"
@@ -319,7 +316,7 @@ export function ScheduleCalendar({
                   onClick={() => openDay(iso)}
                   className={`w-full text-left p-3 border-b border-border last:border-b-0 hover:bg-muted/40 transition-base transition-colors flex items-start gap-3 ${
                     isToday ? 'frame-ember' : ''
-                  }`}
+                  } ${isEmpty ? 'opacity-60' : ''}`}
                 >
                   <div className="shrink-0 w-16">
                     <div className="label-mono-sm text-muted-foreground capitalize">
@@ -333,24 +330,30 @@ export function ScheduleCalendar({
                     </div>
                   </div>
                   <div className="flex-1 min-w-0 space-y-1">
-                    {dayEntries.map((e) => (
-                      <div
-                        key={e.id}
-                        className="flex items-center gap-1.5"
-                      >
-                        <span
-                          className={`h-2 w-2 shrink-0 ${masterAvatarClass(
-                            e.masterColor,
-                          )} rounded-sm`}
-                        />
-                        <span className="body-sans text-sm truncate text-foreground">
-                          {e.masterName}
-                        </span>
-                        {e.masterRole === 'SENIOR' && (
-                          <span className="label-mono-sm text-ember font-bold">⭐</span>
-                        )}
-                      </div>
-                    ))}
+                    {isEmpty ? (
+                      <span className="label-mono-sm text-muted-foreground">
+                        нет смен · тапни чтобы добавить
+                      </span>
+                    ) : (
+                      dayEntries.map((e) => (
+                        <div
+                          key={e.id}
+                          className="flex items-center gap-1.5"
+                        >
+                          <span
+                            className={`h-2 w-2 shrink-0 ${masterAvatarClass(
+                              e.masterColor,
+                            )} rounded-sm`}
+                          />
+                          <span className="body-sans text-sm truncate text-foreground">
+                            {e.masterName}
+                          </span>
+                          {e.masterRole === 'SENIOR' && (
+                            <span className="label-mono-sm text-ember font-bold">⭐</span>
+                          )}
+                        </div>
+                      ))
+                    )}
                   </div>
                   <Plus className="h-3 w-3 text-muted-foreground/70 mt-1" />
                 </button>
