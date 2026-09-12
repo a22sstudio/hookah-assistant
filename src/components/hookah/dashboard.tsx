@@ -721,7 +721,7 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
       </div>
 
       {/* Аккордеон по брендам */}
-      <div className="border border-border rounded-md overflow-hidden shadow-sm-soft">
+      <div className="border border-border rounded-md shadow-sm-soft">
         {loading ? (
           <div className="p-8 text-center text-muted-foreground label-mono flex items-center justify-center gap-2">
             <Loader2 className="h-3 w-3 animate-spin" /> Загрузка...
@@ -752,18 +752,11 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
                       aria-label={`Настройки бренда ${brand}`}
                       title="Настройки бренда"
                       onClick={(e) => {
-                        e.preventDefault()
                         e.stopPropagation()
+                        e.preventDefault()
                         openBrandEdit(brand)
                       }}
-                      onPointerDown={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                      }}
-                      onTouchStart={(e) => {
-                        e.stopPropagation()
-                      }}
-                      className="absolute top-1 right-1 z-20 flex items-center justify-center w-11 h-11 rounded-md text-muted-foreground hover:text-foreground hover:bg-background transition-base cursor-pointer opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 touch-manipulation"
+                      className="absolute top-1 right-1 z-30 flex items-center justify-center w-11 h-11 rounded-md text-muted-foreground hover:text-foreground hover:bg-background transition-base cursor-pointer opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100"
                     >
                       <Settings2 className="h-4 w-4" />
                     </button>
