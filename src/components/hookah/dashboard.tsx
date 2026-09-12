@@ -163,11 +163,13 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
 
   // Все бренды (для управления состоянием expand/collapse)
   const allBrands = useMemo(() => grouped.map(([b]) => b), [grouped])
+  const allBrandsKey = allBrands.join('|')
 
-  // По умолчанию все развернуты
+  // По умолчанию все развернуты (только при смене набора брендов)
   useEffect(() => {
     setExpandedBrands(allBrands)
-  }, [allBrands])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allBrandsKey])
 
   const lowCount = tobaccos.filter((t) => t.isLow).length
   const totalGrams = tobaccos.reduce((sum, t) => sum + t.currentGrams, 0)
@@ -205,9 +207,9 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
         brand: editForm.brand.trim(),
         line: editForm.line.trim(),
         flavor: editForm.flavor.trim(),
-        defaultJarGrams: Number(editForm.defaultJarGrams),
-        thresholdGrams: Number(editForm.thresholdGrams),
-        currentGrams: Number(editForm.currentGrams),
+        defaultJarGrams: Number(editForm.defaultJarGrams) || 250,
+        thresholdGrams: Number(editForm.thresholdGrams) || 70,
+        currentGrams: Number(editForm.currentGrams) || 0,
         notes: editForm.notes.trim() || null,
       }
       const res = await fetch(
