@@ -908,3 +908,46 @@ Task: Крупная UX реорганизация Hookah Assistant CRM — merg
 - prisma/schema.prisma — уже обновлён до Master.rate и ScheduleEntry без startHour/endHour (schema был обновлён до меня, только пушнул в БД).
 - globals.css — без изменений.
 - 3-tier design tokens, dark-native mode, motion tokens, shadow tokens — все использованы в новых компонентах.
+
+---
+Task ID: redesign-4
+Agent: main (Z.ai Code)
+Task: Реорганизация CRM — объединение склада, multi-master график, расчёт зарплаты.
+
+Большие изменения по UX (по запросу пользователя):
+
+1. СКЛАД + СПРАВОЧНИК = один таб:
+   - Аккордеон по брендам (expand/collapse)
+   - Sub-фильтры: Весь склад / Мало / Достаточно
+   - Кнопка 'Добавить' (inline dialog)
+   - Quick-order '→ заказ' на позициях 'мало'
+   - readOnly prop для обычных мастеров
+
+2. ЗАКАЗ (Заявки):
+   - Sub-фильтры: Всё / Заказано / Получено
+   - Структурированная форма: бренд → вкус → кол-во
+   - Free-text textarea сохранён (для AI)
+
+3. ГРАФИК:
+   - Убраны startHour/endHour (только открыть/закрыть)
+   - Multiple masters per day (до 4 видно + N more)
+   - ScheduleEntry: убран @@unique
+
+4. ЗАРПЛАТА (новый таб):
+   - Master select + date range
+   - Календарь подсвечивает смены мастера
+   - Смен × rate (1600₽) = Итого
+   - Export TXT/CSV
+   - API /api/salary (SENIOR only)
+
+5. AI:
+   - add_schedule_multi (много мастеров сразу)
+   - calc_salary (русские месяцы)
+   - 'зарплат' в hasOtherIntent regex
+
+6. Убраны:
+   - Таб СПРАВОЧНИК (влит в СКЛАД)
+   - Таб ОПЕРАЦИИ (notifications покрывают)
+
+БД: Master.rate Int @default(1600), ScheduleEntry без startHour/endHour и @@unique.
+Lint: 0 ошибок. 14 файлов изменено, 1627 insertions.
