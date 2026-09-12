@@ -14,11 +14,22 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Справочник линеек брендов (существуют независимо от табаков)
+model TobaccoLine {
+  id        String   @id @default(cuid())
+  brand     String   // название бренда
+  name      String   // название линейки (Core, Supernova, etc.)
+  createdAt DateTime @default(now())
+
+  @@unique([brand, name])
+  @@index([brand])
+}
+
 // Справочник табаков (гибрид: мастер задаёт + бот добавляет новые с накладных)
 model Tobacco {
   id              String      @id @default(cuid())
   brand           String      // Darkside, Tangiers, Musthave, etc.
-  line            String      // Supernova, Core, Medium, etc.
+  line            String      @default("") // Supernova, Core, Medium, etc. (может быть пустой)
   flavor          String      // вкус: Cola, Ice Grape, etc.
   defaultJarGrams Int         @default(250) // вес полной банки по умолчанию
   thresholdGrams  Int         @default(70)  // порог "мало" — ниже этого идёт в заявку

@@ -151,6 +151,7 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<FilterChip>('all')
   const [editForm, setEditForm] = useState<EditFormState | null>(null)
+  const [linesMap, setLinesMap] = useState<Record<string, string[]>>({})
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [orderingId, setOrderingId] = useState<string | null>(null)
@@ -161,9 +162,14 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/tobaccos')
-      const data = await res.json()
-      setTobaccos(data.tobaccos ?? [])
+      const [tobaccosRes, linesRes] = await Promise.all([
+        fetch('/api/tobaccos'),
+        fetch('/api/tobaccos/lines'),
+      ])
+      const tobaccosData = await tobaccosRes.json()
+      const linesData = await linesRes.json()
+      setTobaccos(tobaccosData.tobaccos ?? [])
+      setLinesMap(linesData.lines ?? {})
     } catch {
       toast.error('Не удалось загрузить остатки')
     } finally {
@@ -185,13 +191,16 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
   const linesForBrand = useCallback(
     (brand: string) =>
       Array.from(
-        new Set(
-          tobaccos
+        new Set([
+          // Линии из табаков
+          ...tobaccos
             .filter((t) => t.brand === brand && t.line && t.line.trim() !== '')
             .map((t) => t.line),
-        ),
+          // Линии из справочника TobaccoLine
+          ...(linesMap[brand] ?? []),
+        ]),
       ).sort((a, b) => a.localeCompare(b)),
-    [tobaccos],
+    [tobaccos, linesMap],
   )
 
   const filtered = tobaccos.filter((t) => {
@@ -516,10 +525,22 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
       let errorCount = 0
 
       for (const line of sortedLines) {
-        // Новые пустые поля просто игнорируются (no orphan lines).
-        if (line.isNew) continue
-        // Удалённые → очищаем линейку (set to "")
+        // Новые линейки → создаём через API
+        if (line.isNew) {
+          const newName = line.value.trim()
+          if (!newName) continue // пустые игнорируем
+          const r = await fetch('/api/tobaccos/lines', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ brand: effectiveBrand, name: newName }),
+          })
+          if (r.ok) successCount++
+          else errorCount++
+          continue
+        }
+        // Удалённые → удаляем линейку из справочника + очищаем у табаков
         if (line.removed) {
+          // Очищаем у табаков
           const r = await fetch('/api/tobaccos/line', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
@@ -529,8 +550,17 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
               newLine: '',
             }),
           })
-          if (r.ok) successCount++
-          else errorCount++
+          if (r.ok) {
+            // Удаляем из справочника линеек
+            await fetch('/api/tobaccos/lines', {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ brand: effectiveBrand, name: line.original }),
+            })
+            successCount++
+          } else {
+            errorCount++
+          }
           continue
         }
         // Переименование/очистка существующей линейки
@@ -545,8 +575,19 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
             newLine: newValue,
           }),
         })
-        if (r.ok) successCount++
-        else errorCount++
+        if (r.ok) {
+          // Также обновляем в справочнике линеек
+          if (newValue) {
+            await fetch('/api/tobaccos/lines', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ brand: effectiveBrand, name: newValue }),
+            })
+          }
+          successCount++
+        } else {
+          errorCount++
+        }
       }
 
       if (errorCount > 0) {
