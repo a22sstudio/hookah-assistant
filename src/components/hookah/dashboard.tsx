@@ -781,9 +781,9 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
                             openBrandEdit(brand)
                           }
                         }}
-                        className="ml-auto inline-flex items-center justify-center w-8 h-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-background transition-base cursor-pointer opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 shrink-0"
+                        className="ml-auto inline-flex items-center justify-center w-11 h-11 -mr-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-background transition-base cursor-pointer opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 shrink-0 touch-manipulation"
                       >
-                        <Settings2 className="h-3.5 w-3.5" />
+                        <Settings2 className="h-4 w-4" />
                       </span>
                     )}
                   </AccordionTrigger>
