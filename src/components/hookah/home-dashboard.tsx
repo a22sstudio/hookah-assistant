@@ -402,9 +402,9 @@ export function HomeDashboard({ master, refreshKey }: HomeDashboardProps) {
       {/* Quick links */}
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" size="sm" onClick={() => {
-          window.dispatchEvent(new CustomEvent('home-goto', { detail: 'requests' }))
+          window.dispatchEvent(new CustomEvent('home-goto', { detail: 'purchase' }))
         }}>
-          <ChevronRight className="h-3.5 w-3.5" /> Заявки
+          <ChevronRight className="h-3.5 w-3.5" /> Закуп
         </Button>
         <Button variant="outline" size="sm" onClick={() => {
           window.dispatchEvent(new CustomEvent('home-goto', { detail: 'stock' }))
@@ -416,13 +416,6 @@ export function HomeDashboard({ master, refreshKey }: HomeDashboardProps) {
         }}>
           <ChevronRight className="h-3.5 w-3.5" /> График
         </Button>
-        {isSenior && (
-          <Button variant="outline" size="sm" onClick={() => {
-            window.dispatchEvent(new CustomEvent('home-goto', { detail: 'orders' }))
-          }}>
-            <ChevronRight className="h-3.5 w-3.5" /> Заказ
-          </Button>
-        )}
       </div>
     </div>
   )

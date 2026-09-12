@@ -6,11 +6,10 @@ import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { HomeDashboard } from '@/components/hookah/home-dashboard'
-import { MasterRequests } from '@/components/hookah/master-requests'
+import { PurchasePanel } from '@/components/hookah/purchase-panel'
 import { WishesPanel } from '@/components/hookah/wishes-panel'
 import { Dashboard } from '@/components/hookah/dashboard'
 import { ConsumablesPanel } from '@/components/hookah/consumables-panel'
-import { OrderComposer } from '@/components/hookah/order-composer'
 import { AIChat } from '@/components/hookah/ai-chat'
 import { ScheduleCalendar } from '@/components/hookah/schedule-calendar'
 import { masterAvatarClass, initials } from '@/lib/master-utils'
@@ -23,7 +22,6 @@ import {
   CalendarRange,
   Boxes,
   Home,
-  ClipboardList,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -102,7 +100,7 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
           <div className="min-w-0 space-y-6">
             {/* Табы */}
             <Tabs value={tab} onValueChange={setTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-7 h-auto">
+              <TabsList className="grid w-full grid-cols-6 h-auto">
                 <TabsTrigger
                   value="home"
                   className="flex flex-col gap-1 py-2.5"
@@ -118,11 +116,11 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
                   <span>График</span>
                 </TabsTrigger>
                 <TabsTrigger
-                  value="requests"
+                  value="purchase"
                   className="flex flex-col gap-1 py-2.5"
                 >
                   <ShoppingCart className="h-4 w-4" />
-                  <span>Заявки</span>
+                  <span>Закуп</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="wishes"
@@ -145,13 +143,6 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
                   <Boxes className="h-4 w-4" />
                   <span>Расход</span>
                 </TabsTrigger>
-                <TabsTrigger
-                  value="orders"
-                  className="flex flex-col gap-1 py-2.5"
-                >
-                  <ClipboardList className="h-4 w-4" />
-                  <span>Заказ</span>
-                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="home" className="pt-4">
@@ -168,8 +159,8 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
                   onRefresh={refresh}
                 />
               </TabsContent>
-              <TabsContent value="requests" className="pt-4">
-                <MasterRequests
+              <TabsContent value="purchase" className="pt-4">
+                <PurchasePanel
                   role="REGULAR"
                   refreshKey={refreshKey}
                   onRefresh={refresh}
@@ -191,13 +182,6 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
               </TabsContent>
               <TabsContent value="consumables" className="pt-4">
                 <ConsumablesPanel
-                  role="REGULAR"
-                  refreshKey={refreshKey}
-                  onRefresh={refresh}
-                />
-              </TabsContent>
-              <TabsContent value="orders" className="pt-4">
-                <OrderComposer
                   role="REGULAR"
                   refreshKey={refreshKey}
                   onRefresh={refresh}

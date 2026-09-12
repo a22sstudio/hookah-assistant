@@ -1279,3 +1279,115 @@ Stage Summary:
 - src/app/api/orders/export/route.ts (новый)
 
 Lint: 0 ошибок. 16 файлов изменено/создано.
+
+---
+Task ID: redesign-8
+Agent: main (Z.ai Code)
+Task: Объединить два отдельных таба (ЗАЯВКИ + ЗАКАЗ) в одну вкладку «ЗАКУП» — единая панель с двумя режимами ввода (быстрая заявка / структурированный заказ) и единым списком всех заявок.
+
+Work Log:
+
+1. Изучил контекст:
+   - Прочитал `worklog.md` (Task 1, 5, 7, redesign-6, redesign-7) — понял, что MasterRequest (free-text) и PurchaseOrder (structured) — две разные модели/процесса.
+   - Изучил `master-requests.tsx` (free-text форма + structured-mini форма + список с фильтрами [Всё/Заказано/Получено] + status PENDING→ORDERED→DONE).
+   - Изучил `order-composer.tsx` (полная каскадная форма: brand→line→flavor + consumables + live preview + список с 4 статусами DRAFT/SUBMITTED/ORDERED/RECEIVED + CSV/PDF экспорт).
+   - Прочитал `senior-view.tsx` и `master-view.tsx` — оба имеют отдельные табы «Заявки» (MasterRequests) и «Заказ» (OrderComposer).
+   - Прочитал API endpoints `/api/requests` (GET/POST/PATCH), `/api/orders/compose` (GET/POST/PATCH/DELETE), `/api/orders/export` (CSV/PDF) — все рабочие.
+   - Проверил `prisma/schema.prisma`: PurchaseOrder НЕ имеет masterId (только items + status + даты); MasterRequest имеет masterId + master relation.
+   - Прочитал `src/app/globals.css` — design tokens уже на месте: `.label-mono`, `.heading-mono`, `.body-sans`, `.frame-ember`, `.shadow-sm-soft`, ember accent, dark-native. Переменные --font-inter и --font-fragment-mono (JetBrains Mono).
+
+2. Создал `src/components/hookah/purchase-panel.tsx` (новый, ~900 строк):
+   - Props: `{ role: 'SENIOR' | 'REGULAR'; refreshKey: number; onRefresh: () => void }`.
+   - Заголовок «Закуп» с label-mono + heading-mono (clamp(24px, 4vw, 36px)).
+   - 3 stats-карточки: ВСЕГО / ОЖИДАЮТ (frame-ember если >0) / ПОЛУЧЕНО — grid-cols-3, mobile-first.
+   - Mode toggle (border rounded-md overflow-hidden): [Быстрая заявка (MessageSquare)] | [Составить заказ (ClipboardList)].
+   - **Mode 1 «Быстрая заявка»** — внутри frame карточки:
+     * Sub-toggle [Свободный ввод / Структурированно] (ghost кнопка).
+     * Свободный ввод: Textarea (placeholder с примерами) + опциональное поле «Грамм» + Cmd+Enter submit → POST /api/requests (создаёт MasterRequest).
+     * Структурированно: Brand Select (существующие + «— новый бренд —») → Flavor Select (по бренду) + qty + unit (банок/грамм) + note → preview → POST /api/requests (с авто-расчётом grams если выбран вкус из справочника).
+   - **Mode 2 «Составить заказ»** — полный cascading form (как в order-composer):
+     * Секция «Табак»: кнопка «Добавить табак» → ряд (Brand Select + Line Select + Flavor Input с datalist + packGrams/qty/unit grid-3) + remove row.
+     * Секция «Расходники»: кнопка «Добавить расходник» → ряд (Consumable Select + qty + unit) + remove row.
+     * Live preview: список «• {name} — {qty} {unit}».
+     * Submit → POST /api/orders/compose (создаёт PurchaseOrder в DRAFT).
+   - **Unified list** под формой:
+     * Filter chips [Все] [Ожидают] [Заказано] [Получено] — border rounded-md overflow-hidden, активная = bg-primary text-primary-foreground.
+     * Загружает параллельно: `/api/requests` (mine=1 для REGULAR, all для SENIOR) + `/api/orders/compose` + `/api/tobaccos` + `/api/consumables`.
+     * Merge в один `UnifiedItem[]` (kind: 'request' | 'order'), sort by createdAt desc.
+     * Filter mapping: «Ожидают» = MasterRequest.PENDING + PurchaseOrder.DRAFT/SUBMITTED; «Заказано» = MR.ORDERED + PO.ORDERED; «Получено» = MR.DONE + PO.RECEIVED.
+     * Каждая запись — карточка с:
+       - Type icon: MessageSquare для request, ClipboardList для order (в border-box 9×9, bg-muted/40).
+       - Master avatar + name — только для MasterRequest + только для SENIOR (т.к. PurchaseOrder не имеет masterId).
+       - Content: для request — body-sans text + опциональный consumable Tag (fuzzy match по имени) + «Нужно: Ng» если grams задан; для order — preview табак/расходники списком.
+       - Status Badge: PENDING (ember) / ORDERED (ink) / DONE (emerald) для request; DRAFT/SUBMITTED/ORDERED/RECEIVED для order.
+       - timeAgo справа от бейджа.
+       - Действия:
+         · Request (SENIOR only): кнопка «Заказать» (PENDING→ORDERED) или «Получено» (ORDERED→DONE).
+         · Order: «Отправить» (DRAFT→SUBMITTED, любая роль); «Заказать» (SUBMITTED→ORDERED, SENIOR only); «Получено» (ORDERED→RECEIVED, SENIOR only); CSV/PDF экспорт (SENIOR only); Удалить через AlertDialog (SENIOR only).
+   - Суб-компоненты `RequestCard` и `OrderCard` вынесены в тот же файл для читаемости.
+   - Helper `classifyItem(item)` → 'pending' | 'ordered' | 'received' для filter mapping.
+   - Helper `findConsumableInText(text)` — двух-проходный fuzzy (точное includes имени, потом первые 5+ символов) для тега расходника в MasterRequest.
+   - Reuses design tokens: `frame`, `frame-ember`, `label-mono`, `label-mono-sm`, `heading-mono`, `body-sans`, `shadow-sm-soft`, `stagger-children`, `tabular`.
+
+3. Обновил `src/components/hookah/senior-view.tsx`:
+   - Убраны импорты: `MasterRequests`, `OrderComposer`, иконка `ClipboardList`.
+   - Добавлен импорт: `PurchasePanel` из `@/components/hookah/purchase-panel`.
+   - TabsList: `grid-cols-3 sm:grid-cols-9` → `grid-cols-4 sm:grid-cols-8` (убрали 2 таба, добавили 1).
+   - Удалены TabsTrigger для «orders» (Заказ) и «requests» (Заявки).
+   - Добавлен TabsTrigger value="purchase" с иконкой ShoppingCart и лейблом «Закуп» — после «Расход» (consumables) и перед «Хотелки» (wishes).
+   - Удалены TabsContent для «orders» и «requests».
+   - Добавлен TabsContent value="purchase" → `<PurchasePanel role="SENIOR" refreshKey={refreshKey} onRefresh={refresh} />`.
+   - Итог: 8 табов (Сегодня/График/Зарплата/Склад/Расход/Закуп/Хотелки/Мастера).
+
+4. Обновил `src/components/hookah/master-view.tsx`:
+   - Убраны импорты: `MasterRequests`, `OrderComposer`, иконка `ClipboardList`.
+   - Добавлен импорт: `PurchasePanel`.
+   - TabsList: `grid-cols-7` → `grid-cols-6`.
+   - Удалены TabsTrigger для «orders» (Заказ) и «requests» (Заявки).
+   - Добавлен TabsTrigger value="purchase" с ShoppingCart иконкой — после «График» (schedule) и перед «Хотелки» (wishes).
+   - Удалены TabsContent для «orders» и «requests».
+   - Добавлен TabsContent value="purchase" → `<PurchasePanel role="REGULAR" refreshKey={refreshKey} onRefresh={refresh} />`.
+   - Итог: 6 табов (Сегодня/График/Закуп/Хотелки/Склад/Расход).
+
+5. Обновил `src/components/hookah/home-dashboard.tsx`:
+   - Quick links: заменены dispatch события `home-goto` с detail='requests' и detail='orders' на единое detail='purchase' с лейблом «Закуп».
+   - Убран seniour-only «Заказ» button (он сливался с «Заявки» в один «Закуп»).
+   - 3 quick links остались: Закуп / Склад / График.
+
+6. Старые файлы сохранены как backup (НЕ удалены):
+   - `src/components/hookah/master-requests.tsx` — оставлен, но больше не импортируется ни в senior-view, ни в master-view.
+   - `src/components/hookah/order-composer.tsx` — аналогично.
+   - Их код скопирован в новый `purchase-panel.tsx` (с рефакторингом и объединением).
+
+7. Все существующие API endpoints сохранены без изменений:
+   - `/api/requests` (GET/POST/PATCH) — MasterRequest.
+   - `/api/orders/compose` (GET/POST/PATCH/DELETE) — PurchaseOrder.
+   - `/api/orders/export?id=...&format=csv|pdf` — CSV/PDF экспорт (SENIOR only).
+   - `/api/tobaccos`, `/api/consumables` — справочники для cascading form.
+
+Verification:
+- `bun run lint` → exit 0, 0 ошибок, 0 предупреждений ✓
+- `bunx tsc --noEmit` → 0 ошибок в моих файлах (purchase-panel.tsx, senior-view.tsx, master-view.tsx, home-dashboard.tsx) — pre-existing ошибки в `bot-runner.ts`, `pdf-utils.ts`, `setup/route.ts`, `telegram/webhook/route.ts` НЕ тронуты.
+- dev.log: Google Fonts fetch fails (`fonts.gstatic.com` blocked в sandbox) — pre-existing environmental issue (подтверждено в worklog redesign-6, redesign-7). НЕ связано с моими изменениями.
+- Прямая проверка Prisma: `db.purchaseOrder.findMany` и `db.masterRequest.findMany` работают, возвращают корректные данные (0 записей каждого типа в чистой БД).
+- /api/requests возвращает 401 JSON при отсутствии auth (корректно работает).
+- /api/orders/compose возвращает 500 HTML из-за Google Fonts (error boundary рендерится через layout.tsx, который не может подгрузить шрифты) — pre-existing, не баг моего кода.
+
+Stage Summary:
+- Два отдельных таба «ЗАЯВКИ» (MasterRequests) и «ЗАКАЗ» (OrderComposer) ПОЛНОСТЬЮ объединены в один таб «ЗАКУП» (PurchasePanel) в обоих views (senior + master).
+- Единый UI: 3 stats + mode toggle (quick/structured) + 2 формы ввода + unified список с filter chips [Все/Ожидают/Заказано/Получено].
+- Все существующие API endpoints сохранены без изменений (PRESERVE requirement выполнен).
+- Master name отображается только для MasterRequest (т.к. PurchaseOrder не имеет masterId в схеме — это специфика существующей БД/API).
+- Старые файлы master-requests.tsx и order-composer.tsx оставлены как backup.
+- Mobile-first: mode toggle адаптируется (px-3 sm:px-4), stats grid-cols-3, filter chips horizontal scroll, ScrollArea max-h-[60vh].
+- Editorial style: label-mono для мелких подписей, heading-mono для заголовка «Закуп», body-sans для текста, frame + frame-ember для выделения, shadow-sm-soft для глубины.
+- Russian text throughout.
+- Демо-доступ не изменился: Старший Тимур PIN 1111, мастера Айрат PIN 2222, Марат PIN 3333.
+
+Изменено/создано файлов:
+- `src/components/hookah/purchase-panel.tsx` (новый, ~900 строк)
+- `src/components/hookah/senior-view.tsx` (8 табов вместо 9, импорты очищены)
+- `src/components/hookah/master-view.tsx` (6 табов вместо 7, импорты очищены)
+- `src/components/hookah/home-dashboard.tsx` (quick links обновлены: 3 кнопки вместо 4)
+
+Lint: 0 ошибок. 4 файла изменено/создано.

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { HomeDashboard } from '@/components/hookah/home-dashboard'
 import { Dashboard } from '@/components/hookah/dashboard'
-import { MasterRequests } from '@/components/hookah/master-requests'
+import { PurchasePanel } from '@/components/hookah/purchase-panel'
 import { WishesPanel } from '@/components/hookah/wishes-panel'
 import { MastersManager } from '@/components/hookah/masters-manager'
 import { NotificationsBell } from '@/components/hookah/notifications-bell'
@@ -14,7 +14,6 @@ import { AIChat } from '@/components/hookah/ai-chat'
 import { ScheduleCalendar } from '@/components/hookah/schedule-calendar'
 import { ConsumablesPanel } from '@/components/hookah/consumables-panel'
 import { SalaryCalculator } from '@/components/hookah/salary-calculator'
-import { OrderComposer } from '@/components/hookah/order-composer'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { Leaf } from 'lucide-react'
 import {
@@ -27,7 +26,6 @@ import {
   CalendarRange,
   Wallet,
   Boxes,
-  ClipboardList,
   Package,
 } from 'lucide-react'
 import { masterAvatarClass, initials } from '@/lib/master-utils'
@@ -158,18 +156,11 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
                   <span>Расход</span>
                 </TabsTrigger>
                 <TabsTrigger
-                  value="orders"
-                  className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]"
-                >
-                  <ClipboardList className="h-4 w-4" />
-                  <span>Заказ</span>
-                </TabsTrigger>
-                <TabsTrigger
-                  value="requests"
+                  value="purchase"
                   className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]"
                 >
                   <ShoppingCart className="h-4 w-4" />
-                  <span>Заявки</span>
+                  <span>Закуп</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="wishes"
@@ -210,15 +201,8 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
                   onRefresh={refresh}
                 />
               </TabsContent>
-              <TabsContent value="orders">
-                <OrderComposer
-                  role="SENIOR"
-                  refreshKey={refreshKey}
-                  onRefresh={refresh}
-                />
-              </TabsContent>
-              <TabsContent value="requests">
-                <MasterRequests
+              <TabsContent value="purchase">
+                <PurchasePanel
                   role="SENIOR"
                   refreshKey={refreshKey}
                   onRefresh={refresh}
