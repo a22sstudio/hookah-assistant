@@ -32,6 +32,13 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Search,
   Package,
   AlertTriangle,
@@ -43,6 +50,8 @@ import {
   Plus,
   ArrowRight,
   ChevronDown,
+  Settings2,
+  X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -85,10 +94,16 @@ function StatCard({
   )
 }
 
+// ─── Cascading form state ────────────────────────────────────────
+// brandSelect: '' | existing brand name | '__new__'
+// lineSelect : '' | existing line name | '__new__' | '__none__'
+// (для нового бренда — Select по линейкам не показывается, только Input)
 interface EditFormState {
   id?: string
-  brand: string
-  line: string
+  brandSelect: string
+  brandInput: string
+  lineSelect: string
+  lineInput: string
   flavor: string
   defaultJarGrams: string
   thresholdGrams: string
@@ -97,13 +112,35 @@ interface EditFormState {
 }
 
 const EMPTY_FORM: EditFormState = {
-  brand: '',
-  line: '',
+  brandSelect: '',
+  brandInput: '',
+  lineSelect: '',
+  lineInput: '',
   flavor: '',
   defaultJarGrams: '250',
   thresholdGrams: '70',
   currentGrams: '0',
   notes: '',
+}
+
+// Сентинелы для каскадных Select
+const NEW_BRAND = '__new_brand__'
+const NEW_LINE = '__new_line__'
+const NONE_LINE = '__none_line__'
+
+// ─── Brand edit dialog state ─────────────────────────────────────
+interface BrandLineEdit {
+  id: string // стаб-ид для React key
+  original: string // исходное имя линейки ('' для новых)
+  value: string // текущее значение в инпуте
+  isNew: boolean // true если это добавленное поле
+  removed: boolean // true если пользователь нажал × (только для !isNew)
+}
+
+interface BrandEditState {
+  brand: string // исходный бренд
+  name: string // редактируемое имя бренда
+  lines: BrandLineEdit[]
 }
 
 type FilterChip = 'all' | 'low' | 'ok'
@@ -118,6 +155,8 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
   const [deleting, setDeleting] = useState(false)
   const [orderingId, setOrderingId] = useState<string | null>(null)
   const [expandedBrands, setExpandedBrands] = useState<string[]>([])
+  const [brandEdit, setBrandEdit] = useState<BrandEditState | null>(null)
+  const [brandEditSaving, setBrandEditSaving] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -135,6 +174,25 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
   useEffect(() => {
     load()
   }, [load, refreshKey])
+
+  // Существующие бренды (для Select в форме)
+  const existingBrands = useMemo(
+    () => Array.from(new Set(tobaccos.map((t) => t.brand))).sort((a, b) => a.localeCompare(b)),
+    [tobaccos],
+  )
+
+  // Существующие линейки конкретного бренда
+  const linesForBrand = useCallback(
+    (brand: string) =>
+      Array.from(
+        new Set(
+          tobaccos
+            .filter((t) => t.brand === brand && t.line && t.line.trim() !== '')
+            .map((t) => t.line),
+        ),
+      ).sort((a, b) => a.localeCompare(b)),
+    [tobaccos],
+  )
 
   const filtered = tobaccos.filter((t) => {
     const q = search.toLowerCase()
@@ -173,12 +231,58 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
   const lowCount = tobaccos.filter((t) => t.isLow).length
   const totalGrams = tobaccos.reduce((sum, t) => sum + t.currentGrams, 0)
 
+  // ─── Derived form values ──────────────────────────────────────
+  const formBrand = useMemo(() => {
+    if (!editForm) return ''
+    return editForm.brandSelect === NEW_BRAND
+      ? editForm.brandInput.trim()
+      : editForm.brandSelect
+  }, [editForm])
+
+  const formLine = useMemo(() => {
+    if (!editForm) return ''
+    // Для нового бренда — просто Input
+    if (editForm.brandSelect === NEW_BRAND) return editForm.lineInput.trim()
+    // Для существующего бренда — Select
+    if (editForm.lineSelect === NEW_LINE) return editForm.lineInput.trim()
+    if (editForm.lineSelect === NONE_LINE) return ''
+    return editForm.lineSelect // существующая линейка или '' (placeholder)
+  }, [editForm])
+
+  // Линейки для текущего выбранного бренда (если бренд существующий)
+  const formLinesForBrand = useMemo(() => {
+    if (!editForm || editForm.brandSelect === '' || editForm.brandSelect === NEW_BRAND) return []
+    return linesForBrand(editForm.brandSelect)
+  }, [editForm, linesForBrand])
+
   const openEdit = (t: Tobacco) => {
     if (readOnly) return
+    // Если бренд существует в справочнике — выбираем его, иначе показываем как новый
+    const isExistingBrand = existingBrands.includes(t.brand)
+    const brandSelect = isExistingBrand ? t.brand : NEW_BRAND
+    const brandInput = isExistingBrand ? '' : t.brand
+
+    // Линейка: если пустая → NONE_LINE; если существует в списке линий бренда → её; иначе новая
+    let lineSelect = ''
+    let lineInput = ''
+    if (t.line && t.line.trim() !== '') {
+      const lines = linesForBrand(t.brand)
+      if (lines.includes(t.line)) {
+        lineSelect = t.line
+      } else {
+        lineSelect = NEW_LINE
+        lineInput = t.line
+      }
+    } else {
+      lineSelect = NONE_LINE
+    }
+
     setEditForm({
       id: t.id,
-      brand: t.brand,
-      line: t.line,
+      brandSelect,
+      brandInput,
+      lineSelect,
+      lineInput,
       flavor: t.flavor,
       defaultJarGrams: String(t.defaultJarGrams),
       thresholdGrams: String(t.thresholdGrams),
@@ -198,14 +302,27 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
 
   const saveEdit = async () => {
     if (!editForm) return
+    const brand = formBrand
+    const line = formLine
+    const flavor = editForm.flavor.trim()
+
+    if (!brand) {
+      toast.error('Укажите бренд')
+      return
+    }
+    if (!flavor) {
+      toast.error('Укажите вкус')
+      return
+    }
+
     setSaving(true)
     try {
       const isEdit = Boolean(editForm.id)
       const body = {
         ...(isEdit ? { id: editForm.id } : {}),
-        brand: editForm.brand.trim(),
-        line: editForm.line.trim(),
-        flavor: editForm.flavor.trim(),
+        brand,
+        line,
+        flavor,
         defaultJarGrams: Number(editForm.defaultJarGrams) || 250,
         thresholdGrams: Number(editForm.thresholdGrams) || 70,
         currentGrams: Number(editForm.currentGrams) || 0,
@@ -303,8 +420,162 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
     )
   }
 
+  // ─── Brand edit dialog ─────────────────────────────────────────
+  const openBrandEdit = (brand: string) => {
+    if (readOnly) return
+    const lines = linesForBrand(brand).map((l) => ({
+      id: `line-${l}`,
+      original: l,
+      value: l,
+      isNew: false,
+      removed: false,
+    }))
+    setBrandEdit({ brand, name: brand, lines })
+  }
+
+  const closeBrandEdit = () => {
+    if (brandEditSaving) return
+    setBrandEdit(null)
+  }
+
+  const addBrandLineEdit = () => {
+    if (!brandEdit) return
+    setBrandEdit({
+      ...brandEdit,
+      lines: [
+        ...brandEdit.lines,
+        {
+          id: `new-${Date.now()}-${brandEdit.lines.length}`,
+          original: '',
+          value: '',
+          isNew: true,
+          removed: false,
+        },
+      ],
+    })
+  }
+
+  const removeBrandLineEdit = (id: string) => {
+    if (!brandEdit) return
+    setBrandEdit({
+      ...brandEdit,
+      lines: brandEdit.lines.map((l) =>
+        l.id === id ? { ...l, removed: true } : l,
+      ),
+    })
+  }
+
+  const updateBrandLineEdit = (id: string, value: string) => {
+    if (!brandEdit) return
+    setBrandEdit({
+      ...brandEdit,
+      lines: brandEdit.lines.map((l) =>
+        l.id === id ? { ...l, value } : l,
+      ),
+    })
+  }
+
+  const saveBrandEdit = async () => {
+    if (!brandEdit) return
+    setBrandEditSaving(true)
+    try {
+      const newBrandName = brandEdit.name.trim()
+      const oldBrandName = brandEdit.brand
+      const renamed = newBrandName !== oldBrandName && newBrandName !== ''
+
+      // Если бренд переименован — сначала переименовываем бренд,
+      // дальше линейку правим уже по новому имени.
+      const effectiveBrand = renamed ? newBrandName : oldBrandName
+
+      if (renamed) {
+        const r = await fetch('/api/tobaccos/brand', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ oldBrand: oldBrandName, newBrand: newBrandName }),
+        })
+        const d = await r.json()
+        if (!r.ok) {
+          toast.error(d.error || 'Ошибка переименования бренда')
+          setBrandEditSaving(false)
+          return
+        }
+      }
+
+      // Обрабатываем линейки (используем effectiveBrand — новое имя бренда,
+      // потому что табаки уже под новым именем, если переименование было).
+      // Порядок важен: сначала очищаем (×), потом переименовываем, чтобы избежать
+      // конфликтов при пересечении имён.
+      const sortedLines = [...brandEdit.lines].sort((a, b) => {
+        // removed сначала, потом isNew (игнорируем), потом переименования
+        if (a.removed && !b.removed) return -1
+        if (!a.removed && b.removed) return 1
+        return 0
+      })
+
+      let successCount = 0
+      let errorCount = 0
+
+      for (const line of sortedLines) {
+        // Новые пустые поля просто игнорируются (no orphan lines).
+        if (line.isNew) continue
+        // Удалённые → очищаем линейку (set to "")
+        if (line.removed) {
+          const r = await fetch('/api/tobaccos/line', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              brand: effectiveBrand,
+              oldLine: line.original,
+              newLine: '',
+            }),
+          })
+          if (r.ok) successCount++
+          else errorCount++
+          continue
+        }
+        // Переименование/очистка существующей линейки
+        const newValue = line.value.trim()
+        if (newValue === line.original) continue
+        const r = await fetch('/api/tobaccos/line', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            brand: effectiveBrand,
+            oldLine: line.original,
+            newLine: newValue,
+          }),
+        })
+        if (r.ok) successCount++
+        else errorCount++
+      }
+
+      if (errorCount > 0) {
+        toast.warning(
+          `Часть операций выполнена, но ${errorCount} шт. завершились ошибкой`,
+        )
+      } else if (successCount === 0 && !renamed) {
+        toast.info('Без изменений')
+      } else {
+        toast.success('Бренд обновлён')
+      }
+
+      setBrandEdit(null)
+      load()
+      onRefresh()
+    } catch {
+      toast.error('Ошибка сети')
+    } finally {
+      setBrandEditSaving(false)
+    }
+  }
+
   const isAddMode = editForm && !editForm.id
   const isEditMode = editForm && editForm.id
+
+  const canSaveEdit = !!formBrand && !!editForm?.flavor.trim()
+
+  // Видимые линейки в диалоге редактирования бренда (новые не-удалённые + существующие не-удалённые)
+  const brandEditVisibleLines = brandEdit?.lines.filter((l) => !l.removed) ?? []
 
   return (
     <div className="space-y-6">
@@ -328,6 +599,7 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
               onRefresh()
             }}
             title="Обновить"
+            aria-label="Обновить"
           >
             <RefreshCw className="h-4 w-4" />
           </Button>
@@ -432,7 +704,7 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
                   value={brand}
                   className="border-b border-border last:border-b-0"
                 >
-                  <AccordionTrigger className="px-4 py-3 hover:bg-muted/40 transition-base transition-colors">
+                  <AccordionTrigger className="px-4 py-3 hover:bg-muted/40 transition-base transition-colors group">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <span className="font-mono uppercase text-sm font-bold tracking-tight truncate text-foreground">
                         {brand}
@@ -446,6 +718,33 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
                         </Badge>
                       )}
                     </div>
+                    {!readOnly && (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Настройки бренда ${brand}`}
+                        title="Настройки бренда"
+                        onPointerDown={(e) => {
+                          e.stopPropagation()
+                          e.preventDefault()
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          e.preventDefault()
+                          openBrandEdit(brand)
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.stopPropagation()
+                            e.preventDefault()
+                            openBrandEdit(brand)
+                          }
+                        }}
+                        className="ml-auto inline-flex items-center justify-center w-8 h-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-base cursor-pointer opacity-0 group-hover:opacity-100 focus-visible:opacity-100 shrink-0"
+                      >
+                        <Settings2 className="h-3.5 w-3.5" />
+                      </span>
+                    )}
                   </AccordionTrigger>
                   <AccordionContent className="p-0">
                     <div className="stagger-children">
@@ -471,9 +770,12 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
                           >
                             <div className="flex-1 min-w-0">
                               <div className="flex items-baseline gap-2 flex-wrap">
-                                <span className="label-mono-sm truncate">
-                                  {t.line}
-                                </span>
+                                {/* Если line пустая — показываем только вкус (без лишнего разделителя) */}
+                                {t.line && t.line.trim() !== '' && (
+                                  <span className="label-mono-sm truncate">
+                                    {t.line}
+                                  </span>
+                                )}
                                 <span className="font-sans text-sm truncate">
                                   {t.flavor}
                                 </span>
@@ -538,7 +840,11 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
       {/* Подсказка */}
       {!readOnly && (
         <p className="label-mono-sm">
-          Клик по позиции — редактирование · «→ заказ» — быстрый заказ 1 банки
+          Клик по позиции — редактирование · «→ заказ» — быстрый заказ 1 банки ·
+          {' '}
+          <span aria-hidden="true">⚙</span>
+          {' '}
+          на бренде — переименование и линейки
         </p>
       )}
       {readOnly && (
@@ -569,61 +875,140 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
         </div>
       )}
 
-      {/* Диалог редактирования/добавления */}
+      {/* Диалог редактирования/добавления с каскадными Select */}
       <Dialog
         open={editForm !== null}
         onOpenChange={(o) => {
           if (!o) closeEdit()
         }}
       >
-        <DialogContent className="sm:max-w-[480px]">
+        <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
             <span className="label-mono">
               {isAddMode ? 'Новая позиция' : 'Редактирование позиции'}
             </span>
             <DialogTitle>
               {isEditMode
-                ? `${editForm?.brand ?? ''} ${editForm?.flavor ?? ''}`
+                ? `${formBrand || editForm?.brandSelect || ''} ${editForm?.flavor ?? ''}`.trim()
                 : 'Добавить табак'}
             </DialogTitle>
           </DialogHeader>
 
           {editForm && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* ───── Brand (Step 1) ───── */}
               <div className="space-y-1.5 sm:col-span-2">
-                <Label>Бренд</Label>
-                <Input
-                  value={editForm.brand}
-                  onChange={(e) =>
-                    setEditForm({ ...editForm, brand: e.target.value })
+                <Label>
+                  Бренд <span className="text-ember">*</span>
+                </Label>
+                <Select
+                  value={editForm.brandSelect}
+                  onValueChange={(v) =>
+                    setEditForm({
+                      ...editForm,
+                      brandSelect: v,
+                      // При смене бренда сбрасываем выбор линейки
+                      lineSelect: '',
+                      lineInput: '',
+                    })
                   }
-                  className="font-mono"
-                  placeholder="Darkside"
-                />
+                >
+                  <SelectTrigger className="w-full" aria-label="Бренд">
+                    <SelectValue placeholder="Выберите бренд" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {existingBrands.map((b) => (
+                      <SelectItem key={b} value={b}>
+                        {b}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value={NEW_BRAND}>+ Новый бренд</SelectItem>
+                  </SelectContent>
+                </Select>
+                {editForm.brandSelect === NEW_BRAND && (
+                  <Input
+                    value={editForm.brandInput}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, brandInput: e.target.value })
+                    }
+                    className="font-mono"
+                    placeholder="Введите название бренда"
+                    autoFocus
+                  />
+                )}
               </div>
 
-              <div className="space-y-1.5">
-                <Label>Линейка</Label>
-                <Input
-                  value={editForm.line}
-                  onChange={(e) =>
-                    setEditForm({ ...editForm, line: e.target.value })
-                  }
-                  placeholder="Supernova"
-                />
-              </div>
+              {/* ───── Line (Step 2) ───── */}
+              {editForm.brandSelect === NEW_BRAND ? (
+                // Для нового бренда — просто Input (линейка опциональна)
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>Линейка</Label>
+                  <Input
+                    value={editForm.lineInput}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, lineInput: e.target.value })
+                    }
+                    placeholder="Необязательно (можно оставить пустым)"
+                    className="font-mono"
+                  />
+                </div>
+              ) : editForm.brandSelect !== '' ? (
+                // Для существующего бренда — Select с существующими линейками + «новая» + «без»
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>Линейка</Label>
+                  <Select
+                    value={editForm.lineSelect}
+                    onValueChange={(v) =>
+                      setEditForm({
+                        ...editForm,
+                        lineSelect: v,
+                        lineInput: v === NEW_LINE ? editForm.lineInput : '',
+                      })
+                    }
+                  >
+                    <SelectTrigger className="w-full" aria-label="Линейка">
+                      <SelectValue placeholder="Без линейки" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NONE_LINE}>— Без линейки —</SelectItem>
+                      {formLinesForBrand.map((l) => (
+                        <SelectItem key={l} value={l}>
+                          {l}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value={NEW_LINE}>+ Новая линейка</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {editForm.lineSelect === NEW_LINE && (
+                    <Input
+                      value={editForm.lineInput}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, lineInput: e.target.value })
+                      }
+                      className="font-mono"
+                      placeholder="Введите название линейки"
+                      autoFocus
+                    />
+                  )}
+                </div>
+              ) : null}
 
-              <div className="space-y-1.5">
-                <Label>Вкус</Label>
+              {/* ───── Flavor (Step 3) ───── */}
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>
+                  Вкус <span className="text-ember">*</span>
+                </Label>
                 <Input
                   value={editForm.flavor}
                   onChange={(e) =>
                     setEditForm({ ...editForm, flavor: e.target.value })
                   }
                   placeholder="Ice Grape"
+                  className="font-sans"
                 />
               </div>
 
+              {/* ───── Details (Step 4) ───── */}
               <div className="space-y-1.5">
                 <Label>Банка, г</Label>
                 <Input
@@ -654,21 +1039,24 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
                 />
               </div>
 
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label>Текущий остаток, г</Label>
-                <Input
-                  type="number"
-                  value={editForm.currentGrams}
-                  onChange={(e) =>
-                    setEditForm({
-                      ...editForm,
-                      currentGrams: e.target.value,
-                    })
-                  }
-                  className="font-mono tabular text-base"
-                  placeholder="например, 147"
-                />
-              </div>
+              {/* currentGrams — только в режиме редактирования */}
+              {isEditMode && (
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>Текущий остаток, г</Label>
+                  <Input
+                    type="number"
+                    value={editForm.currentGrams}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        currentGrams: e.target.value,
+                      })
+                    }
+                    className="font-mono tabular text-base"
+                    placeholder="например, 147"
+                  />
+                </div>
+              )}
 
               <div className="space-y-1.5 sm:col-span-2">
                 <Label>Заметки</Label>
@@ -705,7 +1093,7 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
                   <AlertDialogContent>
                     <AlertDialogHeader>
                       <AlertDialogTitle>
-                        Удалить {editForm?.brand} {editForm?.flavor}?
+                        Удалить {editForm?.brandSelect} {editForm?.flavor}?
                       </AlertDialogTitle>
                       <AlertDialogDescription>
                         Это нельзя отменить. Позиция будет скрыта из справочника и
@@ -729,7 +1117,7 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
               </Button>
               <Button
                 onClick={saveEdit}
-                disabled={saving || !editForm?.brand || !editForm?.line || !editForm?.flavor}
+                disabled={saving || !canSaveEdit}
               >
                 {saving ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -739,6 +1127,130 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
                 {isAddMode ? 'Добавить' : 'Сохранить'}
               </Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Диалог редактирования бренда (переименование + управление линейками) */}
+      <Dialog
+        open={brandEdit !== null}
+        onOpenChange={(o) => {
+          if (!o) closeBrandEdit()
+        }}
+      >
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <span className="label-mono">Настройки бренда</span>
+            <DialogTitle>{brandEdit?.brand ?? ''}</DialogTitle>
+          </DialogHeader>
+
+          {brandEdit && (
+            <div className="space-y-4">
+              {/* Имя бренда */}
+              <div className="space-y-1.5">
+                <Label htmlFor="brand-name-input">
+                  Бренд <span className="text-ember">*</span>
+                </Label>
+                <Input
+                  id="brand-name-input"
+                  value={brandEdit.name}
+                  onChange={(e) =>
+                    setBrandEdit({ ...brandEdit, name: e.target.value })
+                  }
+                  className="font-mono"
+                  placeholder="Название бренда"
+                />
+                <p className="label-mono-sm">
+                  Переименование применится ко всем позициям бренда
+                </p>
+              </div>
+
+              {/* Линейки */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Линейки</Label>
+                  <span className="label-mono-sm">
+                    {brandEditVisibleLines.length} шт.
+                  </span>
+                </div>
+
+                {brandEditVisibleLines.length === 0 ? (
+                  <p className="label-mono-sm py-2 px-3 frame rounded-md">
+                    У этого бренда нет линеек
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {brandEditVisibleLines.map((line) => (
+                      <div
+                        key={line.id}
+                        className="flex items-center gap-2"
+                      >
+                        <Input
+                          value={line.value}
+                          onChange={(e) =>
+                            updateBrandLineEdit(line.id, e.target.value)
+                          }
+                          className="font-mono flex-1"
+                          placeholder={
+                            line.isNew
+                              ? 'Название новой линейки'
+                              : 'Название линейки'
+                          }
+                        />
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-9 w-9 shrink-0 text-muted-foreground hover:text-ember"
+                          onClick={() => removeBrandLineEdit(line.id)}
+                          title={
+                            line.isNew
+                              ? 'Убрать поле'
+                              : 'Очистить линейку у всех позиций'
+                          }
+                          aria-label={
+                            line.isNew
+                              ? 'Убрать поле'
+                              : 'Очистить линейку у всех позиций'
+                          }
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={addBrandLineEdit}
+                  className="h-8 text-[11px]"
+                >
+                  <Plus className="h-3 w-3" /> Добавить линейку
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="ghost"
+              onClick={closeBrandEdit}
+              disabled={brandEditSaving}
+            >
+              Отмена
+            </Button>
+            <Button
+              onClick={saveBrandEdit}
+              disabled={brandEditSaving || !brandEdit?.name.trim()}
+            >
+              {brandEditSaving ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Pencil className="h-3.5 w-3.5" />
+              )}
+              Сохранить
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

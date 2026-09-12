@@ -54,14 +54,23 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { brand, line, flavor, defaultJarGrams, thresholdGrams, notes } = body
+    const { brand, flavor, defaultJarGrams, thresholdGrams, notes } = body
+    // line — опциональна. Может быть пустой строкой (для табаков без линейки).
+    const line: string =
+      typeof body.line === 'string' ? body.line.trim() : ''
 
-    if (!brand || !line || !flavor) {
-      return NextResponse.json({ error: 'brand, line, flavor обязательны' }, { status: 400 })
+    if (!brand || !flavor) {
+      return NextResponse.json(
+        { error: 'brand и flavor обязательны' },
+        { status: 400 },
+      )
     }
 
+    const brandTrim = String(brand).trim()
+    const flavorTrim = String(flavor).trim()
+
     const existing = await db.tobacco.findFirst({
-      where: { brand, line, flavor, active: true },
+      where: { brand: brandTrim, line, flavor: flavorTrim, active: true },
     })
     if (existing) {
       return NextResponse.json(
@@ -72,9 +81,9 @@ export async function POST(req: NextRequest) {
 
     const tobacco = await db.tobacco.create({
       data: {
-        brand,
+        brand: brandTrim,
         line,
-        flavor,
+        flavor: flavorTrim,
         defaultJarGrams: defaultJarGrams ?? 250,
         thresholdGrams: thresholdGrams ?? 70,
         notes,
@@ -137,7 +146,8 @@ export async function PATCH(req: NextRequest) {
     // Собираем поля для обновления
     const updateData: Record<string, unknown> = {}
     if (typeof brand === 'string' && brand.trim()) updateData.brand = brand.trim()
-    if (typeof line === 'string' && line.trim()) updateData.line = line.trim()
+    // line опциональна и может быть очищена (пустая строка → табак без линейки)
+    if (typeof line === 'string') updateData.line = line.trim()
     if (typeof flavor === 'string' && flavor.trim()) updateData.flavor = flavor.trim()
     if (typeof defaultJarGrams === 'number' && defaultJarGrams > 0) {
       updateData.defaultJarGrams = Math.floor(defaultJarGrams)

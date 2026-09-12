@@ -951,3 +951,93 @@ Task: Реорганизация CRM — объединение склада, mu
 
 БД: Master.rate Int @default(1600), ScheduleEntry без startHour/endHour и @@unique.
 Lint: 0 ошибок. 14 файлов изменено, 1627 insertions.
+
+---
+Task ID: redesign-5
+Agent: main (Z.ai Code)
+Task: Доработка таба СКЛАД — пустая линейка, редактор бренда, каскадная форма добавления.
+
+Изменения по задачам пользователя:
+
+1. ПУСТАЯ ЛИНЕЙКА (line опциональна):
+   - POST /api/tobaccos: убрал проверку line из валидации. Теперь `if (!brand || !flavor)`.
+     line опциональна, по умолчанию "".
+   - PATCH /api/tobaccos: `if (typeof line === 'string') updateData.line = line.trim()` —
+     позволяет ОЧИЩАТЬ линейку (раньше empty string пропускался, что не давало очистить line
+     через обычный диалог).
+   - В строках аккордеона: если `t.line` пустая — показываем только вкус, без лишнего
+     разделителя (`{t.line && t.line.trim() !== '' && <span>...</span>}`).
+   - В форме редактирования: поле «Линейка» без звёздочки, без валидации.
+
+2. РЕДАКТОР БРЕНДА (⚙ на accordion trigger):
+   - Кнопка-иконка Settings2 на каждом заголовке бренда, появляется на hover
+     (`opacity-0 group-hover:opacity-100`), w-8 h-8, ml-auto (перед шевроном).
+     `onPointerDown + onClick + onKeyDown` с `stopPropagation + preventDefault`,
+     чтобы не триггерить accordion.
+   - Открывает Dialog с:
+     * Input «Бренд» (переименование)
+     * Список линеек (Input + × remove) с прокруткой (max-h-72 overflow-y-auto)
+     * Кнопка «+ Добавить линейку» (outline, добавляет пустые поля — бесконечно)
+     * Если линеек нет → «У этого бренда нет линеек» в `frame`
+     * Empty новые поля игнорируются при сохранении (no orphan lines)
+   - Сохранение:
+     * Если имя бренда изменилось → PATCH /api/tobaccos/brand { oldBrand, newBrand }
+       (использует эффективное имя для последующих операций с линейками)
+     * Для каждой линейки: removed → PATCH /api/tobaccos/line с newLine=""
+       (очистить); переименование → PATCH /api/tobaccos/line с newLine
+     * Removed идут первыми (избегаем конфликтов пересечения имён)
+     * Счётчик success/error в toast
+
+3. API ENDPOINTS (новые, SENIOR only):
+   - `src/app/api/tobaccos/brand/route.ts` PATCH:
+     { oldBrand, newBrand } → updateMany по brand=oldBrand, active=true.
+     Предварительная проверка конфликтов [brand, line, flavor]: если у newBrand
+     уже есть табак с тем же (line, flavor) — возвращаем 409 с понятным сообщением.
+   - `src/app/api/tobaccos/line/route.ts` PATCH:
+     { brand, oldLine, newLine } → updateMany по brand+line, active=true.
+     newLine="" → очистка линейки (табаки остаются, просто без line).
+     Проверка конфликтов для обоих случаев (переименование и очистка).
+   - Оба с requireSenior() — 401 если не авторизован, 403 если не SENIOR.
+
+4. КАСКАДНАЯ ФОРМА (Диалог добавления/редактирования):
+   - EditFormState переработан: brandSelect/brandInput/lineSelect/lineInput.
+   - Step 1 (Бренд): Select с существующими брендами + опция «+ Новый бренд».
+     При выборе «Новый бренд» — Input для ввода имени.
+   - Step 2 (Линейка):
+     * Новый бренд → просто Input (опциональна)
+     * Существующий бренд → Select с существующими линейками + «— Без линейки —»
+       (NONE_LINE) + «+ Новая линейка» (NEW_LINE). При выборе «Новая» — Input.
+   - Step 3 (Вкус): Input, обязательно (со звёздочкой).
+   - Step 4 (Детали): defaultJarGrams (250), thresholdGrams (70), notes.
+     currentGrams — только в режиме редактирования (в add mode не нужен, POST
+     создаёт StockItem с 0).
+   - Save валидирует: brand и flavor обязательны (line не обязательна).
+   - При смене бренда — lineSelect и lineInput сбрасываются.
+
+5. ВИЗУАЛЬНАЯ ПОЛИРОВКА:
+   - Select из shadcn/ui уже отстилизован (mono, uppercase, sharp corners).
+   - «Добавить линейку» — outline, size sm, h-8, с Plus иконкой.
+   - Line input + × button — inline flex, gap-2, button — ghost icon 9×9.
+   - Brand edit ✏️ — Settings2 иконка, hover-only, w-8 h-8.
+   - Атрибуты a11y: aria-label, title, role="button" на спане-кнопке внутри
+     accordion trigger (вложенные <button> в <button> невалидны HTML).
+
+СОХРАНЕНО:
+- Stats cards (4 шт.), search, 3 sub-filter chips (all/low/ok)
+- Аккордеон по брендам с expand/collapse, «Развернуть/Свернуть всё»
+- Клик по строке → edit dialog, quick-order кнопка «→ заказ» при isLow
+- Delete через AlertDialog с подтверждением
+- readOnly prop (для обычных мастеров)
+
+КОНСТРЕЙНТЫ:
+- Russian text, mobile-first, editorial style (Fragment Mono, sharp 6px).
+- WCAG 2.2 AA: focus-visible rings, aria-labels, role=button, keyboard nav.
+- Design tokens: label-mono, heading-mono, frame, frame-ember, label-mono-sm.
+
+Файлы изменено/создано:
+- src/app/api/tobaccos/route.ts (POST: line опциональна; PATCH: line может быть очищена)
+- src/app/api/tobaccos/brand/route.ts (новый — bulk rename brand)
+- src/app/api/tobaccos/line/route.ts (новый — bulk rename/clear line)
+- src/components/hookah/dashboard.tsx (каскадные Select, brand edit dialog, empty line display)
+
+Lint: 0 ошибок. TypeScript: 0 ошибок в изменённых файлах.
