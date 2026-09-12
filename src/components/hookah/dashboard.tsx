@@ -743,7 +743,7 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
                 <AccordionItem
                   key={brand}
                   value={brand}
-                  className={`relative border-border ${groupIndex > 0 ? 'border-t-2' : 'border-t'}`}
+                  className={`group relative border-border ${groupIndex > 0 ? 'border-t-2' : 'border-t'}`}
                 >
                   {/* Кнопка редактирования бренда — абсолютно позиционирована, ВНЕ AccordionTrigger */}
                   {!readOnly && (
@@ -760,12 +760,15 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
                         e.preventDefault()
                         e.stopPropagation()
                       }}
-                      className="absolute top-1 right-1 z-10 flex items-center justify-center w-11 h-11 rounded-md text-muted-foreground hover:text-foreground hover:bg-background transition-base cursor-pointer opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 touch-manipulation"
+                      onTouchStart={(e) => {
+                        e.stopPropagation()
+                      }}
+                      className="absolute top-1 right-1 z-20 flex items-center justify-center w-11 h-11 rounded-md text-muted-foreground hover:text-foreground hover:bg-background transition-base cursor-pointer opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 touch-manipulation"
                     >
                       <Settings2 className="h-4 w-4" />
                     </button>
                   )}
-                  <AccordionTrigger className="px-4 py-4 pr-12 bg-muted hover:bg-muted/80 transition-base transition-colors group border-b border-border data-[state=open]:border-b-0">
+                  <AccordionTrigger className="px-4 py-4 pr-14 bg-muted hover:bg-muted/80 transition-base transition-colors border-b border-border data-[state=open]:border-b-0">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <span className="font-mono text-base font-bold tracking-tight truncate text-foreground">
                         {brand}
