@@ -168,7 +168,6 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
   // По умолчанию все развернуты (только при смене набора брендов)
   useEffect(() => {
     setExpandedBrands(allBrands)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allBrandsKey])
 
   const lowCount = tobaccos.filter((t) => t.isLow).length
