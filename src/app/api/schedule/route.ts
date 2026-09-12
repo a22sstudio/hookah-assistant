@@ -30,15 +30,18 @@ export async function GET(req: NextRequest) {
     toDate = toQuery ? startOfDay(new Date(toQuery)) : addDays(startOfDay(), 31)
   }
 
+  // Сдвигаем верхнюю границу на +1 день, чтобы включать весь день to
+  const toDateEnd = addDays(startOfDay(toDate), 1)
+
   const entries = await db.scheduleEntry.findMany({
     where: {
       date: {
         gte: fromDate,
-        lt: toDate,
+        lt: toDateEnd,
       },
     },
     include: { master: true },
-    orderBy: { date: 'asc' },
+    orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
   })
 
   return NextResponse.json({
@@ -54,8 +57,6 @@ export async function GET(req: NextRequest) {
       masterName: e.master.name,
       masterColor: e.master.color,
       masterRole: e.master.role,
-      startHour: e.startHour,
-      endHour: e.endHour,
       note: e.note,
       isMine: e.masterId === me.id,
     })),
@@ -63,7 +64,9 @@ export async function GET(req: NextRequest) {
   })
 }
 
-// POST — создать/обновить запись (только старший)
+// POST — создать запись (только старший)
+// Поддерживает несколько мастеров в один день — просто создаём новую запись.
+// Тело: { masterId, date | dateText, note? }
 export async function POST(req: NextRequest) {
   const me = await getCurrentMaster()
   if (!me) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
@@ -72,7 +75,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json()
-  const { masterId, dateText, date, startHour, endHour, note } = body
+  const { masterId, dateText, date, note } = body
 
   if (!masterId) return NextResponse.json({ error: 'masterId обязателен' }, { status: 400 })
 
@@ -90,33 +93,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'date или dateText обязательны' }, { status: 400 })
   }
 
-  const existing = await db.scheduleEntry.findFirst({
-    where: { masterId, date: dateObj },
-  })
-
-  let entry
-  if (existing) {
-    entry = await db.scheduleEntry.update({
-      where: { id: existing.id },
-      data: {
-        startHour: startHour ?? 12,
-        endHour: endHour ?? 23,
-        note: note ?? null,
-      },
-      include: { master: true },
-    })
-  } else {
-    entry = await db.scheduleEntry.create({
-      data: {
-        masterId,
-        date: dateObj,
-        startHour: startHour ?? 12,
-        endHour: endHour ?? 23,
-        note: note ?? null,
-      },
-      include: { master: true },
-    })
+  // Проверяем, что мастер существует
+  const masterRec = await db.master.findUnique({ where: { id: masterId } })
+  if (!masterRec) {
+    return NextResponse.json({ error: 'Мастер не найден' }, { status: 404 })
   }
+
+  // Несколько мастеров на один день разрешены — просто создаём новую запись
+  const entry = await db.scheduleEntry.create({
+    data: {
+      masterId,
+      date: dateObj,
+      note: note ?? null,
+    },
+    include: { master: true },
+  })
 
   return NextResponse.json({
     entry: {
@@ -124,11 +115,9 @@ export async function POST(req: NextRequest) {
       date: entry.date,
       dateLabel: formatDateRu(entry.date),
       masterName: entry.master.name,
-      startHour: entry.startHour,
-      endHour: entry.endHour,
       note: entry.note,
     },
-    message: `${entry.master.name} работает ${formatDateRu(entry.date)} с ${entry.startHour}:00 до ${entry.endHour}:00`,
+    message: `${entry.master.name} работает ${formatDateRu(entry.date)}`,
   })
 }
 

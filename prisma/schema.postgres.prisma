@@ -103,6 +103,7 @@ model Master {
   telegramId  String?  @unique // Telegram user ID для бота (null = не привязан)
   role        String   @default("REGULAR") // SENIOR | REGULAR
   color       String   @default("emerald") // цвет аватара
+  rate        Int      @default(1600) // ставка за смену в рублях (для зарплаты)
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
 
@@ -182,14 +183,11 @@ model ScheduleEntry {
   id        String   @id @default(cuid())
   masterId  String
   date      DateTime  // дата смены (без времени, 00:00)
-  startHour Int      @default(12)  // час начала (МСК)
-  endHour   Int      @default(23)  // час окончания (МСК)
   note      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   master    Master   @relation(fields: [masterId], references: [id], onDelete: Cascade)
 
-  @@unique([masterId, date])
   @@index([date])
   @@index([masterId])
 }

@@ -36,8 +36,6 @@ interface ScheduleEntry {
   masterName: string
   masterColor: string
   masterRole: string
-  startHour: number
-  endHour: number
   note: string | null
   isMine?: boolean
 }
@@ -228,6 +226,8 @@ export function ScheduleCalendar({
               const isToday = cell.iso === todayIso
               const dow = cell.date.getDay()
               const isWeekend = dow === 0 || dow === 6
+              const visible = dayEntries.slice(0, 4)
+              const more = dayEntries.length - visible.length
               return (
                 <button
                   type="button"
@@ -252,7 +252,7 @@ export function ScheduleCalendar({
                     )}
                   </div>
                   <div className="space-y-0.5 min-h-0 overflow-hidden">
-                    {dayEntries.slice(0, 3).map((e) => (
+                    {visible.map((e) => (
                       <div
                         key={e.id}
                         className="flex items-center gap-1 label-mono-sm truncate"
@@ -265,14 +265,11 @@ export function ScheduleCalendar({
                         <span className="truncate text-foreground">
                           {e.masterName}
                         </span>
-                        <span className="text-muted-foreground/70 shrink-0">
-                          {e.startHour}-{e.endHour}
-                        </span>
                       </div>
                     ))}
-                    {dayEntries.length > 3 && (
-                      <div className="label-mono-sm">
-                        +{dayEntries.length - 3} ещё
+                    {more > 0 && (
+                      <div className="label-mono-sm text-muted-foreground">
+                        +{more} ещё
                       </div>
                     )}
                   </div>
@@ -332,8 +329,6 @@ function DayDialog({
   onChanged: () => void
 }) {
   const [masterId, setMasterId] = useState<string>('')
-  const [startHour, setStartHour] = useState('12')
-  const [endHour, setEndHour] = useState('23')
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -341,8 +336,6 @@ function DayDialog({
   useEffect(() => {
     if (iso) {
       setMasterId(masters[0]?.id ?? '')
-      setStartHour('12')
-      setEndHour('23')
       setNote('')
     }
   }, [iso, masters])
@@ -369,8 +362,6 @@ function DayDialog({
         body: JSON.stringify({
           masterId,
           date: iso,
-          startHour: Number(startHour) || 12,
-          endHour: Number(endHour) || 23,
           note: note.trim() || null,
         }),
       })
@@ -437,10 +428,11 @@ function DayDialog({
                   <p className="font-mono text-sm font-bold uppercase tracking-tight truncate">
                     {e.masterName}
                   </p>
-                  <p className="label-mono-sm">
-                    {e.startHour}:00 — {e.endHour}:00
-                    {e.note ? ` · ${e.note}` : ''}
-                  </p>
+                  {e.note && (
+                    <p className="label-mono-sm text-muted-foreground mt-0.5 truncate">
+                      {e.note}
+                    </p>
+                  )}
                 </div>
                 {canEdit && (
                   <Button
@@ -481,30 +473,6 @@ function DayDialog({
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1.5">
-                  <Label>С часа</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={23}
-                    value={startHour}
-                    onChange={(e) => setStartHour(e.target.value)}
-                    className="font-mono tabular"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>До часа</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={23}
-                    value={endHour}
-                    onChange={(e) => setEndHour(e.target.value)}
-                    className="font-mono tabular"
-                  />
-                </div>
               </div>
               <div className="space-y-1.5">
                 <Label>Заметка (необязательно)</Label>

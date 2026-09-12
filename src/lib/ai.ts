@@ -1,7 +1,7 @@
 import { db } from '@/lib/db'
 import type { SessionMaster } from '@/lib/auth'
 import { pushToSeniors } from '@/lib/notify'
-import { parseDateFromText, startOfDay, formatDateRu } from '@/lib/datetime-utils'
+import { parseDateFromText, startOfDay, formatDateRu, addDays } from '@/lib/datetime-utils'
 
 // ───────────────────────────────────────────
 // Hugging Face Router (OpenAI-compatible)
@@ -77,7 +77,9 @@ export type AIAction =
   | { tool: 'create_request'; args: { text: string; grams?: number } }
   | { tool: 'create_wish'; args: { text: string } }
   | { tool: 'add_hookah_batch'; args: { count: number } }
-  | { tool: 'update_schedule'; args: { masterName: string; dateText: string; startHour?: number; endHour?: number; action: 'add' | 'remove' } }
+  | { tool: 'update_schedule'; args: { masterName: string; dateText: string; action: 'add' | 'remove' } }
+  | { tool: 'add_schedule_multi'; args: { masterNames: string[]; dateText: string } }
+  | { tool: 'calc_salary'; args: { masterName: string; dateText?: string } }
   | { tool: 'query'; args: { what: 'low_stock' | 'all_stock' | 'specific' | 'shift'; brand?: string; line?: string; flavor?: string } }
 
 export interface AIResult {
@@ -103,14 +105,16 @@ function buildSystemPrompt(stockContext: string, master: SessionMaster, shiftCon
 5. create_request — заявка на закуп свободной формы ("BlackBurn Energy 2 банки")
 6. create_wish — хотелка/пожелание
 7. add_hookah_batch — добавить N кальянов к смене ("забил 5", "сделал 3", "накрутил 10")
-8. update_schedule — редактировать график мастера: action="add" или "remove". masterName (имя мастера, fuzzy), dateText ("завтра", "пятница", "23 числа"), startHour/endHour (опционально, по умолчанию 12-23). Примеры: "поставь Марата на завтра с 12 до 22" → action=add, masterName="Марат", dateText="завтра", startHour=12, endHour=22. "убери Марата с пятницы" → action=remove, masterName="Марат", dateText="пятница".
-9. query — low_stock (что мало), all_stock (все остатки), shift (кто на смене и активные заявки)`
+8. update_schedule — редактировать график мастера: action="add" или "remove". masterName (имя мастера, fuzzy), dateText ("завтра", "пятница", "23 числа"). Примеры: "поставь Марата на завтра" → action=add, masterName="Марат", dateText="завтра". "убери Марата с пятницы" → action=remove, masterName="Марат", dateText="пятница".
+9. add_schedule_multi — поставить НЕСКОЛЬКО мастеров на один день. masterNames: массив имён, dateText. Пример: "поставь Марата и Айрата на завтра" → masterNames=["Марат","Айрат"], dateText="завтра".
+10. calc_salary — посчитать зарплату мастера за период. masterName (имя), dateText (опционально, по умолчанию текущий месяц). Примеры: "зарплата Марата за сентябрь" → masterName="Марат", dateText="сентябрь". "зарплата Айрата" → masterName="Айрат" (текущий месяц).
+11. query — low_stock (что мало), all_stock (все остатки), shift (кто на смене и активные заявки)`
     : `1. update_stock — отметить остаток табака (обычно когда "закончился" = 0, "мало осталось" = мало). Это списывает остаток и пушит старшему.
 2. create_request — заявка на закуп свободной формы ("BlackBurn Energy 2 банки")
 3. create_wish — хотелка/пожелание
 4. add_hookah_batch — добавить N кальянов к смене ("забил 5", "сделал 3", "накрутил 10")
 5. query — low_stock (что мало), all_stock (все остатки), shift (кто на смене)
-НЕ используй add_incoming, add_tobacco, create_order, update_schedule — это для старшего мастера.`
+НЕ используй add_incoming, add_tobacco, create_order, update_schedule, add_schedule_multi, calc_salary — это для старшего мастера.`
 
   return `Ты — умный ассистент кальянной. Сейчас с тобой работает: ${master.name} (${roleDesc}).
 
@@ -140,9 +144,11 @@ ${allowedTools}
 - "забил N кальянов" / "сделал N" / "накрутил N" / "сварил N" → add_hookah_batch с count=N
   (N может быть числом или словом: "пять", "десять")
   (без числа = +1: "забил кальян")
-- "поставь МАРТА на ЗАВТРА с 12 до 22" → update_schedule action=add
+- "поставь МАРТА на ЗАВТРА" → update_schedule action=add
 - "убери МАРТА с ПЯТНИЦЫ" → update_schedule action=remove
-- "поставь Айрата на четверг с 16 до 23" → update_schedule add
+- "поставь Марата и Айрата на завтра" → add_schedule_multi masterNames=["Марат","Айрат"], dateText="завтра"
+- "зарплата Марата за сентябрь" → calc_salary masterName="Марат", dateText="сентябрь"
+- "зарплата Айрата" → calc_salary masterName="Айрат" (текущий месяц)
 
 СТРУКТУРА ТАБАКА — ВАЖНО! У каждого табака 3 поля:
 - brand — бренд/производитель (Darkside, Tangiers, Musthave, Daily Hookah, Burn, BlackBurn)
@@ -514,7 +520,7 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
         if (master.role !== 'SENIOR') {
           return { success: false, message: 'Только старший может редактировать график' }
         }
-        const { masterName, dateText, startHour, endHour, action: scheduleAction } = action.args
+        const { masterName, dateText, action: scheduleAction } = action.args
         const dateObj = parseDateFromText(dateText)
         if (!dateObj) {
           return { success: false, message: `Не удалось распознать дату: "${dateText}"` }
@@ -534,40 +540,155 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
         }
 
         if (scheduleAction === 'remove') {
-          const existing = await db.scheduleEntry.findFirst({
+          // Удаляем ВСЕ записи этого мастера на эту дату
+          const existing = await db.scheduleEntry.findMany({
             where: { masterId: masterRec.id, date },
           })
-          if (!existing) {
+          if (existing.length === 0) {
             return { success: false, message: `${masterRec.name} не был запланирован на ${formatDateRu(date)}` }
           }
-          await db.scheduleEntry.delete({ where: { id: existing.id } })
+          await db.scheduleEntry.deleteMany({
+            where: { masterId: masterRec.id, date },
+          })
           return {
             success: true,
             message: `Убрал ${masterRec.name} с графика за ${formatDateRu(date)}`,
           }
         }
 
-        // action === 'add'
-        const sh = startHour ?? 12
-        const eh = endHour ?? 23
-        const existing = await db.scheduleEntry.findFirst({
-          where: { masterId: masterRec.id, date },
+        // action === 'add' — просто создаём новую запись
+        await db.scheduleEntry.create({
+          data: { masterId: masterRec.id, date },
         })
-        let entry
-        if (existing) {
-          entry = await db.scheduleEntry.update({
-            where: { id: existing.id },
-            data: { startHour: sh, endHour: eh },
-          })
-        } else {
-          entry = await db.scheduleEntry.create({
-            data: { masterId: masterRec.id, date, startHour: sh, endHour: eh },
-          })
-        }
-        void entry
         return {
           success: true,
-          message: `${masterRec.name} работает ${formatDateRu(date)} с ${sh}:00 до ${eh}:00`,
+          message: `${masterRec.name} работает ${formatDateRu(date)}`,
+        }
+      }
+
+      case 'add_schedule_multi': {
+        if (master.role !== 'SENIOR') {
+          return { success: false, message: 'Только старший может редактировать график' }
+        }
+        const { masterNames, dateText } = action.args
+        if (!Array.isArray(masterNames) || masterNames.length === 0) {
+          return { success: false, message: 'Не переданы имена мастеров' }
+        }
+        const dateObj = parseDateFromText(dateText)
+        if (!dateObj) {
+          return { success: false, message: `Не удалось распознать дату: "${dateText}"` }
+        }
+        const date = startOfDay(dateObj)
+
+        const allMasters = await db.master.findMany({ where: { active: true } })
+        const norm = (s: string) => s.toLowerCase().trim()
+
+        const results: string[] = []
+        const failed: string[] = []
+        for (const rawName of masterNames) {
+          const target = norm(rawName)
+          let masterRec = allMasters.find((m) => norm(m.name) === target)
+          if (!masterRec) {
+            masterRec = allMasters.find((m) => norm(m.name).includes(target) || target.includes(norm(m.name)))
+          }
+          if (!masterRec) {
+            failed.push(rawName)
+            continue
+          }
+          await db.scheduleEntry.create({
+            data: { masterId: masterRec.id, date },
+          })
+          results.push(masterRec.name)
+        }
+
+        if (results.length === 0) {
+          return {
+            success: false,
+            message: `Никого не удалось поставить. Доступные: ${allMasters.map((m) => m.name).join(', ')}`,
+          }
+        }
+
+        let msg = `Поставил на ${formatDateRu(date)}: ${results.join(', ')}`
+        if (failed.length > 0) {
+          msg += `. Не найдены: ${failed.join(', ')}`
+        }
+        return { success: true, message: msg }
+      }
+
+      case 'calc_salary': {
+        if (master.role !== 'SENIOR') {
+          return { success: false, message: 'Только старший может считать зарплату' }
+        }
+        const { masterName, dateText } = action.args
+
+        // Fuzzy поиск мастера по имени
+        const allMasters = await db.master.findMany({ where: { active: true } })
+        const norm = (s: string) => s.toLowerCase().trim()
+        const target = norm(masterName)
+        let masterRec = allMasters.find((m) => norm(m.name) === target)
+        if (!masterRec) {
+          masterRec = allMasters.find((m) => norm(m.name).includes(target) || target.includes(norm(m.name)))
+        }
+        if (!masterRec) {
+          return { success: false, message: `Мастер "${masterName}" не найден. Доступные: ${allMasters.map((m) => m.name).join(', ')}` }
+        }
+
+        // Определяем период — по умолчанию текущий месяц
+        const today = new Date()
+        let fromDate: Date
+        let toDate: Date
+
+        if (dateText) {
+          // Пытаемся распознать как месяц (например, "сентябрь")
+          const monthMatch = dateText.toLowerCase().match(/(январ|феврал|март|апрел|ма[яй]|июн|июл|август|сентябр|октябр|ноябр|декабр)/)
+          if (monthMatch) {
+            const monthMap: Record<string, number> = {
+              январ: 0, феврал: 1, март: 2, апрел: 3, ма: 4, май: 4,
+              июн: 5, июл: 6, август: 7, сентябр: 8, октябр: 9, ноябр: 10, декабр: 11,
+            }
+            const monthIdx = monthMap[monthMatch[1]] ?? today.getMonth()
+            const year = today.getMonth() < monthIdx ? today.getFullYear() - 1 : today.getFullYear()
+            fromDate = startOfDay(new Date(year, monthIdx, 1))
+            toDate = addDays(startOfDay(new Date(year, monthIdx + 1, 0)), 1)
+          } else {
+            const parsed = parseDateFromText(dateText)
+            if (!parsed) {
+              return { success: false, message: `Не удалось распознать период: "${dateText}"` }
+            }
+            // Если "сегодня"/"завтра" — берём этот день
+            fromDate = startOfDay(parsed)
+            toDate = addDays(fromDate, 1)
+          }
+        } else {
+          // Текущий месяц
+          fromDate = startOfDay(new Date(today.getFullYear(), today.getMonth(), 1))
+          toDate = addDays(startOfDay(new Date(today.getFullYear(), today.getMonth() + 1, 0)), 1)
+        }
+
+        // Считаем закрытые смены мастера в диапазоне
+        const shifts = await db.shift.findMany({
+          where: {
+            masterId: masterRec.id,
+            status: 'CLOSED',
+            openedAt: { gte: fromDate, lt: toDate },
+          },
+        })
+
+        const count = shifts.length
+        const rate = masterRec.rate
+        const total = count * rate
+
+        return {
+          success: true,
+          message: `💰 Зарплата ${masterRec.name}: ${count} смен × ${rate}₽ = ${total}₽. Период: ${formatDateRu(fromDate)} — ${formatDateRu(addDays(toDate, -1))}`,
+          data: {
+            master: masterRec.name,
+            count,
+            rate,
+            total,
+            from: fromDate,
+            to: addDays(toDate, -1),
+          },
         }
       }
 
@@ -649,7 +770,7 @@ export async function processMasterMessage(
 
   const { actions, reply } = parseAIResponse(content)
 
-  const executedActions = []
+  const executedActions: Array<{ tool: string; success: boolean; message: string; data?: unknown }> = []
   for (const action of actions) {
     const result = await executeAction(action, master)
     executedActions.push({ tool: action.tool, ...result })

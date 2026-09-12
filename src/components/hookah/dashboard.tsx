@@ -1,12 +1,18 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { Tobacco } from '@/lib/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion'
 import {
   Dialog,
   DialogContent,
@@ -34,12 +40,16 @@ import {
   Pencil,
   Trash2,
   Loader2,
+  Plus,
+  ArrowRight,
+  ChevronDown,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface DashboardProps {
   refreshKey: number
   onRefresh: () => void
+  readOnly?: boolean
 }
 
 function StatCard({
@@ -76,6 +86,7 @@ function StatCard({
 }
 
 interface EditFormState {
+  id?: string
   brand: string
   line: string
   flavor: string
@@ -85,15 +96,28 @@ interface EditFormState {
   notes: string
 }
 
-export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
+const EMPTY_FORM: EditFormState = {
+  brand: '',
+  line: '',
+  flavor: '',
+  defaultJarGrams: '250',
+  thresholdGrams: '70',
+  currentGrams: '0',
+  notes: '',
+}
+
+type FilterChip = 'all' | 'low' | 'ok'
+
+export function Dashboard({ refreshKey, onRefresh, readOnly = false }: DashboardProps) {
   const [tobaccos, setTobaccos] = useState<Tobacco[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState<'all' | 'low' | 'ok'>('all')
-  const [editing, setEditing] = useState<Tobacco | null>(null)
+  const [filter, setFilter] = useState<FilterChip>('all')
   const [editForm, setEditForm] = useState<EditFormState | null>(null)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [orderingId, setOrderingId] = useState<string | null>(null)
+  const [expandedBrands, setExpandedBrands] = useState<string[]>([])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -126,12 +150,32 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
     return matchesSearch && matchesFilter
   })
 
+  // Группировка по бренду для аккордеона
+  const grouped = useMemo(() => {
+    const map: Record<string, Tobacco[]> = {}
+    for (const t of filtered) {
+      if (!map[t.brand]) map[t.brand] = []
+      map[t.brand].push(t)
+    }
+    // Сортируем по алфавиту по бренду
+    return Object.entries(map).sort((a, b) => a[0].localeCompare(b[0]))
+  }, [filtered])
+
+  // Все бренды (для управления состоянием expand/collapse)
+  const allBrands = useMemo(() => grouped.map(([b]) => b), [grouped])
+
+  // По умолчанию все развернуты
+  useEffect(() => {
+    setExpandedBrands(allBrands)
+  }, [allBrands])
+
   const lowCount = tobaccos.filter((t) => t.isLow).length
   const totalGrams = tobaccos.reduce((sum, t) => sum + t.currentGrams, 0)
 
   const openEdit = (t: Tobacco) => {
-    setEditing(t)
+    if (readOnly) return
     setEditForm({
+      id: t.id,
       brand: t.brand,
       line: t.line,
       flavor: t.flavor,
@@ -142,17 +186,22 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
     })
   }
 
+  const openAdd = () => {
+    if (readOnly) return
+    setEditForm({ ...EMPTY_FORM })
+  }
+
   const closeEdit = () => {
-    setEditing(null)
     setEditForm(null)
   }
 
   const saveEdit = async () => {
-    if (!editing || !editForm) return
+    if (!editForm) return
     setSaving(true)
     try {
+      const isEdit = Boolean(editForm.id)
       const body = {
-        id: editing.id,
+        ...(isEdit ? { id: editForm.id } : {}),
         brand: editForm.brand.trim(),
         line: editForm.line.trim(),
         flavor: editForm.flavor.trim(),
@@ -161,16 +210,32 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
         currentGrams: Number(editForm.currentGrams),
         notes: editForm.notes.trim() || null,
       }
-      const res = await fetch('/api/tobaccos', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
+      const res = await fetch(
+        '/api/tobaccos',
+        isEdit
+          ? {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            }
+          : {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                brand: body.brand,
+                line: body.line,
+                flavor: body.flavor,
+                defaultJarGrams: body.defaultJarGrams,
+                thresholdGrams: body.thresholdGrams,
+                notes: body.notes,
+              }),
+            },
+      )
       const data = await res.json()
       if (!res.ok) {
         toast.error(data.error || 'Ошибка сохранения')
       } else {
-        toast.success(data.message || 'Сохранено')
+        toast.success(data.message || (isEdit ? 'Сохранено' : 'Добавлено'))
         closeEdit()
         load()
         onRefresh()
@@ -183,13 +248,13 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
   }
 
   const deleteTobacco = async () => {
-    if (!editing) return
+    if (!editForm?.id) return
     setDeleting(true)
     try {
       const res = await fetch('/api/tobaccos', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: editing.id }),
+        body: JSON.stringify({ id: editForm.id }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -207,6 +272,39 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
     }
   }
 
+  const quickOrder = async (t: Tobacco, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setOrderingId(t.id)
+    try {
+      const text = `${t.brand} ${t.line} ${t.flavor} — 1 банка`
+      const res = await fetch('/api/requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, grams: t.defaultJarGrams }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || 'Ошибка создания заявки')
+      } else {
+        toast.success(`Заявка создана: ${text}`)
+        onRefresh()
+      }
+    } catch {
+      toast.error('Ошибка сети')
+    } finally {
+      setOrderingId(null)
+    }
+  }
+
+  const toggleBrand = (brand: string) => {
+    setExpandedBrands((prev) =>
+      prev.includes(brand) ? prev.filter((b) => b !== brand) : [...prev, brand],
+    )
+  }
+
+  const isAddMode = editForm && !editForm.id
+  const isEditMode = editForm && editForm.id
+
   return (
     <div className="space-y-6">
       {/* Заголовок */}
@@ -220,17 +318,28 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
             Остатки склада
           </h2>
         </div>
-        <Button
-          size="icon"
-          variant="outline"
-          onClick={() => {
-            load()
-            onRefresh()
-          }}
-          title="Обновить"
-        >
-          <RefreshCw className="h-4 w-4" />
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            size="icon"
+            variant="outline"
+            onClick={() => {
+              load()
+              onRefresh()
+            }}
+            title="Обновить"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          {!readOnly && (
+            <Button
+              size="sm"
+              onClick={openAdd}
+              title="Добавить позицию"
+            >
+              <Plus className="h-4 w-4" /> Добавить
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Статистика */}
@@ -252,7 +361,7 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
         />
       </div>
 
-      {/* Поиск + фильтры */}
+      {/* Поиск + фильтры (чипы) */}
       <div className="flex flex-col sm:flex-row gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/70" />
@@ -272,7 +381,7 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
                 : 'text-muted-foreground hover:bg-muted'
             }`}
           >
-            Все
+            Весь склад
           </button>
           <button
             onClick={() => setFilter('low')}
@@ -297,94 +406,184 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
         </div>
       </div>
 
-      {/* Список табаков — без ScrollArea, рамка оборачивает весь список, страница скроллит естественно */}
+      {/* Аккордеон по брендам */}
       <div className="border border-border rounded-md overflow-hidden shadow-sm-soft">
         {loading ? (
           <div className="p-8 text-center text-muted-foreground label-mono flex items-center justify-center gap-2">
             <Loader2 className="h-3 w-3 animate-spin" /> Загрузка...
           </div>
-        ) : filtered.length === 0 ? (
+        ) : grouped.length === 0 ? (
           <div className="p-8 text-center text-muted-foreground text-sm body-sans">
-            Ничего не найдено.
+            {search || filter !== 'all' ? 'Ничего не найдено.' : 'Справочник пуст.'}
           </div>
         ) : (
-          <div className="stagger-children">
-            {filtered.map((t) => {
-              const percent = Math.min(
-                100,
-                Math.round((t.currentGrams / t.defaultJarGrams) * 100),
-              )
+          <Accordion
+            type="multiple"
+            value={expandedBrands}
+            onValueChange={(v) => setExpandedBrands(v as string[])}
+            className="w-full"
+          >
+            {grouped.map(([brand, items]) => {
+              const brandLowCount = items.filter((t) => t.isLow).length
               return (
-                <button
-                  type="button"
-                  key={t.id}
-                  onClick={() => openEdit(t)}
-                  className="group w-full text-left flex items-center gap-4 p-4 border-b border-border last:border-b-0 hover:bg-muted/50 transition-base transition-colors"
+                <AccordionItem
+                  key={brand}
+                  value={brand}
+                  className="border-b border-border last:border-b-0"
                 >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-2 flex-wrap">
-                      <span className="font-mono uppercase text-sm font-bold tracking-tight truncate">
-                        {t.brand}
+                  <AccordionTrigger className="px-4 py-3 hover:bg-muted/40 transition-base transition-colors">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <span className="font-mono uppercase text-sm font-bold tracking-tight truncate text-foreground">
+                        {brand}
                       </span>
-                      <span className="label-mono-sm truncate">
-                        {t.line}
+                      <span className="label-mono-sm text-muted-foreground shrink-0">
+                        {items.length} поз.
                       </span>
-                      <span className="font-sans text-sm truncate">
-                        {t.flavor}
-                      </span>
-                      {t.isLow && (
-                        <Badge className="border-ember text-ember bg-transparent">
-                          мало
+                      {brandLowCount > 0 && (
+                        <Badge className="border-ember text-ember bg-transparent shrink-0">
+                          мало: {brandLowCount}
                         </Badge>
                       )}
                     </div>
-                    {/* Тонкая 2px линия вместо Progress-бара */}
-                    <div className="flex items-center gap-3 mt-2">
-                      <div className="relative h-[2px] flex-1 bg-muted overflow-hidden rounded-full">
-                        <div
-                          className={`absolute inset-y-0 left-0 transition-moderate transition-[width] ${
-                            t.isLow ? 'bg-ember' : 'bg-foreground'
-                          }`}
-                          style={{ width: `${percent}%` }}
-                        />
-                      </div>
-                      <span className="label-mono-sm tabular whitespace-nowrap">
-                        {t.currentGrams} / {t.defaultJarGrams}г
-                      </span>
+                  </AccordionTrigger>
+                  <AccordionContent className="p-0">
+                    <div className="stagger-children">
+                      {items.map((t) => {
+                        const percent = Math.min(
+                          100,
+                          Math.round((t.currentGrams / t.defaultJarGrams) * 100),
+                        )
+                        return (
+                          <div
+                            key={t.id}
+                            role={readOnly ? undefined : 'button'}
+                            tabIndex={readOnly ? undefined : 0}
+                            onClick={() => openEdit(t)}
+                            onKeyDown={(e) => {
+                              if (readOnly) return
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault()
+                                openEdit(t)
+                              }
+                            }}
+                            className="group w-full text-left flex items-center gap-4 p-4 border-t border-border first:border-t-0 hover:bg-muted/50 transition-base transition-colors cursor-pointer"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-baseline gap-2 flex-wrap">
+                                <span className="label-mono-sm truncate">
+                                  {t.line}
+                                </span>
+                                <span className="font-sans text-sm truncate">
+                                  {t.flavor}
+                                </span>
+                                {t.isLow && (
+                                  <Badge className="border-ember text-ember bg-transparent">
+                                    мало
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3 mt-2">
+                                <div className="relative h-[2px] flex-1 bg-muted overflow-hidden rounded-full">
+                                  <div
+                                    className={`absolute inset-y-0 left-0 transition-moderate transition-[width] ${
+                                      t.isLow ? 'bg-ember' : 'bg-foreground'
+                                    }`}
+                                    style={{ width: `${percent}%` }}
+                                  />
+                                </div>
+                                <span className="label-mono-sm tabular whitespace-nowrap">
+                                  {t.currentGrams} / {t.defaultJarGrams}г
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {t.isLow && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-[11px] border-ember text-ember hover:bg-ember hover:text-ember-foreground"
+                                  onClick={(e) => quickOrder(t, e)}
+                                  disabled={orderingId === t.id}
+                                  title="Заказать 1 банку"
+                                >
+                                  {orderingId === t.id ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <ArrowRight className="h-3 w-3" />
+                                  )}
+                                  заказ
+                                </Button>
+                              )}
+                              <span className="font-mono text-sm font-bold tabular text-foreground">
+                                {t.currentGrams}
+                              </span>
+                              <span className="label-mono-sm">г</span>
+                              {!readOnly && (
+                                <Pencil className="h-3.5 w-3.5 text-muted-foreground/70 opacity-0 group-hover:opacity-100 transition-base" />
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="font-mono text-sm font-bold tabular text-foreground">
-                      {t.currentGrams}
-                    </span>
-                    <span className="label-mono-sm">
-                      г
-                    </span>
-                    <Pencil className="h-3.5 w-3.5 text-muted-foreground/70 opacity-0 group-hover:opacity-100 transition-base" />
-                  </div>
-                </button>
+                  </AccordionContent>
+                </AccordionItem>
               )
             })}
-          </div>
+          </Accordion>
         )}
       </div>
 
-      <p className="label-mono-sm">
-        Клик по позиции — редактирование
-      </p>
+      {/* Подсказка */}
+      {!readOnly && (
+        <p className="label-mono-sm">
+          Клик по позиции — редактирование · «→ заказ» — быстрый заказ 1 банки
+        </p>
+      )}
+      {readOnly && (
+        <p className="label-mono-sm">
+          Режим просмотра · «→ заказ» отправит заявку старшему
+        </p>
+      )}
 
-      {/* Диалог редактирования */}
+      {/* Свёрнут/развёрнут управления */}
+      {grouped.length > 0 && (
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setExpandedBrands(allBrands)}
+            className="h-7 text-[11px]"
+          >
+            <ChevronDown className="h-3 w-3" /> Развернуть всё
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setExpandedBrands([])}
+            className="h-7 text-[11px]"
+          >
+            Свернуть всё
+          </Button>
+        </div>
+      )}
+
+      {/* Диалог редактирования/добавления */}
       <Dialog
-        open={editing !== null && editForm !== null}
+        open={editForm !== null}
         onOpenChange={(o) => {
           if (!o) closeEdit()
         }}
       >
         <DialogContent className="sm:max-w-[480px]">
           <DialogHeader>
-            <span className="label-mono">Редактирование позиции</span>
+            <span className="label-mono">
+              {isAddMode ? 'Новая позиция' : 'Редактирование позиции'}
+            </span>
             <DialogTitle>
-              {editing ? `${editing.brand} ${editing.flavor}` : ''}
+              {isEditMode
+                ? `${editForm?.brand ?? ''} ${editForm?.flavor ?? ''}`
+                : 'Добавить табак'}
             </DialogTitle>
           </DialogHeader>
 
@@ -398,6 +597,7 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
                     setEditForm({ ...editForm, brand: e.target.value })
                   }
                   className="font-mono"
+                  placeholder="Darkside"
                 />
               </div>
 
@@ -408,6 +608,7 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
                   onChange={(e) =>
                     setEditForm({ ...editForm, line: e.target.value })
                   }
+                  placeholder="Supernova"
                 />
               </div>
 
@@ -418,6 +619,7 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
                   onChange={(e) =>
                     setEditForm({ ...editForm, flavor: e.target.value })
                   }
+                  placeholder="Ice Grape"
                 />
               </div>
 
@@ -482,49 +684,58 @@ export function Dashboard({ refreshKey, onRefresh }: DashboardProps) {
           )}
 
           <DialogFooter className="sm:justify-between gap-2">
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="border-ember text-ember hover:bg-ember hover:text-ember-foreground"
-                  disabled={deleting || saving}
-                >
-                  {deleting ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Trash2 className="h-3.5 w-3.5" />
-                  )}
-                  Удалить позицию
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>
-                    Удалить {editing?.brand} {editing?.flavor}?
-                  </AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Это нельзя отменить. Позиция будет скрыта из справочника и
-                    остатков.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Отмена</AlertDialogCancel>
-                  <AlertDialogAction onClick={deleteTobacco}>
-                    Удалить
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            <div className="flex gap-2">
+              {isEditMode && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="border-ember text-ember hover:bg-ember hover:text-ember-foreground"
+                      disabled={deleting || saving}
+                    >
+                      {deleting ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5" />
+                      )}
+                      Удалить позицию
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        Удалить {editForm?.brand} {editForm?.flavor}?
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Это нельзя отменить. Позиция будет скрыта из справочника и
+                        остатков.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Отмена</AlertDialogCancel>
+                      <AlertDialogAction onClick={deleteTobacco}>
+                        Удалить
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+            </div>
 
             <div className="flex gap-2">
               <Button variant="ghost" onClick={closeEdit} disabled={saving}>
                 Отмена
               </Button>
-              <Button onClick={saveEdit} disabled={saving || !editForm}>
+              <Button
+                onClick={saveEdit}
+                disabled={saving || !editForm?.brand || !editForm?.line || !editForm?.flavor}
+              >
                 {saving ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : isAddMode ? (
+                  <Plus className="h-3.5 w-3.5" />
                 ) : null}
-                Сохранить
+                {isAddMode ? 'Добавить' : 'Сохранить'}
               </Button>
             </div>
           </DialogFooter>

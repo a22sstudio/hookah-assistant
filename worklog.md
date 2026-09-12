@@ -772,3 +772,139 @@ WCAG 2.2 AA: contrast 4.5:1, focus-visible rings, touch targets 44px, prefers-re
 VLM подтверждение:
 - Light: «Минималистичный техно-люкс с элементами брутализма», grid-фон, терракотовый акцент
 - Dark: «Строгий технический dark mode в стиле терминала/CRM», высокий контраст
+
+---
+
+Task ID: redesign-4
+Agent: main (Z.ai Code)
+Task: Крупная UX реорганизация Hookah Assistant CRM — merge СКЛАД+СПРАВОЧНИК, реорганизация ЗАЯВКИ, новый график (много мастеров в день), новая фича ЗАРПЛАТА, AI-действия calc_salary + add_schedule_multi, accordion по брендам, sub-фильтры, удаление ОПЕРАЦИЙ.
+
+## 1. /api/schedule/route.ts — убрал startHour/endHour, разрешил несколько мастеров в день
+- POST больше не принимает startHour/endHour (полей больше нет в Prisma-схеме).
+- POST больше не делает findFirst+update — теперь всегда создаёт новую ScheduleEntry (один мастер может быть поставлен на день N раз, разные мастера тоже).
+- GET возвращает записи без startHour/endHour, добавил orderBy по createdAt для стабильного порядка.
+- Верхнюю границу to сдвинул на +1 день, чтобы включать весь день to.
+- Удалил ссылку на `e.startHour`/`e.endHour` в response shape.
+- Добавил проверку существования мастера (404 если не найден).
+
+## 2. /api/bot/schedule/route.ts — убрал часы из вывода
+- В action=list: убрал `startHour`/`endHour` из группировки и вывода, теперь показывает только имя мастера + заметку.
+- В action=date: убрал `startHour`/`endHour` из строк вывода, теперь только имя мастера + заметка.
+- orderBy изменён с `startHour` на `date+createdAt` (поля startHour больше нет).
+- Подсказка про natural language обновлена: «поставь Марата и Айрата на завтра» (multi-master).
+
+## 3. schedule-calendar.tsx — упрощённый график с поддержкой multi-master
+- Убрал из интерфейса ScheduleEntry поля startHour/endHour.
+- Убрал из DayDialog инпуты «С часа»/«До часа» — остались только Select мастера + Input заметки.
+- Ячейка дня показывает до 4 мастеров (каждый — цветной квадрат + имя), если больше — «+N ещё».
+- DayDialog показывает список всех мастеров на день с кнопкой × (удалить), под списком — форма добавления (Select мастера + Input заметки).
+- Сообщение в DayDialog при добавлении: «${master.name} работает ${date}» (без часов).
+- Убрал легенду с часами, hint о natural language в подсказке.
+
+## 4. /api/salary/route.ts (НОВЫЙ) — расчёт зарплаты
+- GET ?masterId=&from=&to= → { master, period, shifts[], count, rate, total }.
+- Только SENIOR (requireSenior проверка).
+- Возвращает закрытые смены (status=CLOSED) мастера в диапазоне по openedAt.
+- Период по умолчанию — текущий месяц (1-е число .. последний день).
+- Возвращает rate мастера (Master.rate, по умолчанию 1600).
+- total = count × rate.
+
+## 5. salary-calculator.tsx (НОВЫЙ) — UI расчёта зарплаты
+- Заголовок «Зарплата» + кнопки Обновить / Сводка / CSV.
+- Фильтры: Select мастера, Input от (date), Input до (date). По умолчанию — текущий месяц.
+- Календарь месяца (от fromDate): ячейки с подсветкой дней, где была закрытая смена мастера (frame-ember + цветной квадрат мастера). Дни вне диапазона — приглушённые (bg-muted/20).
+- Итоги: 3 карточки — «Смен отработано» (count), «Ставка за смену» (rate ₽), «Итого к выплате» (total ₽, frame-ember, цвет text-ember, огромный font-size clamp(32px, 5vw, 48px)).
+- Текстовая сводка внизу: «Зарплата: N смен × rate₽ = total₽» с аватаром мастера.
+- Экспорт CSV: заголовок + строки смен + итог + сводка по периоду. BOM для Excel.
+- Экспорт TXT: «Зарплата Марат: 22 смен × 1600₽ = 35200₽. Период: 01.09.2026 - 30.09.2026».
+
+## 6. dashboard.tsx — merge СКЛАД + СПРАВОЧНИК + accordion + sub-filter chips + quick-order
+- Добавил readOnly проп (для master-view): скрывает «Добавить», делает строки не-кликабельными (но «→ заказ» работает), скрывает Pencil иконку, меняет hint на «Режим просмотра».
+- Кнопка «Добавить» (Plus icon) в шапке рядом с Refresh — открывает тот же Dialog что и edit, но с EMPTY_FORM (нет id) → POST.
+- Edit/Add в одном Dialog: при isAddMode — заголовок «Новая позиция», кнопка «Добавить», нет AlertDialog для удаления. При isEditMode — заголовок «Редактирование позиции», кнопка «Сохранить», есть AlertDialog для удаления.
+- Sub-filter chips (переименованы): «Весь склад» / «Мало» (ember активный) / «Достаточно». Заменил старые «Все»/«Мало»/«Достаточно».
+- Accordion по бренду (shadcn Accordion, type="multiple"): каждый бренд = AccordionItem. Header показывает бренд (mono uppercase) + «N поз.» + Badge «мало: N» если есть мало позиции. Content — список вкусов (line/flavor + progress 2px + граммы).
+- Все бренды развёрнуты по умолчанию (expandedBrands инициализируется из allBrands).
+- Кнопки «Развернуть всё» / «Свернуть всё» внизу списка для удобства.
+- На каждой МАЛО позиции — кнопка «→ заказ» (size sm, ember border/text) — создаёт MasterRequest с текстом «${brand} ${line} ${flavor} — 1 банка» и grams=defaultJarGrams. stopPropagation чтобы не открыть edit dialog.
+- Структура строки изменена с <button> на <div role="button">, чтобы разрешить вложенную кнопку «→ заказ» (HTML не разрешает button-in-button).
+- Добавил keyboard support (Enter/Space открывает edit).
+
+## 7. master-requests.tsx — sub-фильтры + structured form
+- Sub-фильтры (3 кнопки как в stock): «Всё» (PENDING+ORDERED+DONE), «Заказано» (ORDERED), «Получено» (DONE).
+- Сводка для старшего теперь 3 карточки (ожидают / заказано / получено).
+- Structured order form (переключатель «Свободный ввод»/«Структурированно»):
+  1. Select бренда (существующие бренды из БД + «— новый бренд —») ИЛИ Input нового бренда.
+  2. Select линейки/вкуса (фильтруется по выбранному бренду, необязательно).
+  3. Input количества + Select единицы («банок»/«грамм»).
+  4. Input заметки (необязательно).
+  5. Превью текста заявки в реальном времени (например, «Darkside Core Cola — 2 банки · срочно»).
+  6. Submit → POST /api/requests с text="${brand} ${line} ${flavor} — N ${unit}" и grams=N×defaultJarGrams (если банки) или N (если граммы).
+- Свободный textarea сохранён, не удалён (AI natural language всё ещё работает).
+- Загрузка списка табаков из /api/tobaccos для structured form.
+
+## 8. senior-view.tsx — табы реорганизованы
+- Удалён таб «Справочник» (BookOpen/TobaccosManager).
+- Удалён таб «Операции» (History/OperationsList).
+- Добавлен таб «Зарплата» (Wallet/SalaryCalculator) — между График и Склад.
+- TabsList: grid-cols-4 (mobile) → grid-cols-8 (sm) — было 9, стало 8 табов.
+- Порядок табов: Смена / График / Зарплата / Склад / Заявки / Хотелки / Мастера / Смены.
+- Импорты TobaccosManager и OperationsList удалены, добавлены SalaryCalculator и Wallet icon.
+
+## 9. master-view.tsx — упрощён, использует Dashboard с readOnly
+- Удалён встроенный MasterStockReadOnly компонент (был ~120 строк).
+- Таб «Склад» теперь использует <Dashboard readOnly refreshKey onRefresh /> — переиспользование кода, единый UI для senior и master.
+- Удалены неиспользуемые импорты (useEffect, useCallback, Badge, Progress, ScrollArea, RefreshCw, AlertTriangle, Loader2, Tobacco).
+
+## 10. ai.ts — новые actions: calc_salary + add_schedule_multi
+- AIAction тип:
+  - update_schedule: убраны startHour/endHour из args.
+  - add_schedule_multi (НОВЫЙ): { masterNames: string[], dateText: string }.
+  - calc_salary (НОВЫЙ): { masterName: string, dateText?: string }.
+- allowedTools для SENIOR: обновлён — теперь 11 действий (добавил #9 add_schedule_multi и #10 calc_salary).
+- allowedTools для REGULAR: явно запрещены add_schedule_multi и calc_salary.
+- Prompt правила: «поставь Марата и Айрата на завтра» → add_schedule_multi; «зарплата Марата за сентябрь» → calc_salary; «зарплата Айрата» → calc_salary (текущий месяц).
+- update_schedule: убраны startHour/endHour, теперь всегда создаёт новую запись (для add). Для remove — deleteMany (все записи этого мастера на дату).
+- add_schedule_multi (executeAction): fuzzy-поиск каждого мастера, для найденных — create ScheduleEntry, для не найденных — failed[].
+- calc_salary (executeAction): fuzzy-поиск мастера, парсинг периода (текст месяца типа «сентябрь» → границы месяца; иначе parseDateFromText — конкретный день; иначе — текущий месяц). Возвращает message вида «💰 Зарплата Марат: 22 смен × 1600₽ = 35200₽. Период: 1 сентября — 30 сентября».
+- Поправил тип executedActions: добавлена явная типизация Array<{ tool: string; success: boolean; message: string; data?: unknown }> (раньше был never[] из-за TS inference).
+- bot-runner.ts: добавил «зарплат» в regex hasOtherIntent (для текстовых и голосовых сообщений) — чтобы не пытаться распарсить как hookah count.
+
+## 11. Verification
+- `bun run lint` → EXIT 0 (0 ошибок, 0 предупреждений). Поправил unused eslint-disable directive в salary-calculator.tsx.
+- `npx tsc --noEmit` → 0 ошибок в изменённых файлах (pre-existing ошибки в setup/route.ts, bot-runner.ts, pdf-utils.ts — не от моих изменений).
+- Dev server: брифтестово запустил `bun run dev` — `GET /` 200, `GET /api/auth/me` 200, компиляция успешна (✓ Ready in 729ms). Не оставил запущенным (система сама поднимает).
+- Sticky footer паттерн сохранён во всех views (min-h-screen flex flex-col + mt-auto на footer).
+- Sharp corners var(--radius)=6px (rounded-md).
+- Touch targets ≥ 44px (кнопки h-9 + h-12 mobile chat, size="icon" = 36-40px + 8px padding around).
+- Russian text сохранён.
+- Mobile-first responsive: senior tabs grid-cols-4 → grid-cols-8, master tabs grid-cols-4.
+- Dark mode: native (token-based, .dark класс).
+- shadcn/ui Accordion переиспользован (Radix primitives).
+- Focus rings на всех интерактивных элементах (TabsTrigger, Button, Input, Select, AccordionTrigger — все имеют focus-visible:ring).
+
+## Файлы созданы (3)
+- `src/app/api/salary/route.ts` (~90 строк)
+- `src/components/hookah/salary-calculator.tsx` (~510 строк)
+- `/home/z/my-project/agent-ctx/redesign-4-main.md` (этот work record)
+
+## Файлы изменены (8)
+- `src/app/api/schedule/route.ts` (убрал startHour/endHour, разрешаю multi-master)
+- `src/app/api/bot/schedule/route.ts` (убрал часы из вывода, multi-master)
+- `src/components/hookah/schedule-calendar.tsx` (убрал инпуты часов, multi-master в ячейке)
+- `src/components/hookah/dashboard.tsx` (merge с TobaccosManager: accordion + sub-chips + add button + quick-order + readOnly)
+- `src/components/hookah/master-requests.tsx` (3 sub-фильтра + structured form)
+- `src/components/hookah/senior-view.tsx` (удалены Справочник и Операции, добавлена Зарплата, 8 табов)
+- `src/components/hookah/master-view.tsx` (использует Dashboard с readOnly)
+- `src/lib/ai.ts` (новые actions + executeAction + правила в prompt)
+- `src/lib/bot-runner.ts` (regex hasOtherIntent: добавил «зарплат»)
+
+## Что НЕ менялось (preserved)
+- shift-panel.tsx, senior-shift-view.tsx, ai-chat.tsx, masters-manager.tsx, wishes-panel.tsx, notifications-bell.tsx, login-screen.tsx, theme-toggle.tsx — без изменений.
+- operations-list.tsx, tobaccos-manager.tsx — компоненты остались, но не импортируются в senior-view (можно удалить в будущем, но пока оставил на случай если что-то ещё ссылается).
+- /api/requests, /api/tobaccos (POST/PATCH/DELETE), /api/masters, /api/shifts/history — без изменений.
+- /api/auth/*, /api/setup, /api/daily-summary — без изменений.
+- 17 shadcn/ui базовых компонентов — без изменений (используют 3-tier токены из redesign-3).
+- prisma/schema.prisma — уже обновлён до Master.rate и ScheduleEntry без startHour/endHour (schema был обновлён до меня, только пушнул в БД).
+- globals.css — без изменений.
+- 3-tier design tokens, dark-native mode, motion tokens, shadow tokens — все использованы в новых компонентах.

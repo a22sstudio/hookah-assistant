@@ -450,7 +450,7 @@ function createBot(): Telegraf {
 
     // Если похоже на отчёт о кальянах и нет других ключевых слов AI
     const lowerText = text.toLowerCase()
-    const hasOtherIntent = /сколько|чего|какой|какая|закажи|хочу|заканчивается|осталось|приход|накладн|поставь|убери|график|поставить|сним|сними/.test(lowerText)
+    const hasOtherIntent = /сколько|чего|какой|какая|закажи|хочу|заканчивается|осталось|приход|накладн|поставь|убери|график|поставить|сним|сними|зарплат/.test(lowerText)
 
     if (hookahCount !== null && hookahCount > 1 && !hasOtherIntent) {
       // Пакетное добавление кальянов (минуя AI — быстро)
@@ -522,7 +522,7 @@ function createBot(): Telegraf {
       // Быстрый парсинг кальянов из распознанного голоса
       const { parseHookahCount } = await import('@/lib/datetime-utils')
       const hookahCount = parseHookahCount(transcribedText)
-      const hasOtherIntent = /сколько|чего|какой|какая|закажи|хочу|заканчивается|осталось|приход|накладн|поставь|убери|график|поставить|сним|сними/.test(transcribedText.toLowerCase())
+      const hasOtherIntent = /сколько|чего|какой|какая|закажи|хочу|заканчивается|осталось|приход|накладн|поставь|убери|график|поставить|сним|сними|зарплат/.test(transcribedText.toLowerCase())
 
       if (hookahCount !== null && hookahCount > 1 && !hasOtherIntent) {
         const shift = await db.shift.findFirst({ where: { masterId: master.id, status: 'OPEN' } })

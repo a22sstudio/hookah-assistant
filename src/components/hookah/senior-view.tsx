@@ -9,16 +9,15 @@ import { SeniorShiftView } from '@/components/hookah/senior-shift-view'
 import { Dashboard } from '@/components/hookah/dashboard'
 import { MasterRequests } from '@/components/hookah/master-requests'
 import { WishesPanel } from '@/components/hookah/wishes-panel'
-import { TobaccosManager } from '@/components/hookah/tobaccos-manager'
-import { OperationsList } from '@/components/hookah/operations-list'
 import { MastersManager } from '@/components/hookah/masters-manager'
 import { NotificationsBell } from '@/components/hookah/notifications-bell'
 import { AIChat } from '@/components/hookah/ai-chat'
 import { ScheduleCalendar } from '@/components/hookah/schedule-calendar'
 import { ShiftHistory } from '@/components/hookah/shift-history'
+import { SalaryCalculator } from '@/components/hookah/salary-calculator'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { Leaf } from 'lucide-react'
-import { MessageCircle, LayoutDashboard, History, ShoppingCart, Star, BookOpen, Clock, LogOut, Users, CalendarRange, ListChecks } from 'lucide-react'
+import { MessageCircle, LayoutDashboard, ShoppingCart, Star, Clock, LogOut, Users, CalendarRange, ListChecks, Wallet } from 'lucide-react'
 import { masterAvatarClass, initials } from '@/lib/master-utils'
 import { toast } from 'sonner'
 import { Master } from '@/lib/types'
@@ -94,7 +93,7 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
           {/* Левая колонка */}
           <div className="min-w-0">
             <Tabs defaultValue="shift" className="w-full">
-              <TabsList className="grid w-full grid-cols-4 sm:grid-cols-9 h-auto mb-6">
+              <TabsList className="grid w-full grid-cols-4 sm:grid-cols-8 h-auto mb-6">
                 <TabsTrigger
                   value="shift"
                   className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]"
@@ -108,6 +107,13 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
                 >
                   <CalendarRange className="h-4 w-4" />
                   <span>График</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="salary"
+                  className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]"
+                >
+                  <Wallet className="h-4 w-4" />
+                  <span>Зарплата</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="dashboard"
@@ -138,25 +144,11 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
                   <span>Мастера</span>
                 </TabsTrigger>
                 <TabsTrigger
-                  value="catalog"
-                  className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]"
-                >
-                  <BookOpen className="h-4 w-4" />
-                  <span>Справочник</span>
-                </TabsTrigger>
-                <TabsTrigger
                   value="shifts-history"
                   className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]"
                 >
                   <ListChecks className="h-4 w-4" />
                   <span>Смены</span>
-                </TabsTrigger>
-                <TabsTrigger
-                  value="history"
-                  className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]"
-                >
-                  <History className="h-4 w-4" />
-                  <span>Операции</span>
                 </TabsTrigger>
               </TabsList>
 
@@ -170,6 +162,9 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
               </TabsContent>
               <TabsContent value="schedule">
                 <ScheduleCalendar canEdit refreshKey={refreshKey} onRefresh={refresh} />
+              </TabsContent>
+              <TabsContent value="salary">
+                <SalaryCalculator refreshKey={refreshKey} onRefresh={refresh} />
               </TabsContent>
               <TabsContent value="dashboard">
                 <Dashboard refreshKey={refreshKey} onRefresh={refresh} />
@@ -191,14 +186,8 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
               <TabsContent value="masters">
                 <MastersManager refreshKey={refreshKey} onRefresh={refresh} />
               </TabsContent>
-              <TabsContent value="catalog">
-                <TobaccosManager refreshKey={refreshKey} onRefresh={refresh} />
-              </TabsContent>
               <TabsContent value="shifts-history">
                 <ShiftHistory refreshKey={refreshKey} onRefresh={refresh} />
-              </TabsContent>
-              <TabsContent value="history">
-                <OperationsList refreshKey={refreshKey} />
               </TabsContent>
             </Tabs>
           </div>

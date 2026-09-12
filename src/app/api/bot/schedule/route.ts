@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { checkBotSecret, findMasterByTelegram } from '@/lib/bot-auth'
 import { db } from '@/lib/db'
 import {
-  startOfDay, addDays, parseDateFromText, formatDateRu, formatFullDateRu, weekdayRu,
+  startOfDay, addDays, parseDateFromText, formatDateRu, formatFullDateRu,
 } from '@/lib/datetime-utils'
 
 // POST /api/bot/schedule
@@ -27,28 +27,28 @@ export async function POST(req: NextRequest) {
       const entries = await db.scheduleEntry.findMany({
         where: { date: { gte: from, lt: to } },
         include: { master: true },
-        orderBy: { date: 'asc' },
+        orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
       })
 
       if (entries.length === 0) {
         return NextResponse.json({
-          message: `📅 График на ${days} дней пуст.\nСтарший ещё не составил расписание.\n\nЧтобы добавить: просто напишите боту — «поставь Марата на завтра с 12 до 22».`,
+          message: `📅 График на ${days} дней пуст.\nСтарший ещё не составил расписание.\n\nЧтобы добавить: просто напишите боту — «поставь Марата и Айрата на завтра».`,
         })
       }
 
       // Группировка по датам
-      const byDate: Record<string, Array<{ masterName: string; startHour: number; endHour: number }>> = {}
+      const byDate: Record<string, Array<{ masterName: string; note: string | null }>> = {}
       for (const e of entries) {
         const key = formatDateRu(e.date)
         if (!byDate[key]) byDate[key] = []
-        byDate[key].push({ masterName: e.master.name, startHour: e.startHour, endHour: e.endHour })
+        byDate[key].push({ masterName: e.master.name, note: e.note })
       }
 
       const lines = [`📅 График на ${days} дней`, '─────────────']
       for (const [date, masters] of Object.entries(byDate)) {
         lines.push(`\n${date}:`)
         for (const m of masters) {
-          lines.push(`  ▪️ ${m.masterName} ${m.startHour}:00–${m.endHour}:00`)
+          lines.push(`  ▪️ ${m.masterName}${m.note ? ` · ${m.note}` : ''}`)
         }
       }
 
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
       const entries = await db.scheduleEntry.findMany({
         where: { date: { gte: dayStart, lt: dayEnd } },
         include: { master: true },
-        orderBy: { startHour: 'asc' },
+        orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
       })
 
       const dateLabel = formatFullDateRu(parsed)
@@ -89,8 +89,7 @@ export async function POST(req: NextRequest) {
       const lines = [`📅 ${dateLabel}:`, '']
       for (const e of entries) {
         const mine = e.masterId === master.id ? ' (вы)' : ''
-        lines.push(`  • ${e.master.name}${mine} — ${e.startHour}:00-${e.endHour}:00`)
-        if (e.note) lines.push(`    ${e.note}`)
+        lines.push(`  • ${e.master.name}${mine}${e.note ? ` · ${e.note}` : ''}`)
       }
 
       return NextResponse.json({ message: lines.join('\n') })

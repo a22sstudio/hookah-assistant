@@ -1,19 +1,16 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
-import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { ShiftPanel } from '@/components/hookah/shift-panel'
 import { MasterRequests } from '@/components/hookah/master-requests'
 import { WishesPanel } from '@/components/hookah/wishes-panel'
+import { Dashboard } from '@/components/hookah/dashboard'
 import { AIChat } from '@/components/hookah/ai-chat'
 import { ScheduleCalendar } from '@/components/hookah/schedule-calendar'
-import { Tobacco } from '@/lib/types'
 import { masterAvatarClass, initials } from '@/lib/master-utils'
 import {
   MessageCircle,
@@ -21,9 +18,6 @@ import {
   Star,
   Package,
   LogOut,
-  RefreshCw,
-  AlertTriangle,
-  Loader2,
   CalendarRange,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -139,7 +133,11 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
                 />
               </TabsContent>
               <TabsContent value="stock" className="pt-4">
-                <MasterStockReadOnly refreshKey={refreshKey} />
+                <Dashboard
+                  readOnly
+                  refreshKey={refreshKey}
+                  onRefresh={refresh}
+                />
               </TabsContent>
               <TabsContent value="schedule" className="pt-4">
                 <ScheduleCalendar
@@ -187,132 +185,6 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
           <span className="hidden sm:inline">удачной смены</span>
         </div>
       </footer>
-    </div>
-  )
-}
-
-// Read-only склад для обычного мастера
-function MasterStockReadOnly({ refreshKey }: { refreshKey: number }) {
-  const [tobaccos, setTobaccos] = useState<Tobacco[]>([])
-  const [loading, setLoading] = useState(true)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await fetch('/api/tobaccos')
-      const data = await res.json()
-      setTobaccos(data.tobaccos ?? [])
-    } catch {
-      toast.error('Не удалось загрузить остатки')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    load()
-  }, [load, refreshKey])
-
-  const lowCount = tobaccos.filter((t) => t.isLow).length
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-end justify-between gap-4 border-b border-border pb-3">
-        <div>
-          <span className="label-mono">Инвентарь</span>
-          <h2
-            className="heading-mono text-foreground leading-none mt-1"
-            style={{ fontSize: 'clamp(24px, 4vw, 36px)' }}
-          >
-            Остатки склада
-          </h2>
-        </div>
-        <Button size="icon" variant="outline" onClick={load} title="Обновить">
-          <RefreshCw className="h-4 w-4" />
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="border border-border rounded-md p-4 flex flex-col gap-3 shadow-sm-soft">
-          <div className="flex items-center justify-between">
-            <span className="label-mono">Позиций</span>
-            <Package className="h-3.5 w-3.5 text-muted-foreground/70" />
-          </div>
-          <span
-            className="font-mono font-bold leading-none tabular text-foreground"
-            style={{ fontSize: 'clamp(28px, 4vw, 40px)' }}
-          >
-            {tobaccos.length}
-          </span>
-        </div>
-        <div className={`border rounded-md p-4 flex flex-col gap-3 shadow-sm-soft transition-base ${lowCount > 0 ? 'frame-ember' : 'border-border'}`}>
-          <div className="flex items-center justify-between">
-            <span className="label-mono">Мало</span>
-            <AlertTriangle className={`h-3.5 w-3.5 ${lowCount > 0 ? 'text-ember' : 'text-muted-foreground/70'}`} />
-          </div>
-          <span
-            className="font-mono font-bold leading-none tabular text-foreground"
-            style={{ fontSize: 'clamp(28px, 4vw, 40px)' }}
-          >
-            {lowCount}
-          </span>
-        </div>
-      </div>
-
-      <div className="border border-border rounded-md shadow-sm-soft">
-        {loading ? (
-          <div className="p-8 text-center text-muted-foreground label-mono flex items-center justify-center gap-2">
-            <Loader2 className="h-3 w-3 animate-spin" /> Загрузка...
-          </div>
-        ) : tobaccos.length === 0 ? (
-          <div className="p-8 text-center text-muted-foreground text-sm body-sans">
-            Справочник пуст.
-          </div>
-        ) : (
-          <ScrollArea className="max-h-[60vh]">
-            <div className="stagger-children">
-              {tobaccos.map((t) => {
-                const percent = Math.min(
-                  100,
-                  Math.round((t.currentGrams / t.defaultJarGrams) * 100),
-                )
-                return (
-                  <div
-                    key={t.id}
-                    className="flex items-center gap-4 p-4 border-b border-border last:border-b-0"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline gap-2 flex-wrap">
-                        <span className="font-mono uppercase text-sm font-bold tracking-tight truncate">
-                          {t.brand}
-                        </span>
-                        <span className="font-sans text-xs text-muted-foreground truncate">
-                          {t.line}
-                        </span>
-                        <span className="font-sans text-sm truncate">{t.flavor}</span>
-                        {t.isLow && (
-                          <Badge className="border-ember text-ember bg-transparent">
-                            мало
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3 mt-2">
-                        <Progress
-                          value={percent}
-                          className={`h-[2px] flex-1 ${t.isLow ? '[&>[data-slot=progress-indicator]]:bg-ember' : ''}`}
-                        />
-                        <span className="label-mono-sm tabular whitespace-nowrap">
-                          {t.currentGrams} / {t.defaultJarGrams}г
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </ScrollArea>
-        )}
-      </div>
     </div>
   )
 }
