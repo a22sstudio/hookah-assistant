@@ -1,5 +1,5 @@
 import 'server-only'
-import { Telegraf, Markup } from 'telegraf'
+import { Telegraf } from 'telegraf'
 import { db } from '@/lib/db'
 import { processMasterMessage, recognizeInvoice, transcribeAudio } from '@/lib/ai'
 import type { SessionMaster } from '@/lib/auth'
@@ -11,15 +11,6 @@ import type { SessionMaster } from '@/lib/auth'
 const globalForBot = globalThis as unknown as {
   __botStarted?: boolean
   __botInstance?: Telegraf | null
-}
-
-function humanDuration(openedAt: Date): string {
-  const ms = Date.now() - openedAt.getTime()
-  const mins = Math.floor(ms / 60000)
-  if (mins < 60) return `${mins} мин`
-  const h = Math.floor(mins / 60)
-  const m = mins % 60
-  return `${h}ч ${m}м`
 }
 
 function roleEmoji(role: string): string {
@@ -117,11 +108,10 @@ function createBot(): Telegraf {
         `• 🎤 Принимать голосовые сообщения\n` +
         `• 📸 Распознавать накладные по фото\n` +
         `• 💬 Создавать заявки на закуп и хотелки\n` +
-        `• 📊 Считать кальяны и вести смену\n\n` +
+        `• 📅 Показывать график работы\n\n` +
         `Команды:\n` +
-        `/shift — открыть/закрыть смену\n` +
-        `/+1 — добавить кальян\n` +
-        `/status — кто на смене\n` +
+        `/schedule — график на 30 дней\n` +
+        `/summary — сводка за сегодня\n` +
         (isSenior ? '/register — добавить мастера\n/masters — список мастеров\n' : '') +
         `/whoami — кто я\n/help — помощь`,
     )
@@ -135,10 +125,6 @@ function createBot(): Telegraf {
     const isSenior = master.role === 'SENIOR'
     return ctx.reply(
       `📋 Команды\n\n` +
-        `• /shift — открыть или закрыть смену\n` +
-        `• /+1 или "+1" — добавить 1 кальян\n` +
-        `• "забил 5" / "сделал 3" / "накрутил 10" — пакетно\n` +
-        `• /status — кто сейчас на смене\n` +
         `• /schedule — график на 30 дней\n` +
         `• /schedule 23 или /schedule четверг — кто работает\n` +
         `• /summary — сводка за сегодня\n` +
@@ -172,38 +158,6 @@ function createBot(): Telegraf {
       `${roleEmoji(master.role)} ${master.name}\nРоль: ${master.role === 'SENIOR' ? 'Старший мастер' : 'Мастер'}\nTelegram ID: <code>${tgId}</code>`,
       { parse_mode: 'HTML' },
     )
-  })
-
-  // /status — кто на смене
-  bot.command('status', async (ctx) => {
-    const master = (ctx.state as { master: SessionMaster | null }).master
-    if (!master) return ctx.reply('🔒 Вы не зарегистрированы. /start')
-
-    const openShifts = await db.shift.findMany({
-      where: { status: 'OPEN' },
-      include: { master: true },
-      orderBy: { openedAt: 'asc' },
-    })
-    const myShift = openShifts.find((s) => s.masterId === master.id) || null
-
-    const lines: string[] = []
-    if (openShifts.length > 0) {
-      lines.push('👥 На смене сейчас:')
-      for (const s of openShifts) {
-        const mine = s.masterId === master.id ? ' (вы)' : ''
-        lines.push(
-          `  ${roleEmoji(s.master.role)} ${s.master.name}${mine} — ${s.hookahCount} кальянов · ${humanDuration(s.openedAt)}`,
-        )
-      }
-    } else {
-      lines.push('🚪 Никого на смене.')
-    }
-    if (myShift) {
-      lines.push(`\n📊 Ваша смена: ${myShift.hookahCount} кальянов · ${humanDuration(myShift.openedAt)}`)
-    } else {
-      lines.push('\n✅ Можете открыть смену: /shift')
-    }
-    return ctx.reply(lines.join('\n'))
   })
 
   // /schedule — график (без аргумента = на 30 дней, /schedule 23 или /schedule четверг)
@@ -258,98 +212,6 @@ function createBot(): Telegraf {
     })
     const data = await res.json()
     return ctx.reply(data.message || data.error || 'Не удалось получить сводку')
-  })
-
-  // /shift — открыть/закрыть
-  bot.command('shift', async (ctx) => {
-    const master = (ctx.state as { master: SessionMaster | null }).master
-    if (!master) return ctx.reply('🔒 Вы не зарегистрированы. /start')
-
-    const myShift = await db.shift.findFirst({
-      where: { masterId: master.id, status: 'OPEN' },
-    })
-
-    if (myShift) {
-      return ctx.reply(
-        `Ваша смена открыта.\nКальянов: ${myShift.hookahCount}\nДлительность: ${humanDuration(myShift.openedAt)}\n\nЗакрыть смену?`,
-        Markup.inlineKeyboard([
-          [Markup.button.callback('✅ Закрыть смену', 'shift_close')],
-        ]),
-      )
-    }
-    return ctx.reply(
-      'Открыть смену?',
-      Markup.inlineKeyboard([
-        [Markup.button.callback('🌿 Открыть смену', 'shift_open')],
-      ]),
-    )
-  })
-
-  bot.action('shift_open', async (ctx) => {
-    await ctx.answerCbQuery()
-    const master = (ctx.state as { master: SessionMaster | null }).master
-    if (!master) return ctx.editMessageText('⚠️ Сессия истекла')
-
-    const existing = await db.shift.findFirst({
-      where: { masterId: master.id, status: 'OPEN' },
-    })
-    if (existing) {
-      return ctx.editMessageText('⚠️ У вас уже открыта смена.')
-    }
-    await db.shift.create({ data: { masterId: master.id, status: 'OPEN' } })
-    if (master.role !== 'SENIOR') {
-      const notifMsg = `🌿 ${master.name} открыл смену`
-      await db.notification.create({
-        data: { type: 'SHIFT_OPEN', message: notifMsg, masterId: master.id },
-      })
-      // Push старшему в Telegram
-      const { pushToSeniors } = await import('@/lib/notify')
-      await pushToSeniors(notifMsg)
-    }
-    return ctx.editMessageText('✅ Смена открыта! Считай кальяны командой /+1 или просто "+1".')
-  })
-
-  bot.action('shift_close', async (ctx) => {
-    await ctx.answerCbQuery()
-    const master = (ctx.state as { master: SessionMaster | null }).master
-    if (!master) return ctx.editMessageText('⚠️ Сессия истекла')
-
-    const shift = await db.shift.findFirst({
-      where: { masterId: master.id, status: 'OPEN' },
-    })
-    if (!shift) {
-      return ctx.editMessageText('⚠️ Нет открытой смены.')
-    }
-    await db.shift.update({
-      where: { id: shift.id },
-      data: { status: 'CLOSED', closedAt: new Date() },
-    })
-    if (master.role !== 'SENIOR') {
-      await db.notification.create({
-        data: {
-          type: 'SHIFT_CLOSE',
-          message: `${master.name} закрыл смену (${shift.hookahCount} кальянов)`,
-          masterId: master.id,
-        },
-      })
-    }
-    return ctx.editMessageText(`✅ Смена закрыта. Кальянов за смену: ${shift.hookahCount}`)
-  })
-
-  // /+1 кальян
-  bot.command(['+1', 'hookah', 'kalyan'], async (ctx) => {
-    const master = (ctx.state as { master: SessionMaster | null }).master
-    if (!master) return ctx.reply('🔒 Вы не зарегистрированы. /start')
-    const result = await addHookah(master.id)
-    return ctx.reply(result.message)
-  })
-
-  // Реагируем на текст "+1"
-  bot.hears(/^\+\s?1(\s+кальян)?$/i, async (ctx) => {
-    const master = (ctx.state as { master: SessionMaster | null }).master
-    if (!master) return ctx.reply('🔒 Вы не зарегистрированы. /start')
-    const result = await addHookah(master.id)
-    return ctx.reply(result.message)
   })
 
   // /register (только старший)
@@ -444,25 +306,6 @@ function createBot(): Telegraf {
     const text = (ctx.message as { text: string }).text
     if (text.startsWith('/')) return // команды уже обработаны
 
-    // Быстрый парсинг: "забил 5 кальянов", "сделал 3", "накрутил 10"
-    const { parseHookahCount } = await import('@/lib/datetime-utils')
-    const hookahCount = parseHookahCount(text)
-
-    // Если похоже на отчёт о кальянах и нет других ключевых слов AI
-    const lowerText = text.toLowerCase()
-    const hasOtherIntent = /сколько|чего|какой|какая|закажи|хочу|заканчивается|осталось|приход|накладн|поставь|убери|график|поставить|сним|сними|зарплат/.test(lowerText)
-
-    if (hookahCount !== null && hookahCount > 1 && !hasOtherIntent) {
-      // Пакетное добавление кальянов (минуя AI — быстро)
-      const shift = await db.shift.findFirst({ where: { masterId: master.id, status: 'OPEN' } })
-      if (!shift) {
-        return ctx.reply('⚠️ Смена не открыта. /shift чтобы открыть.')
-      }
-      const newCount = shift.hookahCount + hookahCount
-      await db.shift.update({ where: { id: shift.id }, data: { hookahCount: newCount } })
-      return ctx.reply(`🪔 +${hookahCount} кальянов\nВсего за смену: ${newCount}`)
-    }
-
     await ctx.sendChatAction('typing')
     const stop = { value: false }
     const typingLoop = keepTyping(ctx, stop).catch(() => {})
@@ -517,21 +360,6 @@ function createBot(): Telegraf {
       if (!transcribedText) {
         stop.value = true; await typingLoop
         return ctx.reply('⚠️ Не удалось распознать речь (пустой ответ).')
-      }
-
-      // Быстрый парсинг кальянов из распознанного голоса
-      const { parseHookahCount } = await import('@/lib/datetime-utils')
-      const hookahCount = parseHookahCount(transcribedText)
-      const hasOtherIntent = /сколько|чего|какой|какая|закажи|хочу|заканчивается|осталось|приход|накладн|поставь|убери|график|поставить|сним|сними|зарплат/.test(transcribedText.toLowerCase())
-
-      if (hookahCount !== null && hookahCount > 1 && !hasOtherIntent) {
-        const shift = await db.shift.findFirst({ where: { masterId: master.id, status: 'OPEN' } })
-        if (shift) {
-          const newCount = shift.hookahCount + hookahCount
-          await db.shift.update({ where: { id: shift.id }, data: { hookahCount: newCount } })
-          stop.value = true; await typingLoop
-          return ctx.reply(`🎙 Распознал: «${transcribedText}»\n\n🪔 +${hookahCount} кальянов\nВсего за смену: ${newCount}`)
-        }
       }
 
       const result = await withTimeout(
@@ -689,17 +517,6 @@ function createBot(): Telegraf {
   })
 
   return bot
-}
-
-// Вспомогательные функции
-async function addHookah(masterId: string): Promise<{ success: boolean; message: string }> {
-  const shift = await db.shift.findFirst({ where: { masterId, status: 'OPEN' } })
-  if (!shift) {
-    return { success: false, message: '⚠️ Смена не открыта. /shift чтобы открыть.' }
-  }
-  const newCount = shift.hookahCount + 1
-  await db.shift.update({ where: { id: shift.id }, data: { hookahCount: newCount } })
-  return { success: true, message: `🪔 +1 кальян\nВсего за смену: ${newCount}` }
 }
 
 function formatReply(result: {

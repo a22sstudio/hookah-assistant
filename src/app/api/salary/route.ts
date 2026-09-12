@@ -25,7 +25,8 @@ async function requireSenior() {
 }
 
 // GET /api/salary?masterId=&from=&to=
-// Возвращает закрытые смены мастера в диапазоне, ставку, итог.
+// Считает ScheduleEntry (запланированные смены) мастера в диапазоне.
+// Каждая ScheduleEntry = 1 смена = rate × 1.
 export async function GET(req: NextRequest) {
   const { error, me } = await requireSenior()
   if (error) return error
@@ -56,18 +57,17 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Мастер не найден' }, { status: 404 })
   }
 
-  // Закрытые смены в диапазоне по openedAt
-  const shifts = await db.shift.findMany({
+  // ScheduleEntry в диапазоне
+  const entries = await db.scheduleEntry.findMany({
     where: {
       masterId,
-      status: 'CLOSED',
-      openedAt: { gte: fromDate, lt: toDate },
+      date: { gte: fromDate, lt: toDate },
     },
-    orderBy: { openedAt: 'asc' },
+    orderBy: { date: 'asc' },
   })
 
   const rate = master.rate
-  const count = shifts.length
+  const count = entries.length
   const total = count * rate
 
   return NextResponse.json({
@@ -82,12 +82,12 @@ export async function GET(req: NextRequest) {
       from: fromDate,
       to: addDays(toDate, -1),
     },
-    shifts: shifts.map((s) => ({
-      id: s.id,
-      openedAt: s.openedAt,
-      closedAt: s.closedAt,
-      hookahCount: s.hookahCount,
-      note: s.note,
+    shifts: entries.map((e) => ({
+      id: e.id,
+      openedAt: e.date, // оставляем имя поля для совместимости с UI
+      closedAt: null,
+      hookahCount: 0,
+      note: e.note,
     })),
     count,
     rate,

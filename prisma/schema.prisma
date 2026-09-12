@@ -238,3 +238,34 @@ model Consumable {
 
   @@index([active])
 }
+
+// ============================================
+// Заявки на закуп (структурированные)
+// ============================================
+
+model PurchaseOrder {
+  id        String              @id @default(cuid())
+  status    String              @default("DRAFT") // DRAFT | SUBMITTED | ORDERED | RECEIVED
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  items     PurchaseOrderItem[]
+
+  @@index([status])
+}
+
+model PurchaseOrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  itemType  String  // "TOBACCO" | "CONSUMABLE"
+  itemId    String? // ссылка на Tobacco или Consumable (null если кастомное)
+  brand     String? // для табака
+  line      String? // для табака
+  flavor    String? // для табака
+  name      String  // отображаемое имя (например "Darkside Core Cola" или "Угли Cocourth 26мм")
+  packGrams Int?    // для табака (грамм в банке)
+  quantity  Int     // количество банок/упаковок
+  unit      String  @default("шт") // "банок", "упаковок"
+  order     PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}

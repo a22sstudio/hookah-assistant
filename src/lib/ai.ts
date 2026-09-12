@@ -76,7 +76,6 @@ export type AIAction =
   | { tool: 'create_order'; args: { brand: string; line: string; flavor: string; grams: number; note?: string } }
   | { tool: 'create_request'; args: { text: string; grams?: number } }
   | { tool: 'create_wish'; args: { text: string } }
-  | { tool: 'add_hookah_batch'; args: { count: number } }
   | { tool: 'update_schedule'; args: { masterName: string; dateText: string; action: 'add' | 'remove' } }
   | { tool: 'add_schedule_multi'; args: { masterNames: string[]; dateText: string } }
   | { tool: 'calc_salary'; args: { masterName: string; dateText?: string } }
@@ -96,7 +95,7 @@ export interface AIResult {
 function buildSystemPrompt(stockContext: string, master: SessionMaster, shiftContext: string, consumablesContext: string): string {
   const isSenior = master.role === 'SENIOR'
   const roleDesc = isSenior
-    ? 'Старший кальянный мастер. Полный доступ: учёт табака, приход, заявки, управление сменой.'
+    ? 'Старший кальянный мастер. Полный доступ: учёт табака, приход, заявки, управление графиком.'
     : 'Обычный кальянный мастер. Отмечаешь остатки, подаёшь заявки на закуп и хотелки. НЕ оформляешь приход и не создаёшь новые позиции в справочнике — это делает старший.'
 
   const allowedTools = isSenior
@@ -106,20 +105,18 @@ function buildSystemPrompt(stockContext: string, master: SessionMaster, shiftCon
 4. create_order — создать заявку на закуп конкретного табака (по граммам)
 5. create_request — заявка на закуп свободной формы ("BlackBurn Energy 2 банки")
 6. create_wish — хотелка/пожелание
-7. add_hookah_batch — добавить N кальянов к смене ("забил 5", "сделал 3", "накрутил 10")
-8. update_schedule — редактировать график мастера: action="add" или "remove". masterName (имя мастера, fuzzy), dateText ("завтра", "пятница", "23 числа"). Примеры: "поставь Марата на завтра" → action=add, masterName="Марат", dateText="завтра". "убери Марата с пятницы" → action=remove, masterName="Марат", dateText="пятница".
-9. add_schedule_multi — поставить НЕСКОЛЬКО мастеров на один день. masterNames: массив имён, dateText. Пример: "поставь Марата и Айрата на завтра" → masterNames=["Марат","Айрат"], dateText="завтра".
-10. calc_salary — посчитать зарплату мастера за период. masterName (имя), dateText (опционально, по умолчанию текущий месяц). Примеры: "зарплата Марата за сентябрь" → masterName="Марат", dateText="сентябрь". "зарплата Айрата" → masterName="Айрат" (текущий месяц).
-11. update_consumable — обновить точный остаток расходника (угли, мундштуки, фольга). name (имя расходника из контекста), qty (точное количество, число). Пример: "закончились угли cocourth" → name="Угли Cocourth 26мм", qty=0. "осталось 3 упаковки мундштуков" → name="Мундштуки", qty=3.
-12. create_consumable_request — создать заявку на закуп расходника. name (имя расходника), qty (опционально, сколько закупить). Пример: "закажи мундштуки" → name="Мундштуки", qty=не указано.
-13. query — low_stock (что мало), all_stock (все остатки), shift (кто на смене и активные заявки)`
+7. update_schedule — редактировать график мастера: action="add" или "remove". masterName (имя мастера, fuzzy), dateText ("завтра", "пятница", "23 числа"). Примеры: "поставь Марата на завтра" → action=add, masterName="Марат", dateText="завтра". "убери Марата с пятницы" → action=remove, masterName="Марат", dateText="пятница".
+8. add_schedule_multi — поставить НЕСКОЛЬКО мастеров на один день. masterNames: массив имён, dateText. Пример: "поставь Марата и Айрата на завтра" → masterNames=["Марат","Айрат"], dateText="завтра".
+9. calc_salary — посчитать зарплату мастера за период. masterName (имя), dateText (опционально, по умолчанию текущий месяц). Примеры: "зарплата Марата за сентябрь" → masterName="Марат", dateText="сентябрь". "зарплата Айрата" → masterName="Айрат" (текущий месяц).
+10. update_consumable — обновить точный остаток расходника (угли, мундштуки, фольга). name (имя расходника из контекста), qty (точное количество, число). Пример: "закончились угли cocourth" → name="Угли Cocourth 26мм", qty=0. "осталось 3 упаковки мундштуков" → name="Мундштуки", qty=3.
+11. create_consumable_request — создать заявку на закуп расходника. name (имя расходника), qty (опционально, сколько закупить). Пример: "закажи мундштуки" → name="Мундштуки", qty=не указано.
+12. query — low_stock (что мало), all_stock (все остатки), shift (кто сегодня по графику)`
     : `1. update_stock — отметить остаток табака (обычно когда "закончился" = 0, "мало осталось" = мало). Это списывает остаток и пушит старшему.
 2. create_request — заявка на закуп свободной формы ("BlackBurn Energy 2 банки")
 3. create_wish — хотелка/пожелание
-4. add_hookah_batch — добавить N кальянов к смене ("забил 5", "сделал 3", "накрутил 10")
-5. update_consumable — отметить остаток расходника (угли, мундштуки, фольга). name (из контекста расходников), qty (точное число). "закончились угли" → qty=0.
-6. create_consumable_request — создать заявку на закуп расходника. name (из контекста), qty (опционально).
-7. query — low_stock (что мало), all_stock (все остатки), shift (кто на смене)
+4. update_consumable — отметить остаток расходника (угли, мундштуки, фольга). name (из контекста расходников), qty (точное число). "закончились угли" → qty=0.
+5. create_consumable_request — создать заявку на закуп расходника. name (из контекста), qty (опционально).
+6. query — low_stock (что мало), all_stock (все остатки), shift (кто сегодня по графику)
 НЕ используй add_incoming, add_tobacco, create_order, update_schedule, add_schedule_multi, calc_salary — это для старшего мастера.`
 
   return `Ты — умный ассистент кальянной. Сейчас с тобой работает: ${master.name} (${roleDesc}).
@@ -149,10 +146,7 @@ ${allowedTools}
 - "хочу X" / "было бы круто X" → create_wish
 - "чего мало?" / "что заказать?" → query low_stock
 - "покажи остатки" → query all_stock
-- "что на смене?" / "как смена?" / "кто работает?" → query shift
-- "забил N кальянов" / "сделал N" / "накрутил N" / "сварил N" → add_hookah_batch с count=N
-  (N может быть числом или словом: "пять", "десять")
-  (без числа = +1: "забил кальян")
+- "что на смене?" / "кто сегодня работает?" / "кто на смене?" → query shift
 - "поставь МАРТА на ЗАВТРА" → update_schedule action=add
 - "убери МАРТА с ПЯТНИЦЫ" → update_schedule action=remove
 - "поставь Марата и Айрата на завтра" → add_schedule_multi masterNames=["Марат","Айрат"], dateText="завтра"
@@ -308,12 +302,16 @@ async function buildConsumablesContext(): Promise<string> {
   return lines.join('\n')
 }
 
-// Контекст смены для промпта
+// Контекст смены для промпта — теперь строится по графику (ScheduleEntry)
+// ВАЖНО: система смен удалена (redesign-7). Сводка по графику.
 async function buildShiftContext(master: SessionMaster): Promise<string> {
-  const openShifts = await db.shift.findMany({
-    where: { status: 'OPEN' },
+  const todayStart = startOfDay(new Date())
+  const todayEnd = addDays(todayStart, 1)
+
+  const todayEntries = await db.scheduleEntry.findMany({
+    where: { date: { gte: todayStart, lt: todayEnd } },
     include: { master: true },
-    orderBy: { openedAt: 'asc' },
+    orderBy: { createdAt: 'asc' },
   })
 
   const activeRequests = await db.masterRequest.findMany({
@@ -330,15 +328,12 @@ async function buildShiftContext(master: SessionMaster): Promise<string> {
     take: 10,
   })
 
-  // Недавние операции за текущие смены (что мастера отметили)
+  // Недавние операции по остаткам за сегодня
   const recentOps: string[] = []
-  if (openShifts.length > 0) {
-    const shiftMasterIds = openShifts.map((s) => s.masterId)
-    const earliestOpen = openShifts.reduce((min, s) => (s.openedAt < min ? s.openedAt : min), openShifts[0].openedAt)
-
+  if (todayEntries.length > 0) {
     const ops = await db.operation.findMany({
       where: {
-        createdAt: { gte: earliestOpen },
+        createdAt: { gte: todayStart, lt: todayEnd },
         type: 'ADJUSTMENT',
       },
       include: { tobacco: true },
@@ -346,8 +341,6 @@ async function buildShiftContext(master: SessionMaster): Promise<string> {
       take: 15,
     })
 
-    // Группируем по мастерам (но operation не имеет masterId напрямую — берём из ChatMessage)
-    // Проще: показать все недавние операции с заметками
     for (const op of ops) {
       const time = new Date(op.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
       const t = op.tobacco
@@ -356,21 +349,18 @@ async function buildShiftContext(master: SessionMaster): Promise<string> {
   }
 
   const lines: string[] = []
-  lines.push('ТЕКУЩАЯ СМЕНА:')
-  if (openShifts.length === 0) {
-    lines.push('(никого на смене)')
+  lines.push('ГРАФИК СЕГОДНЯ:')
+  if (todayEntries.length === 0) {
+    lines.push('(никого не запланировано на сегодня)')
   } else {
-    for (const s of openShifts) {
-      const hoursAgo = Math.floor((Date.now() - s.openedAt.getTime()) / 3600000)
-      const minsAgo = Math.floor((Date.now() - s.openedAt.getTime()) / 60000)
-      const dur = hoursAgo > 0 ? `${hoursAgo}ч` : `${minsAgo}м`
-      const mine = s.masterId === master.id ? ' (ты)' : ''
-      lines.push(`- ${s.master.name}${mine} | на смене ${dur} | ${s.hookahCount} кальянов`)
+    for (const e of todayEntries) {
+      const mine = e.masterId === master.id ? ' (ты)' : ''
+      lines.push(`- ${e.master.name}${mine}${e.note ? ` · ${e.note}` : ''}`)
     }
   }
 
   if (recentOps.length > 0) {
-    lines.push('\nНЕДАВНИЕ ОПЕРАЦИИ ПО ОСТАТКАМ (за смену):')
+    lines.push('\nНЕДАВНИЕ ОПЕРАЦИИ ПО ОСТАТКАМ (за сегодня):')
     lines.push(...recentOps)
   }
 
@@ -557,21 +547,6 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
         return { success: true, message: `Хотелка добавлена: "${text}"`, data: { wishId: wish.id } }
       }
 
-      case 'add_hookah_batch': {
-        const count = Math.max(1, Math.min(100, action.args.count))
-        const shift = await db.shift.findFirst({ where: { masterId: master.id, status: 'OPEN' } })
-        if (!shift) {
-          return { success: false, message: 'Смена не открыта. /shift чтобы открыть.' }
-        }
-        const newCount = shift.hookahCount + count
-        await db.shift.update({ where: { id: shift.id }, data: { hookahCount: newCount } })
-        return {
-          success: true,
-          message: `+${count} кальянов (всего за смену: ${newCount})`,
-          data: { added: count, total: newCount },
-        }
-      }
-
       case 'update_schedule': {
         if (master.role !== 'SENIOR') {
           return { success: false, message: 'Только старший может редактировать график' }
@@ -721,16 +696,15 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
           toDate = addDays(startOfDay(new Date(today.getFullYear(), today.getMonth() + 1, 0)), 1)
         }
 
-        // Считаем закрытые смены мастера в диапазоне
-        const shifts = await db.shift.findMany({
+        // Считаем запланированные смены мастера в диапазоне (ScheduleEntry)
+        const entries = await db.scheduleEntry.findMany({
           where: {
             masterId: masterRec.id,
-            status: 'CLOSED',
-            openedAt: { gte: fromDate, lt: toDate },
+            date: { gte: fromDate, lt: toDate },
           },
         })
 
-        const count = shifts.length
+        const count = entries.length
         const rate = masterRec.rate
         const total = count * rate
 
@@ -764,7 +738,7 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
         }
         if (w.includes('shift')) {
           const shiftContext = await buildShiftContext(master)
-          return { success: true, message: 'Контекст смены загружен', data: { shiftContext } }
+          return { success: true, message: 'Контекст графика загружен', data: { shiftContext } }
         }
         const low = await db.tobacco.findMany({ where: { active: true }, include: { stock: true } })
         const filtered = low

@@ -8,6 +8,9 @@ import {
 // GET /api/daily-summary — сводка за день
 // ?date=2026-09-10 (по умолчанию сегодня)
 // ?role=senior — расширенная для старшего (по всем мастерам)
+//
+// ВАЖНО: система смен удалена (redesign-7). Теперь сводка строится по графику
+// (ScheduleEntry). Если у мастера нет ScheduleEntry на день — он не работал.
 export async function GET(req: NextRequest) {
   const me = await getCurrentMaster()
   if (!me) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
@@ -27,13 +30,13 @@ export async function GET(req: NextRequest) {
   }
   const nextDay = addDays(targetDate, 1)
 
-  // Смены за этот день
-  const shifts = await db.shift.findMany({
+  // Кто был запланирован на этот день
+  const scheduledEntries = await db.scheduleEntry.findMany({
     where: {
-      openedAt: { gte: targetDate, lt: nextDay },
+      date: { gte: targetDate, lt: nextDay },
     },
     include: { master: true },
-    orderBy: { openedAt: 'asc' },
+    orderBy: { createdAt: 'asc' },
   })
 
   // Операции по остаткам (ADJUSTMENT) за день
@@ -62,25 +65,19 @@ export async function GET(req: NextRequest) {
 
   // Для обычного мастера — только его данные
   const isSenior = me.role === 'SENIOR'
-  const myShift = shifts.find((s) => s.masterId === me.id) ?? null
-  const myOperations = operations.filter((op) => op.tobacco?.id) // упрощено
+  const myEntry = scheduledEntries.find((e) => e.masterId === me.id) ?? null
+  const myOperations = operations.filter(() => true)
   const myRequests = requests.filter((r) => r.masterId === me.id)
   const myWishes = wishes.filter((w) => w.masterId === me.id)
 
-  // Короткая сводка для мастера
-  const mySummary = myShift
+  const mySummary = myEntry
     ? {
         date: formatDateRu(targetDate),
         weekday: weekdayRu(targetDate),
-        hookahCount: myShift.hookahCount,
-        shiftDuration: myShift.closedAt
-          ? `${Math.round((myShift.closedAt.getTime() - myShift.openedAt.getTime()) / 3600000)}ч`
-          : `${Math.round((Date.now() - myShift.openedAt.getTime()) / 3600000)}ч`,
         stockAdjustments: myOperations.length,
         requestsCreated: myRequests.length,
         wishesCreated: myWishes.length,
-        shiftOpenedAt: myShift.openedAt,
-        shiftClosedAt: myShift.closedAt,
+        scheduledAt: myEntry.date,
       }
     : null
 
@@ -96,32 +93,22 @@ export async function GET(req: NextRequest) {
   }
 
   // Расширенная сводка для старшего
-  const allMasterSummaries = await Promise.all(
-    shifts.map(async (s) => {
-      const masterOps = operations.filter(() => true) // упрощено
-      const masterReqs = requests.filter((r) => r.masterId === s.masterId)
-      const masterWishes = wishes.filter((w) => w.masterId === s.masterId)
-      return {
-        masterId: s.masterId,
-        masterName: s.master.name,
-        masterColor: s.master.color,
-        hookahCount: s.hookahCount,
-        shiftOpenedAt: s.openedAt,
-        shiftClosedAt: s.closedAt,
-        shiftDuration: s.closedAt
-          ? `${Math.round((s.closedAt.getTime() - s.openedAt.getTime()) / 3600000)}ч`
-          : `${Math.round((Date.now() - s.openedAt.getTime()) / 3600000)}ч`,
-        isCurrentlyOpen: !s.closedAt,
-        requestsCreated: masterReqs.length,
-        wishesCreated: masterWishes.length,
-        requests: masterReqs.map((r) => r.text),
-        wishes: masterWishes.map((w) => w.text),
-      }
-    }),
-  )
+  const allMasterSummaries = scheduledEntries.map((e) => {
+    const masterReqs = requests.filter((r) => r.masterId === e.masterId)
+    const masterWishes = wishes.filter((w) => w.masterId === e.masterId)
+    return {
+      masterId: e.masterId,
+      masterName: e.master.name,
+      masterColor: e.master.color,
+      scheduledAt: e.date,
+      requestsCreated: masterReqs.length,
+      wishesCreated: masterWishes.length,
+      requests: masterReqs.map((r) => r.text),
+      wishes: masterWishes.map((w) => w.text),
+    }
+  })
 
   // Итоги
-  const totalHookahs = shifts.reduce((sum, s) => sum + s.hookahCount, 0)
   const totalRequests = requests.length
   const totalWishes = wishes.length
   const totalOperations = operations.length
@@ -141,8 +128,7 @@ export async function GET(req: NextRequest) {
     dateLabel: formatFullDateRu(targetDate),
     isSenior: true,
     totals: {
-      shiftsCount: shifts.length,
-      totalHookahs,
+      scheduledMastersCount: scheduledEntries.length,
       totalRequests,
       totalWishes,
       totalOperations,

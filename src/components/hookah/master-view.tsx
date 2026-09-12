@@ -1,15 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { ThemeToggle } from '@/components/theme-toggle'
-import { ShiftPanel } from '@/components/hookah/shift-panel'
+import { HomeDashboard } from '@/components/hookah/home-dashboard'
 import { MasterRequests } from '@/components/hookah/master-requests'
 import { WishesPanel } from '@/components/hookah/wishes-panel'
 import { Dashboard } from '@/components/hookah/dashboard'
 import { ConsumablesPanel } from '@/components/hookah/consumables-panel'
+import { OrderComposer } from '@/components/hookah/order-composer'
 import { AIChat } from '@/components/hookah/ai-chat'
 import { ScheduleCalendar } from '@/components/hookah/schedule-calendar'
 import { masterAvatarClass, initials } from '@/lib/master-utils'
@@ -21,6 +22,8 @@ import {
   LogOut,
   CalendarRange,
   Boxes,
+  Home,
+  ClipboardList,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -32,7 +35,24 @@ interface MasterViewProps {
 export function MasterView({ master, onLogout }: MasterViewProps) {
   const [refreshKey, setRefreshKey] = useState(0)
   const [mobileChatOpen, setMobileChatOpen] = useState(false)
+  const [tab, setTab] = useState<string>('home')
   const refresh = () => setRefreshKey((k) => k + 1)
+
+  // Слушаем события переключения табов от HomeDashboard
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<string>).detail
+      if (typeof detail === 'string' && detail) {
+        setTab(detail)
+        // Прокрутить к началу страницы (чтобы увидеть таб)
+        if (typeof window !== 'undefined') {
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        }
+      }
+    }
+    window.addEventListener('home-goto', handler as EventListener)
+    return () => window.removeEventListener('home-goto', handler as EventListener)
+  }, [])
 
   const handleLogout = async () => {
     try {
@@ -80,16 +100,23 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
         <div className="grid lg:grid-cols-[1fr_440px] gap-6">
           {/* Левая колонка */}
           <div className="min-w-0 space-y-6">
-            {/* Смена — всегда сверху */}
-            <ShiftPanel
-              refreshKey={refreshKey}
-              onRefresh={refresh}
-              masterName={master.name}
-            />
-
             {/* Табы */}
-            <Tabs defaultValue="requests" className="w-full">
-              <TabsList className="grid w-full grid-cols-5 h-auto">
+            <Tabs value={tab} onValueChange={setTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-7 h-auto">
+                <TabsTrigger
+                  value="home"
+                  className="flex flex-col gap-1 py-2.5"
+                >
+                  <Home className="h-4 w-4" />
+                  <span>Сегодня</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="schedule"
+                  className="flex flex-col gap-1 py-2.5"
+                >
+                  <CalendarRange className="h-4 w-4" />
+                  <span>График</span>
+                </TabsTrigger>
                 <TabsTrigger
                   value="requests"
                   className="flex flex-col gap-1 py-2.5"
@@ -119,14 +146,28 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
                   <span>Расход</span>
                 </TabsTrigger>
                 <TabsTrigger
-                  value="schedule"
+                  value="orders"
                   className="flex flex-col gap-1 py-2.5"
                 >
-                  <CalendarRange className="h-4 w-4" />
-                  <span>График</span>
+                  <ClipboardList className="h-4 w-4" />
+                  <span>Заказ</span>
                 </TabsTrigger>
               </TabsList>
 
+              <TabsContent value="home" className="pt-4">
+                <HomeDashboard
+                  master={master}
+                  refreshKey={refreshKey}
+                  onRefresh={refresh}
+                />
+              </TabsContent>
+              <TabsContent value="schedule" className="pt-4">
+                <ScheduleCalendar
+                  canEdit={false}
+                  refreshKey={refreshKey}
+                  onRefresh={refresh}
+                />
+              </TabsContent>
               <TabsContent value="requests" className="pt-4">
                 <MasterRequests
                   role="REGULAR"
@@ -155,9 +196,9 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
                   onRefresh={refresh}
                 />
               </TabsContent>
-              <TabsContent value="schedule" className="pt-4">
-                <ScheduleCalendar
-                  canEdit={false}
+              <TabsContent value="orders" className="pt-4">
+                <OrderComposer
+                  role="REGULAR"
                   refreshKey={refreshKey}
                   onRefresh={refresh}
                 />

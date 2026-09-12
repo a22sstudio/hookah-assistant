@@ -196,35 +196,27 @@ export function SalaryCalculator({ refreshKey }: SalaryCalculatorProps) {
     }
     const header = [
       'Дата',
-      'Открыта',
-      'Закрыта',
-      'Кальяны',
       'Заметка',
     ]
     const rows: string[][] = [header]
     for (const s of data.shifts) {
       rows.push([
         new Date(s.openedAt).toLocaleDateString('ru-RU'),
-        new Date(s.openedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
-        s.closedAt
-          ? new Date(s.closedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-          : '—',
-        String(s.hookahCount),
         s.note ?? '',
       ])
     }
     rows.push([])
     rows.push([
       `ИТОГО: ${data.count} смен × ${data.rate}₽ = ${data.total}₽`,
-      '', '', '', '',
+      '',
     ])
     rows.push([
       `Мастер: ${data.master.name}`,
-      '', '', '', '',
+      '',
     ])
     rows.push([
       `Период: ${fmtDateShort(data.period.from)} - ${fmtDateShort(data.period.to)}`,
-      '', '', '', '',
+      '',
     ])
 
     const escape = (s: string | number | null | undefined) => {

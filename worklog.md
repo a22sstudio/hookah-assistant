@@ -1141,3 +1141,141 @@ Stage Summary:
 - PIN-коды для демо не изменились: старший Тимур=1111, мастера Айрат=2222, Марат=3333.
 - Старший видит 9 табов (Смена/График/Зарплата/Склад/Расход/Заявки/Хотелки/Мастера/Смены), обычный мастер — 5 табов (Заявки/Хотелки/Склад/Расход/График).
 - AI теперь понимает: «закончились угли cocourth» → update_consumable qty=0 + create_consumable_request, с авто-пушем старшему (тип LOW_STOCK).
+
+---
+Task ID: redesign-7
+Agent: main (Z.ai Code)
+Task: Major reorganization — REMOVE shift system entirely (no more open/close shifts, no hookah counter), replace with schedule-based home screens. Add NEW order composition system (PurchaseOrder) with CSV/PDF export.
+
+Work Log:
+
+1. ПРИСМА СХЕМА (`prisma/schema.prisma`):
+   - Добавлены модели PurchaseOrder + PurchaseOrderItem.
+     * PurchaseOrder: id, status (DRAFT|SUBMITTED|ORDERED|RECEIVED), createdAt, updatedAt, items[].
+     * PurchaseOrderItem: id, orderId, itemType (TOBACCO|CONSUMABLE), itemId?, brand?, line?, flavor?, name, packGrams?, quantity, unit. Cascade delete.
+   - Модель Shift ОСТАВЛЕНА в схеме (для исторических данных) — просто перестали использовать.
+   - `bun run db:push` успешно синхронизировал схему.
+
+2. УДАЛЕНИЕ СИСТЕМЫ СМЕН:
+
+   UI:
+   - `src/components/hookah/shift-panel.tsx` → превращён в no-op (пустой модуль с `export {}`).
+   - `src/components/hookah/senior-shift-view.tsx` → no-op.
+   - `src/components/hookah/shift-history.tsx` → no-op.
+   - `master-view.tsx`: убраны импорты ShiftPanel/SeniorShiftView/ShiftHistory. Табы перестроены: 7 табов (Сегодня/График/Заявки/Хотелки/Склад/Расход/Заказ).
+   - `senior-view.tsx`: убраны ShiftPanel/SeniorShiftView/ShiftHistory. Теперь 9 табов (Сегодня/График/Зарплата/Склад/Расход/Заказ/Заявки/Хотелки/Мастера).
+   - В обоих views Tabs стали controlled через useState для программного переключения (событие `home-goto` от HomeDashboard).
+
+   BOT (`src/lib/bot-runner.ts`):
+   - Убраны: `/shift` команда, `/+1` команда, `bot.hears(/^\+\s?1.../)`, `shift_open` и `shift_close` actions, `addHookah` функция, импорт `Markup`.
+   - Убран быстрый парсинг `parseHookahCount` + `hasOtherIntent` из text/voice handlers (раньше «забил 5» шло напрямую в shift.hookahCount, минуя AI).
+   - Удалён `humanDuration` (использовался только для shiftов).
+   - Обновлены `/start` и `/help` — больше нет упоминаний shift/hookah. Список команд: /schedule, /summary, /whoami, /help (+ /register, /masters для старшего).
+
+   AI (`src/lib/ai.ts`):
+   - Убран `add_hookah_batch` из AIAction union-типа.
+   - Убран из allowedTools (SENIOR: было 13 → стало 12; REGULAR: было 7 → стало 6).
+   - Убран prompt rule «забил N кальянов → add_hookah_batch». Сохранён «пол банки → update_stock» (это про остаток табака, не про кальяны).
+   - Убран `case 'add_hookah_batch'` из executeAction.
+   - `buildShiftContext(master)` переписан: вместо OPEN Shiftов берёт ScheduleEntry за сегодня. В контекст включается: «ГРАФИК СЕГОДНЯ» со списком мастеров по графику, недавние операции (ADJUSTMENT за сегодня), активные заявки, хотелки. Никаких hookahCount / duration больше нет.
+   - `calc_salary` executeAction: вместо `db.shift.findMany` теперь `db.scheduleEntry.findMany` (date range, masterId). count = entries.length, total = count × rate.
+   - `query shift` → теперь возвращает «Контекст графика загружен» (а не смены).
+
+3. ОБНОВЛЕНИЕ СВОДОК (ScheduleEntry вместо Shift):
+   - `src/app/api/daily-summary/route.ts`: вместо shifts берёт scheduleEntries. myEntry = entry на сегодня. Все shiftDuration/hookahCount убраны. Возвращается scheduledAt вместо shiftOpenedAt/shiftClosedAt. totals теперь: scheduledMastersCount, totalRequests, totalWishes, totalOperations.
+   - `src/app/api/bot/summary/route.ts`: аналогично. Для обычного мастера — «У вас не было смены в этот день» если нет ScheduleEntry. Для старшего — «Запланировано мастеров: N» + список с эмодзи по ролям.
+
+4. НОВЫЙ HOME DASHBOARD (`src/components/hookah/home-dashboard.tsx`):
+   - Загружает 4 параллельных запроса: /api/schedule для сегодня / завтра / текущего месяца / lookahead 60 дней (для поиска следующей смены).
+   - Для REGULAR:
+     * Hero-блок с большим заголовком «Сегодня твоя смена» (если есть ScheduleEntry сегодня) или «Сегодня выходной».
+     * Если выходной и сегодня работают другие мастера — показывает «За стойкой: [список]».
+     * Следующая смена: берётся первая ScheduleEntry этого мастера после сегодняшнего дня (до 60 дней вперёд).
+     * Stats: «В этом месяце: N смен» (count ScheduleEntry для этого мастера в текущем месяце).
+   - Для SENIOR:
+     * Hero такой же (но у старшего тоже может быть ScheduleEntry на сегодня).
+     * Доп. блок «Сегодня работают» + «Завтра» с аватарами мастеров (кружок цвета + инициалы + имя).
+     * Stats: «Всего смен» (totalScheduledThisMonth) + «Мастеров» (uniqueMastersThisMonth).
+   - Quick links (3-4 кнопки) для переключения на другие табы (dispatch `home-goto` event).
+   - Пометка про бота: «/schedule — узнай кто работает».
+
+5. НОВЫЙ ORDER COMPOSER (`src/components/hookah/order-composer.tsx`):
+   - Загружает /api/orders/compose, /api/tobaccos, /api/consumables параллельно.
+   - Форма составления заявки:
+     * Секция «Табак»: кнопка «Добавить табак» → добавляет новый ряд. В каждом ряду:
+       - Бренд: Select существующих + опция «— новый бренд —» (если выбрана — Input).
+       - Линейка: Select существующих линеек бренда + «— без линейки —» + «— новая линейка —». Скрывается если бренд новый или нет линеек.
+       - Вкус: Input с datalist-подсказкой по существующим вкусам бренда+линейки.
+       - Граммовка (default 250), Количество, Единица («банок»/«пачек»).
+       - × remove (если > 1 ряда).
+     * Секция «Расходники»: кнопка «Добавить расходник» → ряд с Select существующих расходников + «— новый расходник —», количеством и единицей («упаковок»/«шт»).
+     * Live preview: показывает список позиций с количеством в виде «• Darkside Core Cola — 5 банок».
+     * Кнопка «Создать заявку» → POST /api/orders/compose, status=DRAFT.
+   - Список существующих заявок:
+     * 4 stat-карточки (Черновики/Отправлены/Заказаны/Получены) — ember accent на «черновики» если >0.
+     * Каждая заявка — карточка с Badge (4 статуса, разные цвета), датой создания, timeAgo, кол-вом позиций, списком табака и расходников.
+     * Для SENIOR: кнопки «Экспорт CSV» и «Экспорт PDF».
+     * «Отправить» (DRAFT → SUBMITTED) — доступна любому.
+     * «Заказать» (SUBMITTED → ORDERED) и «Получено» (ORDERED → RECEIVED) — только SENIOR.
+     * Удаление через AlertDialog с подтверждением — только SENIOR.
+
+6. НОВЫЕ API ROUTES:
+   - `src/app/api/orders/compose/route.ts`:
+     * GET — список всех PurchaseOrder с items, отсортированы по createdAt desc, limit 200. canExport = SENIOR.
+     * POST — создаёт PurchaseOrder с items в DRAFT. Валидация: itemType, name, quantity. Brand trim, line trim, packGrams optional.
+     * PATCH — обновляет status. ORDERED/RECEIVED только SENIOR. Валидация статусов.
+     * DELETE — удаляет заявку (?id=xxx). Только SENIOR.
+   - `src/app/api/orders/export/route.ts` (SENIOR only):
+     * GET ?id=xxx&format=csv — CSV с заголовком «ЗАЯВКА НА ЗАКУП», датой, статусом, секциями ТАБАК (Бренд, Линейка, Вкус, Граммовка, Количество, Единица) и РАСХОДНИКИ (Наименование, Количество, Единица). BOM UTF-8 для Excel.
+     * GET ?id=xxx&format=pdf — минимально-валидный PDF v1.4 (одна страница, шрифт Courier 10pt, разбивка по 80 символов). Генерируется через функцию `minimalPdf(text)` — собирает объекты PDF (Catalog, Pages, Page, ContentStream, Font) и xref table.
+     * Content-Disposition: attachment; filename=order-YYYY-MM-DD.{csv|pdf}.
+
+7. ЗАРПЛАТА НА ОСНОВЕ ScheduleEntry:
+   - `src/app/api/salary/route.ts`: вместо `db.shift.findMany({status: CLOSED, openedAt: ...})` теперь `db.scheduleEntry.findMany({date: ...})`. count = entries.length, total = count × rate. Возвращает те же поля (shifts/openedAt/closedAt/hookahCount/note) для совместимости с UI, но openedAt = e.date, hookahCount = 0, closedAt = null.
+   - `src/components/hookah/salary-calculator.tsx`: exportCsv упрощён — колонки «Дата» + «Заметка» (вместо «Дата | Открыта | Закрыта | Кальяны | Заметка»). Календарь подсвечивает дни с ScheduleEntry — логика отработала без изменений (workedDays берётся из data.shifts[].openedAt).
+
+8. ИНТЕГРАЦИЯ ТАБОВ:
+   - master-view: 7 табов (Сегодня/График/Заявки/Хотелки/Склад/Расход/Заказ). По умолчанию активен «Сегодня».
+   - senior-view: 9 табов (Сегодня/График/Зарплата/Склад/Расход/Заказ/Заявки/Хотелки/Мастера). По умолчанию активен «Сегодня».
+   - HomeDashboard dispatch `home-goto` event с деталом = имя таба → master-view/senior-view слушают и переключают + scroll to top.
+
+9. СОХРАНЕНИЕ ДАННЫХ:
+   - Модель Shift в Prisma schema ОСТАВЛЕНА (для исторических данных).
+   - API endpoints `/api/shifts`, `/api/shifts/hookah`, `/api/shifts/history`, `/api/bot/shift` не тронуты — продолжают работать, но не вызываются из UI/AI/bot.
+   - Все существующие Shift записи в БД сохранены.
+
+Verification:
+- `bun run lint` → exit 0, 0 ошибок, 0 предупреждений ✓
+- `bunx tsc --noEmit` → 0 ошибок в моих файлах; pre-existing ошибки в `bot-runner.ts` (sendChatAction typing), `pdf-utils.ts`, `setup/route.ts`, `telegram/webhook/route.ts` не тронуты (как и в redesign-6).
+- dev.log: `✓ Compiled in 149ms` — последняя успешная компиляция. Module not found для `@vercel/turbopack-next/internal/font/google/font` — это pre-existing environmental issue (Google Fonts fetch fails в sandbox), НЕ связано с моими изменениями (подтверждено в worklog redesign-6).
+- HTTP 500 на `/` — это Google Fonts issue, не бага моего кода. API routes и клиентский код компилируются без ошибок.
+
+Stage Summary:
+- Система смен ПОЛНОСТЬЮ удалена из UI/bot/AI. Старые shift-компоненты превращены в no-op (файлы оставлены для совместимости). Shift модель и API сохранены для исторических данных.
+- Home dashboard построен вокруг ScheduleEntry: для REGULAR — «Сегодня твоя смена / выходной», для SENIOR — списки мастеров сегодня/завтра + месяц summary.
+- Salary calculator теперь считает ScheduleEntry (1 entry = 1 смена = rate × 1).
+- Daily summary (web + bot) строятся по ScheduleEntry.
+- AI prompt обновлён: убран add_hookah_batch, shiftContext теперь «ГРАФИК СЕГОДНЯ».
+- Bot обновлён: убраны /shift, /+1, parseHookahCount. /help показывает только /schedule и /summary.
+- Новый PurchaseOrder system: CRUD API + Composer UI с табаком/расходниками + CSV/PDF экспорт (SENIOR only).
+- Существующие Shift записи сохранены в БД.
+
+Изменено/создано файлов:
+- prisma/schema.prisma (+PurchaseOrder, +PurchaseOrderItem)
+- src/components/hookah/shift-panel.tsx (no-op)
+- src/components/hookah/senior-shift-view.tsx (no-op)
+- src/components/hookah/shift-history.tsx (no-op)
+- src/components/hookah/master-view.tsx (7 табов, controlled, +HomeDashboard +OrderComposer)
+- src/components/hookah/senior-view.tsx (9 табов, controlled, +HomeDashboard +OrderComposer, убраны ShiftPanel/SeniorShiftView/ShiftHistory)
+- src/components/hookah/home-dashboard.tsx (новый)
+- src/components/hookah/order-composer.tsx (новый)
+- src/components/hookah/salary-calculator.tsx (CSV export упрощён)
+- src/lib/bot-runner.ts (убраны /shift, /+1, parseHookahCount, Markup, addHookah, shift_open/close; обновлены /start и /help)
+- src/lib/ai.ts (убран add_hookah_batch из типа, allowedTools, prompt, executeAction; buildShiftContext → ScheduleEntry; calc_salary → ScheduleEntry)
+- src/app/api/daily-summary/route.ts (ScheduleEntry вместо Shift)
+- src/app/api/bot/summary/route.ts (ScheduleEntry вместо Shift)
+- src/app/api/salary/route.ts (ScheduleEntry вместо Shift)
+- src/app/api/orders/compose/route.ts (новый)
+- src/app/api/orders/export/route.ts (новый)
+
+Lint: 0 ошибок. 16 файлов изменено/создано.
