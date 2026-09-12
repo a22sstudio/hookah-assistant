@@ -737,17 +737,17 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
             onValueChange={(v) => setExpandedBrands(v as string[])}
             className="w-full"
           >
-            {grouped.map(([brand, items]) => {
+            {grouped.map(([brand, items], groupIndex) => {
               const brandLowCount = items.filter((t) => t.isLow).length
               return (
                 <AccordionItem
                   key={brand}
                   value={brand}
-                  className="border-b border-border last:border-b-0"
+                  className={`border-border ${groupIndex > 0 ? 'border-t-2' : 'border-t'}`}
                 >
-                  <AccordionTrigger className="px-4 py-3 hover:bg-muted/40 transition-base transition-colors group">
+                  <AccordionTrigger className="px-4 py-4 bg-muted hover:bg-muted/80 transition-base transition-colors group border-b border-border data-[state=open]:border-b-0">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <span className="font-mono uppercase text-sm font-bold tracking-tight truncate text-foreground">
+                      <span className="font-mono uppercase text-base font-bold tracking-tight truncate text-foreground">
                         {brand}
                       </span>
                       <span className="label-mono-sm text-muted-foreground shrink-0">
@@ -781,14 +781,14 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
                             openBrandEdit(brand)
                           }
                         }}
-                        className="ml-auto inline-flex items-center justify-center w-8 h-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-base cursor-pointer opacity-0 group-hover:opacity-100 focus-visible:opacity-100 shrink-0"
+                        className="ml-auto inline-flex items-center justify-center w-8 h-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-background transition-base cursor-pointer opacity-0 group-hover:opacity-100 focus-visible:opacity-100 shrink-0"
                       >
                         <Settings2 className="h-3.5 w-3.5" />
                       </span>
                     )}
                   </AccordionTrigger>
-                  <AccordionContent className="p-0">
-                    <div className="stagger-children">
+                  <AccordionContent className="p-0 bg-background">
+                    <div className="stagger-children border-l-2 border-border ml-4">
                       {items.map((t) => {
                         const percent = Math.min(
                           100,
@@ -807,7 +807,7 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
                                 openEdit(t)
                               }
                             }}
-                            className="group w-full text-left flex items-center gap-4 p-4 border-t border-border first:border-t-0 hover:bg-muted/50 transition-base transition-colors cursor-pointer"
+                            className="group w-full text-left flex items-center gap-4 px-4 py-3 pr-4 border-t border-border first:border-t-0 hover:bg-muted/50 transition-base transition-colors cursor-pointer"
                           >
                             <div className="flex-1 min-w-0">
                               <div className="flex items-baseline gap-2 flex-wrap">
