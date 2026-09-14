@@ -175,26 +175,76 @@ export async function POST(req: NextRequest) {
   })
 }
 
-// PATCH /api/purchase-orders — сменить статус
-// body: { id, status }
+// PATCH /api/purchase-orders — сменить статус ИЛИ обновить позиции
+// body: { id, status } — сменить статус
+// body: { id, items: [...] } — полностью заменить позиции
 export async function PATCH(req: NextRequest) {
   const { error, me } = await requireSenior()
   if (error) return error
   void me
 
   const body = await req.json()
-  const { id, status } = body
+  const { id, status, items } = body
 
-  if (!id || !status) {
-    return NextResponse.json({ error: 'id и status обязательны' }, { status: 400 })
+  if (!id) {
+    return NextResponse.json({ error: 'id обязателен' }, { status: 400 })
   }
 
-  const updated = await db.purchaseOrder.update({
-    where: { id },
-    data: { status },
-  })
+  const existing = await db.purchaseOrder.findUnique({ where: { id } })
+  if (!existing) {
+    return NextResponse.json({ error: 'Заказ не найден' }, { status: 404 })
+  }
 
-  return NextResponse.json({ order: updated })
+  // Меняем статус
+  if (status && !items) {
+    const updated = await db.purchaseOrder.update({
+      where: { id },
+      data: { status },
+    })
+    return NextResponse.json({ order: updated })
+  }
+
+  // Обновляем позиции (полная замена)
+  if (Array.isArray(items)) {
+    // Удаляем старые позиции
+    await db.purchaseOrderItem.deleteMany({ where: { orderId: id } })
+
+    // Создаём новые
+    if (items.length > 0) {
+      await db.purchaseOrderItem.createMany({
+        data: items.map((it: {
+          itemType?: string
+          itemId?: string | null
+          brand?: string | null
+          line?: string | null
+          flavor?: string | null
+          name?: string
+          packGrams?: number | null
+          quantity?: number
+          unit?: string
+        }) => ({
+          orderId: id,
+          itemType: it.itemType === 'CONSUMABLE' ? 'CONSUMABLE' : 'TOBACCO',
+          itemId: it.itemId ?? null,
+          brand: it.brand ?? null,
+          line: it.line ?? null,
+          flavor: it.flavor ?? null,
+          name: typeof it.name === 'string' && it.name.trim() ? it.name.trim() : 'Без названия',
+          packGrams: typeof it.packGrams === 'number' ? it.packGrams : null,
+          quantity: typeof it.quantity === 'number' && it.quantity > 0 ? it.quantity : 1,
+          unit: typeof it.unit === 'string' && it.unit.trim() ? it.unit.trim() : 'шт',
+        })),
+      })
+    }
+
+    const updated = await db.purchaseOrder.findUnique({
+      where: { id },
+      include: { items: true },
+    })
+    return NextResponse.json({ order: updated, message: 'Заказ обновлён' })
+  }
+
+  return NextResponse.json({ error: 'Нужно указать status или items' }, { status: 400 })
 }
 
 // DELETE /api/purchase-orders — удалить заказ (только SENIOR)

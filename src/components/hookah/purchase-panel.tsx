@@ -39,6 +39,8 @@ import {
   Flame,
   Layers,
   AlertTriangle,
+  Pencil,
+  Save,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -214,6 +216,102 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
 
   // Диалог редактирования заказа
   const [editOrder, setEditOrder] = useState<PurchaseOrder | null>(null)
+  const [editItems, setEditItems] = useState<Array<{
+    id?: string
+    itemType: string
+    name: string
+    brand?: string | null
+    line?: string | null
+    flavor?: string | null
+    packGrams?: number | null
+    quantity: number
+    unit: string
+  }>>([])
+  const [editSaving, setEditSaving] = useState(false)
+
+  const openEditOrder = (order: PurchaseOrder) => {
+    setEditOrder(order)
+    setEditItems(order.items.map((it) => ({
+      id: it.id,
+      itemType: it.itemType,
+      name: it.name,
+      brand: it.brand,
+      line: it.line,
+      flavor: it.flavor,
+      packGrams: it.packGrams,
+      quantity: it.quantity,
+      unit: it.unit,
+    })))
+  }
+
+  const updateEditItem = (idx: number, field: string, value: string | number) => {
+    setEditItems((prev) => prev.map((it, i) => i === idx ? { ...it, [field]: value } : it))
+  }
+
+  const removeEditItem = (idx: number) => {
+    setEditItems((prev) => prev.filter((_, i) => i !== idx))
+  }
+
+  const addEditItem = () => {
+    setEditItems((prev) => [...prev, {
+      itemType: 'TOBACCO',
+      name: '',
+      brand: null,
+      line: null,
+      flavor: null,
+      packGrams: null,
+      quantity: 1,
+      unit: 'банок',
+    }])
+  }
+
+  const saveEditOrder = async () => {
+    if (!editOrder) return
+    // Валидация
+    for (const it of editItems) {
+      if (!it.name.trim()) {
+        toast.error('Заполните наименование всех позиций')
+        return
+      }
+      if (!it.quantity || it.quantity < 1) {
+        toast.error('Количество должно быть положительным')
+        return
+      }
+    }
+    setEditSaving(true)
+    try {
+      const res = await fetch('/api/purchase-orders', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editOrder.id,
+          items: editItems.map((it) => ({
+            itemType: it.itemType,
+            name: it.name.trim(),
+            brand: it.brand || null,
+            line: it.line || null,
+            flavor: it.flavor || null,
+            packGrams: it.packGrams || null,
+            quantity: Number(it.quantity),
+            unit: it.unit,
+          })),
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) {
+        toast.error(d.error || 'Ошибка сохранения')
+        return
+      }
+      toast.success('Заказ обновлён')
+      setEditOrder(null)
+      await load()
+      onRefresh()
+    } catch {
+      toast.error('Ошибка соединения')
+    } finally {
+      setEditSaving(false)
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -1050,6 +1148,16 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
                           <Button
                             size="icon"
                             variant="ghost"
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                            onClick={() => openEditOrder(order)}
+                            title="Редактировать"
+                            aria-label="Редактировать"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
                             className="h-7 w-7 text-muted-foreground hover:text-ember"
                             onClick={() => deleteOrder(order.id)}
                             title="Удалить"
@@ -1246,24 +1354,80 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
 
       {/* Диалог редактирования заказа (пока просто просмотр) */}
       {editOrder && (
-        <Dialog open={!!editOrder} onOpenChange={(o) => { if (!o) setEditOrder(null) }}>
-          <DialogContent className="sm:max-w-[520px]">
+        <Dialog open={!!editOrder} onOpenChange={(o) => { if (!o || !editSaving) { setEditOrder(null) } }}>
+          <DialogContent className="sm:max-w-[600px]">
             <DialogHeader>
-              <span className="label-mono">Просмотр заказа</span>
-              <DialogTitle>{editOrder.isMerged ? 'Объединённый заказ' : 'Заказ'}</DialogTitle>
+              <span className="label-mono">{editOrder.isMerged ? 'Объединённый заказ' : 'Редактирование заказа'}</span>
+              <DialogTitle>
+                {editOrder.isMerged ? 'Объединённый заказ' : 'Заказ'} · {editItems.length} поз.
+              </DialogTitle>
             </DialogHeader>
-            <div className="space-y-2 max-h-[60vh] overflow-y-auto">
-              {editOrder.items.map((it) => (
-                <div key={it.id} className="flex items-center justify-between border border-border rounded-md p-2">
-                  <span className="body-sans text-sm">{formatItemName(it)}</span>
-                  <span className="font-mono text-sm font-bold tabular text-foreground">
-                    {it.quantity} {it.unit}
-                  </span>
+            <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+              {editItems.length === 0 && (
+                <p className="text-center text-muted-foreground text-sm py-4">Нет позиций. Добавьте ниже.</p>
+              )}
+              {editItems.map((it, idx) => (
+                <div key={idx} className="flex items-start gap-2 border border-border rounded-md p-2">
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <Input
+                      placeholder="Наименование (Darkside Core Cola / Угли...)"
+                      value={it.name}
+                      onChange={(e) => updateEditItem(idx, 'name', e.target.value)}
+                      className="h-8 text-sm"
+                    />
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        placeholder="Кол-во"
+                        value={it.quantity}
+                        onChange={(e) => updateEditItem(idx, 'quantity', Number(e.target.value) || 0)}
+                        className="h-8 w-20 text-sm tabular"
+                      />
+                      <Input
+                        placeholder="ед."
+                        value={it.unit}
+                        onChange={(e) => updateEditItem(idx, 'unit', e.target.value)}
+                        className="h-8 w-20 text-sm"
+                      />
+                      {it.itemType === 'TOBACCO' && (
+                        <Input
+                          type="number"
+                          placeholder="гр/банка"
+                          value={it.packGrams ?? ''}
+                          onChange={(e) => updateEditItem(idx, 'packGrams', Number(e.target.value) || 0)}
+                          className="h-8 w-24 text-sm tabular"
+                        />
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 text-muted-foreground hover:text-ember shrink-0"
+                    onClick={() => removeEditItem(idx)}
+                    title="Удалить позицию"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
               ))}
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={addEditItem}
+              className="w-full"
+            >
+              <Plus className="h-3.5 w-3.5 mr-1" /> Добавить позицию
+            </Button>
             <DialogFooter>
-              <Button variant="ghost" onClick={() => setEditOrder(null)}>Закрыть</Button>
+              <Button variant="ghost" onClick={() => setEditOrder(null)} disabled={editSaving}>
+                Отмена
+              </Button>
+              <Button onClick={saveEditOrder} disabled={editSaving}>
+                {editSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
+                Сохранить
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
