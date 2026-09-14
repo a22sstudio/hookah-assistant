@@ -1134,37 +1134,37 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
                         </div>
                       </div>
                       {isSenior && (
-                        <div className="flex flex-col gap-1 shrink-0">
+                        <div className="flex flex-col gap-2 shrink-0">
                           <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-9 w-9"
-                            onClick={() => exportOrder(order.id)}
-                            title="Экспорт CSV"
-                            aria-label="Экспорт CSV"
-                          >
-                            <Download className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-2 text-[11px]"
                             onClick={() => openEditOrder(order)}
                             title="Редактировать"
-                            aria-label="Редактировать"
                           >
-                            <Pencil className="h-4 w-4" />
+                            <Pencil className="h-3 w-3 mr-1" />
+                            Изменить
                           </Button>
                           <Button
-                            size="icon"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-2 text-[11px]"
+                            onClick={() => exportOrder(order.id)}
+                            title="Экспорт CSV"
+                          >
+                            <Download className="h-3 w-3 mr-1" />
+                            CSV
+                          </Button>
+                          <Button
                             variant="ghost"
-                            className="h-9 w-9 text-muted-foreground hover:text-ember"
+                            size="sm"
+                            className="h-8 px-2 text-[11px] text-muted-foreground hover:text-ember"
                             onClick={() => deleteOrder(order.id)}
                             title="Удалить"
-                            aria-label="Удалить"
                             disabled={updatingId === order.id}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-3 w-3 mr-1" />
+                            Удалить
                           </Button>
                         </div>
                       )}
