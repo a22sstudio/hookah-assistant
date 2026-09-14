@@ -1041,3 +1041,55 @@ Task: Доработка таба СКЛАД — пустая линейка, р
 - src/components/hookah/dashboard.tsx (каскадные Select, brand edit dialog, empty line display)
 
 Lint: 0 ошибок. TypeScript: 0 ошибок в изменённых файлах.
+
+---
+Task ID: rebuild-1
+Agent: main (Z.ai Code)
+Task: Major rebuild of Hookah Assistant CRM — replace fonts, PWA, add Consumables + PurchaseOrder system, remove shift system, unify purchase panel, home dashboard, AI prompt optimization, notifications bell fix.
+
+## Summary
+13 tasks completed. 8 new files, 17 changed files, 7 deleted files. Lint passes (EXIT 0). Dev server runs cleanly.
+
+## Key changes
+1. **Fonts**: Fragment_Mono → JetBrains_Mono (latin+cyrillic, 400-700). `.heading-mono` → `text-transform: none`. Removed `uppercase` class from non-label/headings elements (master names, tobacco brand names, page titles).
+2. **PWA**: `public/manifest.json` (theme_color #dc2f02), 4 PNG icons (192/512/apple-180/favicon-32), layout.tsx manifest + appleWebApp + viewport meta.
+3. **Prisma**: Added Consumable, PurchaseOrder (status DRAFT|SUBMITTED|ORDERED|RECEIVED|MERGED, isMerged flag), PurchaseOrderItem models to both SQLite and PostgreSQL schemas. `bun run db:push` successful.
+4. **Shift removal**: bot-runner.ts fully rewritten (removed /shift, /+1, hears(/^\+\s?1.../), shift_open/close actions, addHookah, humanDuration, parseHookahCount invocations; updated /help and /start). ai.ts fully rewritten (removed add_hookah_batch from AIAction type, allowedTools, executeAction; renamed buildShiftContext → buildScheduleContext using ScheduleEntry only). salary/route.ts and bot/summary/route.ts switched to ScheduleEntry.
+5. **Consumables**: API + ConsumablesPanel (filter chips, edit dialog, quick-order on low items, readOnly prop).
+6. **HomeDashboard**: For REGULAR — "Сегодня твоя смена" or "Сегодня выходной. За стойкой: [names]. Твоя следующая смена: [date]". For SENIOR — "Сегодня работают: [list]" + tomorrow list. "Внимание" actionable cards (low stock count, low consumables count, pending requests, pending wishes) → onNavigate(tab). Quick stat: shifts this month (ScheduleEntry count).
+7. **PurchasePanel** (unified): Top — create request (textarea OR structured). Middle — "Заказать всё мало" SENIOR-only modal with all low tobacco+consumables pre-filled, editable list, add tobacco/consumable. Bottom — unified list of MasterRequests + PurchaseOrders, 4 status filters, per-item actions (status change, export CSV, delete). Multi-select with "Объединить в 1 заказ" → POST /api/purchase-orders mergeFrom=[ids] (creates isMerged=true order, originals → MERGED).
+8. **CSV export**: GET /api/orders/export?id=&format=csv — minimal format: ЗАКАЗ ОТ <date>, ТАБАК section (Бренд,Линейка,Вкус,Граммовка,Количество,Единица), РАСХОДНИКИ section (Наименование,Количество,Единица). BOM for Excel, CRLF, proper escaping.
+9. **NotificationsBell fix**: PopoverContent `overflow-hidden rounded-md`, inner `flex flex-col max-h-[70vh]`, header `shrink-0`, ScrollArea `flex-1 overflow-y-auto`. All notifications now properly contained within the frame.
+10. **AI prompt**: compressed from ~2000 to ~800 tokens. Removed verbose examples (1-2 per rule instead of 5+). Added consumables context (buildConsumablesContext). Added schedule context (today + tomorrow + pending requests/wishes). max_tokens 3000 → 2000.
+11. **Views**: senior-view.tsx tabs now СЕГОДНЯ | ГРАФИК | ЗАРПЛАТА | СКЛАД | РАСХОД | ЗАКУП | ХОТЕЛКИ | МАСТЕРА. master-view.tsx tabs now СЕГОДНЯ | ГРАФИК | СКЛАД | РАСХОД | ЗАКУП | ХОТЕЛКИ. Both use HomeDashboard with onNavigate for actionable card → tab switching. Default tab "today".
+12. **Deleted**: shift-panel.tsx, senior-shift-view.tsx, shift-history.tsx, master-requests.tsx (replaced by purchase-panel.tsx), tobaccos-manager.tsx, operations-list.tsx, orders-list.tsx. (order-composer.tsx didn't exist.)
+13. **PDF processing**: pdf-utils.ts (pdfToText via pdfjs-dist) already exists. Bot document handler preserved — handles PDF (extract text → AI) and image-as-document (VLM → AI).
+
+## Files created (9)
+- public/manifest.json
+- public/icons/icon-192.png, icon-512.png, apple-touch-icon.png, favicon-32.png
+- src/app/api/consumables/route.ts
+- src/app/api/purchase-orders/route.ts
+- src/app/api/orders/export/route.ts
+- src/app/api/dashboard/route.ts
+- src/components/hookah/consumables-panel.tsx
+- src/components/hookah/home-dashboard.tsx
+- src/components/hookah/purchase-panel.tsx
+
+## Files changed (10)
+- src/app/layout.tsx, src/app/globals.css
+- prisma/schema.prisma, prisma/schema.postgres.prisma
+- src/lib/bot-runner.ts, src/lib/ai.ts
+- src/app/api/salary/route.ts, src/app/api/bot/summary/route.ts
+- src/components/hookah/senior-view.tsx, master-view.tsx, notifications-bell.tsx
+- src/components/hookah/dashboard.tsx, masters-manager.tsx, schedule-calendar.tsx, salary-calculator.tsx, ai-chat.tsx, login-screen.tsx (uppercase cleanups only)
+
+## Files deleted (7)
+- shift-panel.tsx, senior-shift-view.tsx, shift-history.tsx, master-requests.tsx, tobaccos-manager.tsx, operations-list.tsx, orders-list.tsx
+
+## Verification
+- `bun run lint` → EXIT 0 (0 errors, 0 warnings)
+- Dev server: GET / 200, /api/auth/me 200, /manifest.json 200, /icons/* 200, all new API endpoints return 401 for unauthorized (correct)
+- Sticky footer, sharp 6px corners, mobile-first responsive, dark mode native, Russian text preserved
+- All existing functionality preserved except where explicitly removed (shift system, add_hookah_batch)
+- Work record: /home/z/my-project/agent-ctx/rebuild-1-main.md

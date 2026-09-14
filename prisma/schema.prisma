@@ -221,3 +221,52 @@ model DailySummary {
   @@unique([masterId, date])
   @@index([date])
 }
+
+// ============================================
+// Расходники (угли, мундштуки, фольга и пр.)
+// ============================================
+
+model Consumable {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  unit        String   @default("шт")
+  currentQty  Int      @default(0)
+  threshold   Int      @default(5)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active])
+}
+
+// ============================================
+// Заказы на закуп (формальные заказы поставщику)
+// ============================================
+
+model PurchaseOrder {
+  id        String   @id @default(cuid())
+  status    String   @default("DRAFT") // DRAFT | SUBMITTED | ORDERED | RECEIVED | MERGED
+  isMerged  Boolean  @default(false) // true если это объединённый заказ из нескольких
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  items     PurchaseOrderItem[]
+
+  @@index([status])
+}
+
+model PurchaseOrderItem {
+  id        String @id @default(cuid())
+  orderId   String
+  itemType  String // "TOBACCO" | "CONSUMABLE"
+  itemId    String?
+  brand     String?
+  line      String?
+  flavor    String?
+  name      String
+  packGrams Int?
+  quantity  Int
+  unit      String  @default("шт")
+  order     PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}

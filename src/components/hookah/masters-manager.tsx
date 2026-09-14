@@ -397,7 +397,7 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline gap-2 flex-wrap">
-                          <span className="font-mono uppercase text-sm font-bold tracking-tight truncate text-foreground">
+                          <span className="font-mono text-sm font-bold tracking-tight truncate text-foreground">
                             {m.name}
                           </span>
                           {m.role === 'SENIOR' ? (

@@ -4,10 +4,10 @@ import { pushToSeniors } from '@/lib/notify'
 import { parseDateFromText, startOfDay, formatDateRu, addDays } from '@/lib/datetime-utils'
 
 // ───────────────────────────────────────────
-// AI провайдеры (все бесплатные):
+// AI провайдеры (бесплатные):
 // LLM: OpenRouter nex-agi/nex-n2.5-pro:free
 // Vision: OpenRouter inclusionai/ling-3.0-flash-vl:free
-// ASR: Groq whisper-large-v3 (если работает на Railway)
+// ASR: Groq whisper-large-v3
 // ───────────────────────────────────────────
 
 const OR_API = 'https://openrouter.ai/api/v1/chat/completions'
@@ -40,7 +40,6 @@ interface ChatResponse {
   error?: { message: string }
 }
 
-// LLM + Vision через OpenRouter (бесплатные модели)
 async function hfChat(messages: ChatMessage[], opts: { vision?: boolean; maxTokens?: number } = {}): Promise<string> {
   const model = opts.vision ? VISION_MODEL : LLM_MODEL
 
@@ -53,7 +52,7 @@ async function hfChat(messages: ChatMessage[], opts: { vision?: boolean; maxToke
     body: JSON.stringify({
       model,
       messages,
-      max_tokens: opts.maxTokens ?? 3000,
+      max_tokens: opts.maxTokens ?? 2000,
     }),
   })
 
@@ -63,14 +62,15 @@ async function hfChat(messages: ChatMessage[], opts: { vision?: boolean; maxToke
   }
 
   const content = data.choices?.[0]?.message?.content ?? ''
-  // Некоторые модели возвращают reasoning вместо content
   if (!content && data.choices?.[0]?.message?.reasoning) {
     return data.choices[0].message.reasoning
   }
   return content
 }
 
-// Типы для результата работы AI
+// ───────────────────────────────────────────
+// Типы действий
+// ───────────────────────────────────────────
 export type AIAction =
   | { tool: 'update_stock'; args: { brand: string; line: string; flavor: string; grams: number; note?: string } }
   | { tool: 'add_incoming'; args: { brand: string; line: string; flavor: string; grams: number; note?: string } }
@@ -78,11 +78,10 @@ export type AIAction =
   | { tool: 'create_order'; args: { brand: string; line: string; flavor: string; grams: number; note?: string } }
   | { tool: 'create_request'; args: { text: string; grams?: number } }
   | { tool: 'create_wish'; args: { text: string } }
-  | { tool: 'add_hookah_batch'; args: { count: number } }
   | { tool: 'update_schedule'; args: { masterName: string; dateText: string; action: 'add' | 'remove' } }
   | { tool: 'add_schedule_multi'; args: { masterNames: string[]; dateText: string } }
   | { tool: 'calc_salary'; args: { masterName: string; dateText?: string } }
-  | { tool: 'query'; args: { what: 'low_stock' | 'all_stock' | 'specific' | 'shift'; brand?: string; line?: string; flavor?: string } }
+  | { tool: 'query'; args: { what: 'low_stock' | 'all_stock' | 'specific' | 'schedule'; brand?: string; line?: string; flavor?: string } }
 
 export interface AIResult {
   reply: string
@@ -92,116 +91,59 @@ export interface AIResult {
   invoiceItems?: Array<{ brand: string; line: string; flavor: string; grams: number }>
 }
 
-// Системный промпт для ассистента (с учётом роли мастера)
-function buildSystemPrompt(stockContext: string, master: SessionMaster, shiftContext: string): string {
+// ───────────────────────────────────────────
+// Системный промпт — сжатый, ~800 токенов
+// ───────────────────────────────────────────
+function buildSystemPrompt(stockContext: string, master: SessionMaster, scheduleContext: string, consumablesContext: string): string {
   const isSenior = master.role === 'SENIOR'
-  const roleDesc = isSenior
-    ? 'Старший кальянный мастер. Полный доступ: учёт табака, приход, заявки, управление сменой.'
-    : 'Обычный кальянный мастер. Отмечаешь остатки, подаёшь заявки на закуп и хотелки. НЕ оформляешь приход и не создаёшь новые позиции в справочнике — это делает старший.'
 
-  const allowedTools = isSenior
-    ? `1. update_stock — установить точный остаток табака
-2. add_incoming — добавить приход (накладная/партия, прибавить граммы)
-3. add_tobacco — добавить НОВУЮ позицию в справочник
-4. create_order — создать заявку на закуп конкретного табака (по граммам)
-5. create_request — заявка на закуп свободной формы ("BlackBurn Energy 2 банки")
-6. create_wish — хотелка/пожелание
-7. add_hookah_batch — добавить N кальянов к смене ("забил 5", "сделал 3", "накрутил 10")
-8. update_schedule — редактировать график мастера: action="add" или "remove". masterName (имя мастера, fuzzy), dateText ("завтра", "пятница", "23 числа"). Примеры: "поставь Марата на завтра" → action=add, masterName="Марат", dateText="завтра". "убери Марата с пятницы" → action=remove, masterName="Марат", dateText="пятница".
-9. add_schedule_multi — поставить НЕСКОЛЬКО мастеров на один день. masterNames: массив имён, dateText. Пример: "поставь Марата и Айрата на завтра" → masterNames=["Марат","Айрат"], dateText="завтра".
-10. calc_salary — посчитать зарплату мастера за период. masterName (имя), dateText (опционально, по умолчанию текущий месяц). Примеры: "зарплата Марата за сентябрь" → masterName="Марат", dateText="сентябрь". "зарплата Айрата" → masterName="Айрат" (текущий месяц).
-11. query — low_stock (что мало), all_stock (все остатки), shift (кто на смене и активные заявки)`
-    : `1. update_stock — отметить остаток табака (обычно когда "закончился" = 0, "мало осталось" = мало). Это списывает остаток и пушит старшему.
-2. create_request — заявка на закуп свободной формы ("BlackBurn Energy 2 банки")
-3. create_wish — хотелка/пожелание
-4. add_hookah_batch — добавить N кальянов к смене ("забил 5", "сделал 3", "накрутил 10")
-5. query — low_stock (что мало), all_stock (все остатки), shift (кто на смене)
-НЕ используй add_incoming, add_tobacco, create_order, update_schedule, add_schedule_multi, calc_salary — это для старшего мастера.`
+  const tools = isSenior
+    ? `1. update_stock(brand,line,flavor,grams,note?) — установить остаток (абсолют)
+2. add_incoming(brand,line,flavor,grams,note?) — приход, прибавить к остатку
+3. add_tobacco(brand,line,flavor,defaultJarGrams?) — добавить позицию в базу
+4. create_order(brand,line,flavor,grams,note?) — заявка на закуп по табаку
+5. create_request(text,grams?) — заявка свободной формы ("BlackBurn Energy 2 банки")
+6. create_wish(text) — хотелка
+7. update_schedule(masterName,dateText,action="add"|"remove") — график: "поставь Марата на завтра"
+8. add_schedule_multi(masterNames[],dateText) — несколько мастеров: "поставь Марата и Айрата на завтра"
+9. calc_salary(masterName,dateText?) — зарплата: "зарплата Марата за сентябрь"
+10. query(what="low_stock"|"all_stock"|"schedule") — "чего мало?" / "остатки" / "кто работает"`
+    : `1. update_stock(brand,line,flavor,grams,note?) — отметить остаток (обычный не оформляет приход и не создаёт новые позиции — это старший)
+2. create_request(text,grams?) — заявка на закуп свободной формы
+3. create_wish(text) — хотелка
+4. query(what="low_stock"|"all_stock"|"schedule") — "чего мало?" / "остатки" / "кто сегодня работает"
+НЕ используй add_incoming, add_tobacco, create_order, update_schedule, add_schedule_multi, calc_salary — это для старшего.`
 
-  return `Ты — умный ассистент кальянной. Сейчас с тобой работает: ${master.name} (${roleDesc}).
+  return `Ты — умный ассистент кальянной. Работает: ${master.name} (${isSenior ? 'старший мастер, полный доступ' : 'мастер, отмечает остатки и заявки'}).
 
-КОНТЕКСТ — текущие остатки склада:
+СКЛАД (бренд/линейка/вкус | банка | остаток | порог):
 ${stockContext}
 
-ПОРОГ «МАЛО»: по умолчанию 70 грамм. Если остаток ниже порога — позиция идёт в заявку.
+РАСХОДНИКИ:
+${consumablesContext}
 
-${shiftContext}
+${scheduleContext}
 
-ЧТО ТЫ УМЕЕШЬ (вызывай через actions):
-${allowedTools}
+ИНСТРУМЕНТЫ:
+${tools}
 
-ПРАВИЛА ПОНИМАНИЯ РЕЧИ МАСТЕРА:
-- "пол банки" → grams = defaultJarGrams / 2 (если банка 250г, то 125г)
-- "треть банки" → grams = defaultJarGrams / 3
-- "четверть" → grams = defaultJarGrams / 4
-- "почти пусто" / "на донышке" → grams = 20
-- "пусто" / "кончился" / "всё" → grams = 0
-- "осталось X грамм" → grams = X (точное значение)
-- "пришла накладная, N банок по M грамм" → add_incoming с grams = N * M (только старший)
+ПРАВИЛА:
+- "пол банки" → defaultJarGrams/2; "треть" → /3; "четверть" → /4; "на донышке"/"почти пусто" → 20; "пусто"/"кончился" → 0; "осталось N г" → N
+- update_stock УСТАНАВЛИВАЕТ, add_incoming ПРИБАВЛЯЕТ
 - "закажи X" → create_order (старший) или create_request (обычный)
-- "хочу X" / "было бы круто X" → create_wish
-- "чего мало?" / "что заказать?" → query low_stock
-- "покажи остатки" → query all_stock
-- "что на смене?" / "как смена?" / "кто работает?" → query shift
-- "забил N кальянов" / "сделал N" / "накрутил N" / "сварил N" → add_hookah_batch с count=N
-  (N может быть числом или словом: "пять", "десять")
-  (без числа = +1: "забил кальян")
-- "поставь МАРТА на ЗАВТРА" → update_schedule action=add
-- "убери МАРТА с ПЯТНИЦЫ" → update_schedule action=remove
-- "поставь Марата и Айрата на завтра" → add_schedule_multi masterNames=["Марат","Айрат"], dateText="завтра"
-- "зарплата Марата за сентябрь" → calc_salary masterName="Марат", dateText="сентябрь"
-- "зарплата Айрата" → calc_salary masterName="Айрат" (текущий месяц)
+- "хочу X" → create_wish; "чего мало?" → query low_stock; "остатки" → query all_stock; "кто сегодня работает?" → query schedule
+- Структура табака: brand (Darkside, Tangiers, BlackBurn) / line (Core, Supernova, опциональна) / flavor (Cola, Ice Grape)
+- Fuzzy: "дарксайд супнова" = Darkside Supernova, "танж" = Tangiers
+- Если мастер сообщает остаток → update_stock. Если указан только бренд/линейка — УТОЧНИ вкус
+- При обработке накладной (PDF/фото): для каждой позиции — add_tobacco (если нет) + add_incoming. В reply перечисли приход
+- Только SENIOR: add_incoming, add_tobacco, create_order, update_schedule, add_schedule_multi, calc_salary
+- Когда обычный мастер отмечает 0г или ниже порога — старший получит авто-пуш
+- Отвечай кратко, по-русски, можно с эмодзи. Обращайся к мастеру по имени.
 
-СТРУКТУРА ТАБАКА — ВАЖНО! У каждого табака 3 поля:
-- brand — бренд/производитель (Darkside, Tangiers, Musthave, Daily Hookah, Burn, BlackBurn)
-- line — линейка/серия (Core, Supernova, Rare, Base, Original, Lucid, Medium)
-- flavor — вкус (Ice Grape, Cola, Energy, Watermelon Mint, Cane Mint, Pineapple)
+ФОРМАТ ОТВЕТА — СТРОГО JSON без markdown:
+{"actions":[{"tool":"update_stock","args":{"brand":"Darkside","line":"Supernova","flavor":"Ice Grape","grams":125,"note":"пол банки"}}],"reply":"✓ Записал: Darkside Supernova Ice Grape = 125г (пол банки)"}
 
-ПРИМЕРЫ правильного разделения:
-- "дарксайд кора кола" → brand=Darkside, line=Core, flavor=Cola
-- "дарксайд супнова айс грейп" → brand=Darkside, line=Supernova, flavor=Ice Grape
-- "танжерс лучид кейн мята" → brand=Tangiers, line=Lucid, flavor=Cane Mint
-- "мустхейв оригинал бласт" → brand=Musthave, line=Original, flavor=Blast
-- "дейли хука бейз грейпфрут" → brand=Daily Hookah, line=Base, flavor=Grapefruit
-- "блэкберн" → brand=BlackBurn, line=, flavor= (нужно уточнить линейку и вкус)
-- "дарксайд супнова" без вкуса → уточни вкус! Supernova — это линейка, не вкус.
-
-Если мастер сказал только бренд или только часть названия — УТОЧНИ что именно нужно:
-- "дарксайд" → "Какой вкус? У нас есть Darkside Core (Cola, Medium, Pineapple) и Darkside Supernova (Ice Grape, Cola)"
-- "танж" → "Какой именно? Tangiers Lucid (Cane Mint, ...) — уточни вкус"
-
-ВАЖНО:
-- update_stock УСТАНАВЛИВАЕТ остаток (абсолют), add_incoming — ПРИБАВЛЯЕТ к текущему
-- Если мастер сообщает об остатке голосом/текстом → update_stock
-- Используй fuzzy matching: "дарксайд супнова" = Darkside Supernova, "танж" = Tangiers
-- **АВТО-ДОБАВЛЕНИЕ НОВЫХ ПОЗИЦИЙ**: Если мастер (старший) оформляет приход по накладной
-  и табака НЕТ в базе — НЕ отвечай "не найден". Вместо этого:
-  1. Сначала вызови add_tobacco с брендом/линейкой/вкусом из накладной
-  2. Потом вызови add_incoming для этой позиции
-  Делай так ДЛЯ КАЖДОЙ позиции из накладной, которой нет в базе.
-- Если обычный мастер сообщает о табаке, которого нет в базе — скажи что нужно попросить старшего добавить.
-- Когда обычный мастер отмечает "закончился" (0г) или остаток стал ниже порога — это важно, старший получит автоматический пуш.
-- Отвечай кратко, по делу, по-человечески, можно с эмодзи. Обращайся к мастеру по имени.
-- ВАЖНО: отвечай ТОЛЬКО на русском языке.
-
-ПРИ ОБРАБОТКЕ НАКЛАДНОЙ (PDF или фото):
-- Распознай все позиции табака
-- Для каждой позиции определи brand, line, flavor, grams (вес одной банки)
-- Если в накладной N банок одного вкуса — общий вес = N × grams
-- Для КАЖДОЙ позиции вызови add_incoming с правильным количеством граммов
-- Если позиции нет в базе и мастер — старший → add_tobacco + add_incoming
-- В reply перечисли что было добавлено и итоговый приход по каждой позиции
-
-ФОРМАТ ОТВЕТА — СТРОГО JSON (без markdown, без пояснений, без рассуждений):
-{
-  "actions": [
-    { "tool": "update_stock", "args": { "brand": "Darkside", "line": "Supernova", "flavor": "Ice Grape", "grams": 125, "note": "пол банки" } }
-  ],
-  "reply": "✓ Записал: Darkside Supernova Ice Grape = 125г (пол банки)"
-}
-
-Если запрос мастера — просто вопрос или диалог без действия, верни пустой actions и reply с ответом.
-Если нужно несколько действий — положи все в массив actions.`
+Без действий → пустой actions и reply с ответом.`
 }
 
 // Fuzzy поиск табака в базе по названию
@@ -248,18 +190,41 @@ async function buildStockContext(): Promise<string> {
 
   const lines = tobaccos.map((t) => {
     const grams = t.stock?.currentGrams ?? 0
-    const status = grams < t.thresholdGrams ? ' ⚠️ МАЛО' : ''
-    return `- ${t.brand} / ${t.line} / ${t.flavor} | банка=${t.defaultJarGrams}г | остаток=${grams}г | порог=${t.thresholdGrams}г${status}`
+    const status = grams < t.thresholdGrams ? ' ⚠️МАЛО' : ''
+    return `- ${t.brand}/${t.line}/${t.flavor} | банка=${t.defaultJarGrams}г | остаток=${grams}г | порог=${t.thresholdGrams}г${status}`
   })
   return lines.join('\n')
 }
 
-// Контекст смены для промпта
-async function buildShiftContext(master: SessionMaster): Promise<string> {
-  const openShifts = await db.shift.findMany({
-    where: { status: 'OPEN' },
+// Контекст расходников
+async function buildConsumablesContext(): Promise<string> {
+  const consumables = await db.consumable.findMany({
+    where: { active: true },
+    orderBy: { name: 'asc' },
+  })
+  if (consumables.length === 0) return '(нет расходников)'
+  return consumables
+    .map((c) => {
+      const status = c.currentQty < c.threshold ? ' ⚠️МАЛО' : ''
+      return `- ${c.name} | ${c.currentQty}${c.unit} | порог=${c.threshold}${c.unit}${status}`
+    })
+    .join('\n')
+}
+
+// Контекст графика (замена buildShiftContext) — берёт сегодня + завтра + ближайшие заявки/хотелки
+async function buildScheduleContext(master: SessionMaster): Promise<string> {
+  const today = startOfDay(new Date())
+  const tomorrow = addDays(today, 1)
+
+  const todayEntries = await db.scheduleEntry.findMany({
+    where: { date: today },
     include: { master: true },
-    orderBy: { openedAt: 'asc' },
+    orderBy: { createdAt: 'asc' },
+  })
+  const tomorrowEntries = await db.scheduleEntry.findMany({
+    where: { date: tomorrow },
+    include: { master: true },
+    orderBy: { createdAt: 'asc' },
   })
 
   const activeRequests = await db.masterRequest.findMany({
@@ -276,59 +241,32 @@ async function buildShiftContext(master: SessionMaster): Promise<string> {
     take: 10,
   })
 
-  // Недавние операции за текущие смены (что мастера отметили)
-  const recentOps: string[] = []
-  if (openShifts.length > 0) {
-    const shiftMasterIds = openShifts.map((s) => s.masterId)
-    const earliestOpen = openShifts.reduce((min, s) => (s.openedAt < min ? s.openedAt : min), openShifts[0].openedAt)
-
-    const ops = await db.operation.findMany({
-      where: {
-        createdAt: { gte: earliestOpen },
-        type: 'ADJUSTMENT',
-      },
-      include: { tobacco: true },
-      orderBy: { createdAt: 'desc' },
-      take: 15,
-    })
-
-    // Группируем по мастерам (но operation не имеет masterId напрямую — берём из ChatMessage)
-    // Проще: показать все недавние операции с заметками
-    for (const op of ops) {
-      const time = new Date(op.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-      const t = op.tobacco
-      recentOps.push(`  [${time}] ${t.brand} ${t.line} ${t.flavor}: ${op.gramsBefore}г → ${op.gramsAfter}г${op.note ? ` (${op.note})` : ''}`)
-    }
-  }
-
   const lines: string[] = []
-  lines.push('ТЕКУЩАЯ СМЕНА:')
-  if (openShifts.length === 0) {
-    lines.push('(никого на смене)')
-  } else {
-    for (const s of openShifts) {
-      const hoursAgo = Math.floor((Date.now() - s.openedAt.getTime()) / 3600000)
-      const minsAgo = Math.floor((Date.now() - s.openedAt.getTime()) / 60000)
-      const dur = hoursAgo > 0 ? `${hoursAgo}ч` : `${minsAgo}м`
-      const mine = s.masterId === master.id ? ' (ты)' : ''
-      lines.push(`- ${s.master.name}${mine} | на смене ${dur} | ${s.hookahCount} кальянов`)
-    }
-  }
-
-  if (recentOps.length > 0) {
-    lines.push('\nНЕДАВНИЕ ОПЕРАЦИИ ПО ОСТАТКАМ (за смену):')
-    lines.push(...recentOps)
-  }
+  lines.push('ГРАФИК:')
+  const fmtToday = todayEntries.length > 0
+    ? todayEntries.map((e) => {
+        const mine = e.masterId === master.id ? ' (ты)' : ''
+        return `${e.master.name}${mine}`
+      }).join(', ')
+    : 'сегодня выходной'
+  const fmtTomorrow = tomorrowEntries.length > 0
+    ? tomorrowEntries.map((e) => {
+        const mine = e.masterId === master.id ? ' (ты)' : ''
+        return `${e.master.name}${mine}`
+      }).join(', ')
+    : 'выходной'
+  lines.push(`- Сегодня (${formatDateRu(today)}): ${fmtToday}`)
+  lines.push(`- Завтра (${formatDateRu(tomorrow)}): ${fmtTomorrow}`)
 
   if (activeRequests.length > 0) {
-    lines.push('\nАКТИВНЫЕ ЗАЯВКИ МАСТЕРОВ:')
+    lines.push('\nАКТИВНЫЕ ЗАЯВКИ:')
     for (const r of activeRequests) {
       lines.push(`- ${r.master.name}: "${r.text}"${r.grams ? ` (${r.grams}г)` : ''}`)
     }
   }
 
   if (pendingWishes.length > 0) {
-    lines.push('\nХОТЕЛКИ МАСТЕРОВ:')
+    lines.push('\nХОТЕЛКИ:')
     for (const w of pendingWishes) {
       lines.push(`- ${w.master.name}: "${w.text}"`)
     }
@@ -341,13 +279,11 @@ async function buildShiftContext(master: SessionMaster): Promise<string> {
 function parseAIResponse(content: string): { actions: AIAction[]; reply: string } {
   let cleaned = content.trim()
 
-  // Убираем markdown обёртку ```json ... ```
   const jsonMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/)
   if (jsonMatch) {
     cleaned = jsonMatch[1].trim()
   }
 
-  // Ищем JSON объект в тексте (модели иногда добавляют рассуждения до/после)
   const jsonObj = cleaned.match(/\{[\s\S]*\}/)
   if (jsonObj) {
     cleaned = jsonObj[0]
@@ -401,7 +337,6 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
               masterId: master.id,
             },
           })
-          // Push в Telegram старшему
           await pushToSeniors(notifMsg)
         }
         return {
@@ -503,21 +438,6 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
         return { success: true, message: `Хотелка добавлена: "${text}"`, data: { wishId: wish.id } }
       }
 
-      case 'add_hookah_batch': {
-        const count = Math.max(1, Math.min(100, action.args.count))
-        const shift = await db.shift.findFirst({ where: { masterId: master.id, status: 'OPEN' } })
-        if (!shift) {
-          return { success: false, message: 'Смена не открыта. /shift чтобы открыть.' }
-        }
-        const newCount = shift.hookahCount + count
-        await db.shift.update({ where: { id: shift.id }, data: { hookahCount: newCount } })
-        return {
-          success: true,
-          message: `+${count} кальянов (всего за смену: ${newCount})`,
-          data: { added: count, total: newCount },
-        }
-      }
-
       case 'update_schedule': {
         if (master.role !== 'SENIOR') {
           return { success: false, message: 'Только старший может редактировать график' }
@@ -529,7 +449,6 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
         }
         const date = startOfDay(dateObj)
 
-        // Fuzzy поиск мастера по имени
         const allMasters = await db.master.findMany({ where: { active: true } })
         const norm = (s: string) => s.toLowerCase().trim()
         const target = norm(masterName)
@@ -542,7 +461,6 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
         }
 
         if (scheduleAction === 'remove') {
-          // Удаляем ВСЕ записи этого мастера на эту дату
           const existing = await db.scheduleEntry.findMany({
             where: { masterId: masterRec.id, date },
           })
@@ -558,7 +476,6 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
           }
         }
 
-        // action === 'add' — просто создаём новую запись
         await db.scheduleEntry.create({
           data: { masterId: masterRec.id, date },
         })
@@ -623,7 +540,6 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
         }
         const { masterName, dateText } = action.args
 
-        // Fuzzy поиск мастера по имени
         const allMasters = await db.master.findMany({ where: { active: true } })
         const norm = (s: string) => s.toLowerCase().trim()
         const target = norm(masterName)
@@ -641,7 +557,6 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
         let toDate: Date
 
         if (dateText) {
-          // Пытаемся распознать как месяц (например, "сентябрь")
           const monthMatch = dateText.toLowerCase().match(/(январ|феврал|март|апрел|ма[яй]|июн|июл|август|сентябр|октябр|ноябр|декабр)/)
           if (monthMatch) {
             const monthMap: Record<string, number> = {
@@ -657,26 +572,24 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
             if (!parsed) {
               return { success: false, message: `Не удалось распознать период: "${dateText}"` }
             }
-            // Если "сегодня"/"завтра" — берём этот день
             fromDate = startOfDay(parsed)
             toDate = addDays(fromDate, 1)
           }
         } else {
-          // Текущий месяц
           fromDate = startOfDay(new Date(today.getFullYear(), today.getMonth(), 1))
           toDate = addDays(startOfDay(new Date(today.getFullYear(), today.getMonth() + 1, 0)), 1)
         }
 
-        // Считаем закрытые смены мастера в диапазоне
-        const shifts = await db.shift.findMany({
+        // Считаем записи графика мастера в диапазоне (замена Shifts)
+        const entries = await db.scheduleEntry.findMany({
           where: {
             masterId: masterRec.id,
-            status: 'CLOSED',
-            openedAt: { gte: fromDate, lt: toDate },
+            date: { gte: fromDate, lt: toDate },
           },
+          orderBy: { date: 'asc' },
         })
 
-        const count = shifts.length
+        const count = entries.length
         const rate = masterRec.rate
         const total = count * rate
 
@@ -708,9 +621,9 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
           const all = await db.tobacco.findMany({ where: { active: true }, include: { stock: true }, orderBy: [{ brand: 'asc' }, { flavor: 'asc' }] })
           return { success: true, message: `Всего ${all.length} позиций`, data: all.map((t) => ({ brand: t.brand, line: t.line, flavor: t.flavor, current: t.stock?.currentGrams ?? 0 })) }
         }
-        if (w.includes('shift')) {
-          const shiftContext = await buildShiftContext(master)
-          return { success: true, message: 'Контекст смены загружен', data: { shiftContext } }
+        if (w.includes('schedule') || w.includes('shift')) {
+          const ctx = await buildScheduleContext(master)
+          return { success: true, message: 'Контекст графика загружен', data: { scheduleContext: ctx } }
         }
         const low = await db.tobacco.findMany({ where: { active: true }, include: { stock: true } })
         const filtered = low
@@ -750,9 +663,12 @@ export async function processMasterMessage(
     return { reply: '⚠️ Вы не авторизованы. Войдите по PIN.', actions: [], executedActions: [] }
   }
 
-  const stockContext = await buildStockContext()
-  const shiftContext = await buildShiftContext(master)
-  const systemPrompt = buildSystemPrompt(stockContext, master, shiftContext)
+  const [stockContext, scheduleContext, consumablesContext] = await Promise.all([
+    buildStockContext(),
+    buildScheduleContext(master),
+    buildConsumablesContext(),
+  ])
+  const systemPrompt = buildSystemPrompt(stockContext, master, scheduleContext, consumablesContext)
 
   let userContent = message
   if (options?.transcribedText && options.source === 'VOICE') {
@@ -801,14 +717,11 @@ export async function processMasterMessage(
 }
 
 // ───────────────────────────────────────────
-// Распознавание накладной через HF Vision (Ling-3.0-flash-VL)
-// ВНИМАНИЕ: Vision-модель может нестабильно работать через HF router.
-// Если будет ошибка — пользователю вернётся сообщение.
+// Распознавание накладной через HF Vision
 // ───────────────────────────────────────────
 export async function recognizeInvoice(imageBase64: string): Promise<Array<{ brand: string; line: string; flavor: string; grams: number }>> {
   const prompt = `Ты распознаёшь накладную на кальянный табак. Найди ВСЕ позиции табака на изображении.
 Для каждой позиции верни: brand (бренд/производитель), line (линейка, если есть), flavor (вкус), grams (вес в граммах одной банки/упаковки).
-Если вес указан в граммах — верни число. Если в банках/штуках — верни вес одной банки.
 
 Верни СТРОГО JSON массив без markdown:
 [
@@ -847,7 +760,7 @@ export async function recognizeInvoice(imageBase64: string): Promise<Array<{ bra
 }
 
 // ───────────────────────────────────────────
-// Транскрипция голоса через Groq Whisper (бесплатно)
+// Транскрипция голоса через Groq Whisper
 // ───────────────────────────────────────────
 export async function transcribeAudio(audioBase64: string): Promise<string> {
   const groqKey = getGroqKey()
@@ -855,7 +768,6 @@ export async function transcribeAudio(audioBase64: string): Promise<string> {
     throw new Error('Распознавание голоса недоступно: GROQ_API_KEY не задан')
   }
 
-  // Определяем формат аудио (Telegram присылает OGG/Opus)
   let mimeType = 'audio/wav'
   if (audioBase64.startsWith('data:')) {
     const match = audioBase64.match(/^data:(audio\/[\w+.-]+);/)
@@ -872,7 +784,6 @@ export async function transcribeAudio(audioBase64: string): Promise<string> {
 
   const audioBuffer = Buffer.from(audioBase64, 'base64')
 
-  // Groq Whisper через multipart/form-data
   const formData = new FormData()
   const ext = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('webm') ? 'webm' : 'wav'
   formData.append('file', new Blob([audioBuffer], { type: mimeType }), `audio.${ext}`)

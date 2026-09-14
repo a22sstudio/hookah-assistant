@@ -425,7 +425,7 @@ function DayDialog({
                   )} rounded-sm`}
                 />
                 <div className="flex-1 min-w-0">
-                  <p className="font-mono text-sm font-bold uppercase tracking-tight truncate">
+                  <p className="font-mono text-sm font-bold tracking-tight truncate">
                     {e.masterName}
                   </p>
                   {e.note && (

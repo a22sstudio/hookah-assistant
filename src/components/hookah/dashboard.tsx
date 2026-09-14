@@ -747,7 +747,7 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
                 >
                   <AccordionTrigger className="px-4 py-4 bg-muted hover:bg-muted/80 transition-base transition-colors group border-b border-border data-[state=open]:border-b-0">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <span className="font-mono uppercase text-base font-bold tracking-tight truncate text-foreground">
+                      <span className="font-mono text-base font-bold tracking-tight truncate text-foreground">
                         {brand}
                       </span>
                       <span className="label-mono-sm text-muted-foreground shrink-0">

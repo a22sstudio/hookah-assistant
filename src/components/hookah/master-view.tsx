@@ -5,10 +5,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { ThemeToggle } from '@/components/theme-toggle'
-import { ShiftPanel } from '@/components/hookah/shift-panel'
-import { MasterRequests } from '@/components/hookah/master-requests'
-import { WishesPanel } from '@/components/hookah/wishes-panel'
+import { HomeDashboard } from '@/components/hookah/home-dashboard'
 import { Dashboard } from '@/components/hookah/dashboard'
+import { ConsumablesPanel } from '@/components/hookah/consumables-panel'
+import { PurchasePanel } from '@/components/hookah/purchase-panel'
+import { WishesPanel } from '@/components/hookah/wishes-panel'
 import { AIChat } from '@/components/hookah/ai-chat'
 import { ScheduleCalendar } from '@/components/hookah/schedule-calendar'
 import { masterAvatarClass, initials } from '@/lib/master-utils'
@@ -19,6 +20,8 @@ import {
   Package,
   LogOut,
   CalendarRange,
+  Layers,
+  Home,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -30,6 +33,7 @@ interface MasterViewProps {
 export function MasterView({ master, onLogout }: MasterViewProps) {
   const [refreshKey, setRefreshKey] = useState(0)
   const [mobileChatOpen, setMobileChatOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState('today')
   const refresh = () => setRefreshKey((k) => k + 1)
 
   const handleLogout = async () => {
@@ -42,6 +46,10 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
     onLogout()
   }
 
+  const navigate = (tab: string) => {
+    setActiveTab(tab)
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Header — sticky, opaque, z-40 */}
@@ -50,13 +58,13 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
           <div
             className={`h-9 w-9 shrink-0 ${masterAvatarClass(
               master.color,
-            )} flex items-center justify-center text-xs font-mono font-bold uppercase text-white rounded-md`}
+            )} flex items-center justify-center text-xs font-mono font-bold text-white rounded-md`}
           >
             {initials(master.name)}
           </div>
           <div className="flex-1 min-w-0">
             <span className="label-mono">Привет,</span>
-            <h1 className="font-mono uppercase font-bold tracking-tight text-sm sm:text-base leading-tight truncate text-foreground">
+            <h1 className="font-mono font-bold tracking-tight text-sm sm:text-base leading-tight truncate text-foreground">
               {master.name}
             </h1>
           </div>
@@ -78,70 +86,69 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
         <div className="grid lg:grid-cols-[1fr_440px] gap-6">
           {/* Левая колонка */}
           <div className="min-w-0 space-y-6">
-            {/* Смена — всегда сверху */}
-            <ShiftPanel
-              refreshKey={refreshKey}
-              onRefresh={refresh}
-              masterName={master.name}
-            />
-
             {/* Табы */}
-            <Tabs defaultValue="requests" className="w-full">
-              <TabsList className="grid w-full grid-cols-4 h-auto">
-                <TabsTrigger
-                  value="requests"
-                  className="flex flex-col gap-1 py-2.5"
-                >
-                  <ShoppingCart className="h-4 w-4" />
-                  <span>Заявки</span>
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 h-auto">
+                <TabsTrigger value="today" className="flex flex-col gap-1 py-2.5">
+                  <Home className="h-4 w-4" />
+                  <span>Сегодня</span>
                 </TabsTrigger>
-                <TabsTrigger
-                  value="wishes"
-                  className="flex flex-col gap-1 py-2.5"
-                >
-                  <Star className="h-4 w-4" />
-                  <span>Хотелки</span>
-                </TabsTrigger>
-                <TabsTrigger
-                  value="stock"
-                  className="flex flex-col gap-1 py-2.5"
-                >
-                  <Package className="h-4 w-4" />
-                  <span>Склад</span>
-                </TabsTrigger>
-                <TabsTrigger
-                  value="schedule"
-                  className="flex flex-col gap-1 py-2.5"
-                >
+                <TabsTrigger value="schedule" className="flex flex-col gap-1 py-2.5">
                   <CalendarRange className="h-4 w-4" />
                   <span>График</span>
                 </TabsTrigger>
+                <TabsTrigger value="stock" className="flex flex-col gap-1 py-2.5">
+                  <Package className="h-4 w-4" />
+                  <span>Склад</span>
+                </TabsTrigger>
+                <TabsTrigger value="consumables" className="flex flex-col gap-1 py-2.5">
+                  <Layers className="h-4 w-4" />
+                  <span>Расход</span>
+                </TabsTrigger>
+                <TabsTrigger value="purchase" className="flex flex-col gap-1 py-2.5">
+                  <ShoppingCart className="h-4 w-4" />
+                  <span>Закуп</span>
+                </TabsTrigger>
+                <TabsTrigger value="wishes" className="flex flex-col gap-1 py-2.5">
+                  <Star className="h-4 w-4" />
+                  <span>Хотелки</span>
+                </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="requests" className="pt-4">
-                <MasterRequests
-                  role="REGULAR"
+              <TabsContent value="today" className="pt-6">
+                <HomeDashboard refreshKey={refreshKey} onNavigate={navigate} />
+              </TabsContent>
+              <TabsContent value="schedule" className="pt-6">
+                <ScheduleCalendar
+                  canEdit={false}
                   refreshKey={refreshKey}
                   onRefresh={refresh}
                 />
               </TabsContent>
-              <TabsContent value="wishes" className="pt-4">
-                <WishesPanel
-                  role="REGULAR"
-                  refreshKey={refreshKey}
-                  onRefresh={refresh}
-                />
-              </TabsContent>
-              <TabsContent value="stock" className="pt-4">
+              <TabsContent value="stock" className="pt-6">
                 <Dashboard
                   readOnly
                   refreshKey={refreshKey}
                   onRefresh={refresh}
                 />
               </TabsContent>
-              <TabsContent value="schedule" className="pt-4">
-                <ScheduleCalendar
-                  canEdit={false}
+              <TabsContent value="consumables" className="pt-6">
+                <ConsumablesPanel
+                  readOnly
+                  refreshKey={refreshKey}
+                  onRefresh={refresh}
+                />
+              </TabsContent>
+              <TabsContent value="purchase" className="pt-6">
+                <PurchasePanel
+                  role="REGULAR"
+                  refreshKey={refreshKey}
+                  onRefresh={refresh}
+                />
+              </TabsContent>
+              <TabsContent value="wishes" className="pt-6">
+                <WishesPanel
+                  role="REGULAR"
                   refreshKey={refreshKey}
                   onRefresh={refresh}
                 />

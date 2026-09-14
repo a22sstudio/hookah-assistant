@@ -1,5 +1,5 @@
-import type { Metadata } from "next";
-import { Inter, Fragment_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
@@ -12,10 +12,10 @@ const inter = Inter({
   display: "swap",
 });
 
-const fragmentMono = Fragment_Mono({
-  variable: "--font-fragment-mono",
-  subsets: ["latin"],
-  weight: ["400"],
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains-mono",
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600", "700"],
   display: "swap",
 });
 
@@ -27,9 +27,27 @@ export const metadata: Metadata = {
   description: "Учёт табака, смены мастеров, заявки и хотелки. Веб-панель + Telegram-бот.",
   keywords: ["кальян", "табак", "учёт", "ассистент", "CRM"],
   authors: [{ name: "Hookah Assistant" }],
-  icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    title: "Hookah Assistant",
+    statusBarStyle: "black-translucent",
   },
+  icons: {
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/icon-192.png", sizes: "192x192" }],
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#dc2f02",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 // Inline script для предотвращения FOUC (flash of unstyled content) при theme switch
@@ -56,7 +74,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body
-        className={`${inter.variable} ${fragmentMono.variable} antialiased bg-background text-foreground theme-transition`}
+        className={`${inter.variable} ${jetbrainsMono.variable} antialiased bg-background text-foreground theme-transition`}
       >
         {children}
         <Toaster />

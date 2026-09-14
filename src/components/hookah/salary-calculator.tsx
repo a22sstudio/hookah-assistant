@@ -484,7 +484,7 @@ export function SalaryCalculator({ refreshKey }: SalaryCalculatorProps) {
               </span>
             )}
             <div>
-              <p className="font-mono text-sm font-bold uppercase tracking-tight">
+              <p className="font-mono text-sm font-bold tracking-tight">
                 {data.master.name}
               </p>
               <p className="label-mono-sm text-muted-foreground">

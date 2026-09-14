@@ -56,18 +56,17 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Мастер не найден' }, { status: 404 })
   }
 
-  // Закрытые смены в диапазоне по openedAt
-  const shifts = await db.shift.findMany({
+  // Записи графика (ScheduleEntry) в диапазоне — замена Shifts
+  const entries = await db.scheduleEntry.findMany({
     where: {
       masterId,
-      status: 'CLOSED',
-      openedAt: { gte: fromDate, lt: toDate },
+      date: { gte: fromDate, lt: toDate },
     },
-    orderBy: { openedAt: 'asc' },
+    orderBy: { date: 'asc' },
   })
 
   const rate = master.rate
-  const count = shifts.length
+  const count = entries.length
   const total = count * rate
 
   return NextResponse.json({
@@ -82,12 +81,12 @@ export async function GET(req: NextRequest) {
       from: fromDate,
       to: addDays(toDate, -1),
     },
-    shifts: shifts.map((s) => ({
-      id: s.id,
-      openedAt: s.openedAt,
-      closedAt: s.closedAt,
-      hookahCount: s.hookahCount,
-      note: s.note,
+    shifts: entries.map((e) => ({
+      id: e.id,
+      openedAt: e.date,
+      closedAt: null,
+      hookahCount: 0,
+      note: e.note,
     })),
     count,
     rate,

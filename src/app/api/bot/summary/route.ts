@@ -5,7 +5,8 @@ import { startOfDay, addDays, parseDateFromText, formatDateRu, formatFullDateRu 
 
 // POST /api/bot/summary
 // body: { telegramId, dateText? }
-// Старший → расширенная сводка, обычный мастер → его личная
+// Старший → расширенная сводка, обычный мастер → его личная.
+// Сводка теперь опирается на ScheduleEntry (нет Shifts).
 export async function POST(req: NextRequest) {
   const authError = checkBotSecret(req)
   if (authError) return authError
@@ -31,10 +32,11 @@ export async function POST(req: NextRequest) {
     }
     const nextDay = addDays(targetDate, 1)
 
-    const shifts = await db.shift.findMany({
-      where: { openedAt: { gte: targetDate, lt: nextDay } },
+    // Кто работал по графику в этот день
+    const scheduleEntries = await db.scheduleEntry.findMany({
+      where: { date: { gte: targetDate, lt: nextDay } },
       include: { master: true },
-      orderBy: { openedAt: 'asc' },
+      orderBy: { createdAt: 'asc' },
     })
 
     const operations = await db.operation.findMany({
@@ -57,25 +59,21 @@ export async function POST(req: NextRequest) {
 
     // Короткая сводка для обычного мастера
     if (!isSenior) {
-      const myShift = shifts.find((s) => s.masterId === master.id)
+      const myEntry = scheduleEntries.find((e) => e.masterId === master.id)
       const myRequests = requests.filter((r) => r.masterId === master.id)
       const myWishes = wishes.filter((w) => w.masterId === master.id)
 
-      if (!myShift) {
+      if (!myEntry) {
+        const others = scheduleEntries.map((e) => e.master.name).join(', ')
         return NextResponse.json({
-          message: `📊 ${formatDateRu(targetDate)}\n\nУ вас не было смены в этот день.`,
+          message: `📊 ${formatDateRu(targetDate)}\n\nУ тебя выходной.${others ? ` За стойкой: ${others}.` : ''}`,
         })
       }
-
-      const duration = myShift.closedAt
-        ? `${Math.round((myShift.closedAt.getTime() - myShift.openedAt.getTime()) / 3600000)}ч`
-        : `${Math.round((Date.now() - myShift.openedAt.getTime()) / 3600000)}ч`
 
       const lines = [
         `📊 Сводка за ${formatDateRu(targetDate)}`,
         ``,
-        `🪔 Кальянов: ${myShift.hookahCount}`,
-        `⏱ Длительность смены: ${duration}${myShift.closedAt ? '' : ' (открыта)'}`,
+        `✅ Ты в графике на сегодня`,
         `📝 Отметок остатков: ${operations.length}`,
         `📋 Заявок: ${myRequests.length}`,
         `💡 Хотелок: ${myWishes.length}`,
@@ -94,27 +92,21 @@ export async function POST(req: NextRequest) {
     }
 
     // Расширенная сводка для старшего
-    const totalHookahs = shifts.reduce((sum, s) => sum + s.hookahCount, 0)
-
     const lines = [
       `📊 Сводка за ${formatFullDateRu(targetDate)}`,
       '',
-      `👥 Смен работало: ${shifts.length}`,
-      `🪔 Всего кальянов: ${totalHookahs}`,
+      `👥 В графике: ${scheduleEntries.length}`,
       `📋 Заявок: ${requests.length}`,
       `💡 Хотелок: ${wishes.length}`,
       `📝 Отметок остатков: ${operations.length}`,
     ]
 
-    if (shifts.length > 0) {
-      lines.push('', '👷 По мастерам:')
-      for (const s of shifts) {
-        const dur = s.closedAt
-          ? `${Math.round((s.closedAt.getTime() - s.openedAt.getTime()) / 3600000)}ч`
-          : `${Math.round((Date.now() - s.openedAt.getTime()) / 3600000)}ч (открыта)`
-        const mReq = requests.filter((r) => r.masterId === s.masterId).length
-        const mWish = wishes.filter((w) => w.masterId === s.masterId).length
-        lines.push(`  • ${s.master.name}: ${s.hookahCount}🪔 ${dur} | ${mReq}📋 ${mWish}💡`)
+    if (scheduleEntries.length > 0) {
+      lines.push('', '👷 В графике:')
+      for (const e of scheduleEntries) {
+        const mReq = requests.filter((r) => r.masterId === e.masterId).length
+        const mWish = wishes.filter((w) => w.masterId === e.masterId).length
+        lines.push(`  • ${e.master.name}: ${mReq}📋 ${mWish}💡${e.note ? ` (${e.note})` : ''}`)
       }
     }
 
