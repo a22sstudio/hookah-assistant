@@ -436,38 +436,54 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
       return
     }
 
-    let requestText = ''
-    let grams: number | undefined
+    // Определяем данные позиции
+    let item: {
+      itemType: string
+      itemId: string | null
+      brand: string | null
+      line: string | null
+      flavor: string | null
+      name: string
+      packGrams: number | null
+      quantity: number
+      unit: string
+    }
+
     if (flavorId) {
       const t = tobaccos.find((x) => x.id === flavorId)
       if (t) {
-        requestText = `${t.brand} ${t.line} ${t.flavor} — ${qtyNum} ${unit}`
-        if (unit === 'банок') grams = t.defaultJarGrams * qtyNum
-        else grams = qtyNum
+        item = {
+          itemType: 'TOBACCO',
+          itemId: t.id,
+          brand: t.brand,
+          line: t.line || null,
+          flavor: t.flavor,
+          name: `${t.brand} ${t.line ? t.line + ' ' : ''}${t.flavor}`.trim(),
+          packGrams: t.defaultJarGrams,
+          quantity: qtyNum,
+          unit,
+        }
+      } else {
+        item = { itemType: 'TOBACCO', itemId: null, brand, line: null, flavor: '', name: brand, packGrams: null, quantity: qtyNum, unit }
       }
-    } else if (brandInput !== '__new__') {
-      requestText = `${brand} — ${qtyNum} ${unit}`
     } else {
-      requestText = `${brand} — ${qtyNum} ${unit}`
-    }
-
-    if (note.trim()) {
-      requestText += ` · ${note.trim()}`
+      item = { itemType: 'TOBACCO', itemId: null, brand, line: null, flavor: '', name: brand, packGrams: null, quantity: qtyNum, unit }
     }
 
     setSubmittingStruct(true)
     try {
-      const res = await fetch('/api/requests', {
+      // Создаём PurchaseOrder (не MasterRequest!) — с кнопками Изменить/CSV/Удалить
+      const res = await fetch('/api/purchase-orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: requestText, grams: grams ?? null }),
+        body: JSON.stringify({ items: [item] }),
       })
       const d = await res.json()
       if (!res.ok) {
         toast.error(d.error || 'Ошибка')
         return
       }
-      toast.success(`Заявка создана: ${requestText}`)
+      toast.success(`Заказ создан: ${item.name} — ${qtyNum} ${unit}`)
       setNewBrand('')
       setFlavorId('')
       setQty('1')
