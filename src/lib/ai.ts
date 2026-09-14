@@ -4,30 +4,16 @@ import { pushToSeniors } from '@/lib/notify'
 import { parseDateFromText, startOfDay, formatDateRu, addDays } from '@/lib/datetime-utils'
 
 // ───────────────────────────────────────────
-// AI провайдеры:
-// LLM: Groq (Llama 3.3 70B) — бесплатно, быстро, 30 req/мин
-// Vision: Hugging Face Router (Ling-3.0-flash-VL) — бесплатно
-// ASR (Whisper): Hugging Face Inference — бесплатно
+// AI: OpenAI (gpt-4o-mini) — LLM + Vision + ASR
+// Один провайдер для всего. ~$0.05/мес при 30 запросах/день.
 // ───────────────────────────────────────────
 
-// Groq для LLM
-const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions'
-const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
+const OPENAI_API = 'https://api.openai.com/v1/chat/completions'
+const LLM_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini'
 
-// HF для Vision и ASR
-const HF_API = 'https://router.huggingface.co/v1/chat/completions'
-const VISION_MODEL = process.env.HF_VISION_MODEL || 'inclusionAI/Ling-3.0-flash-VL'
-const VISION_PROVIDER = process.env.HF_VISION_PROVIDER || 'novita'
-
-function getGroqToken(): string {
-  const t = process.env.GROQ_API_KEY
-  if (!t) throw new Error('GROQ_API_KEY не задан в переменных окружения')
-  return t
-}
-
-function getHfToken(): string {
-  const t = process.env.HF_TOKEN
-  if (!t) throw new Error('HF_TOKEN не задан в переменных окружения')
+function getApiKey(): string {
+  const t = process.env.OPENAI_API_KEY
+  if (!t) throw new Error('OPENAI_API_KEY не задан в переменных окружения')
   return t
 }
 
@@ -41,22 +27,22 @@ interface ChatMessage {
 
 interface ChatResponse {
   choices?: Array<{
-    message?: { content?: string; reasoning?: string }
+    message?: { content?: string }
     finish_reason?: string
   }>
   error?: { message: string }
 }
 
-// LLM через Groq (Llama 3.3 70B)
-async function llmChat(messages: ChatMessage[], opts: { maxTokens?: number } = {}): Promise<string> {
-  const res = await fetch(GROQ_API, {
+// LLM + Vision через OpenAI (gpt-4o-mini поддерживает оба)
+async function hfChat(messages: ChatMessage[], opts: { vision?: boolean; maxTokens?: number } = {}): Promise<string> {
+  const res = await fetch(OPENAI_API, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${getGroqToken()}`,
+      Authorization: `Bearer ${getApiKey()}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: GROQ_MODEL,
+      model: LLM_MODEL,
       messages,
       max_tokens: opts.maxTokens ?? 3000,
       temperature: 0.3,
@@ -65,48 +51,10 @@ async function llmChat(messages: ChatMessage[], opts: { maxTokens?: number } = {
 
   const data = (await res.json()) as ChatResponse
   if (!res.ok || data.error) {
-    throw new Error(`Groq: ${data.error?.message || res.status}`)
+    throw new Error(`OpenAI: ${data.error?.message || res.status}`)
   }
 
   return data.choices?.[0]?.message?.content ?? ''
-}
-
-// Vision через Hugging Face Router
-async function visionChat(messages: ChatMessage[], opts: { maxTokens?: number } = {}): Promise<string> {
-  const body: Record<string, unknown> = {
-    model: VISION_MODEL,
-    provider: VISION_PROVIDER,
-    messages,
-    max_tokens: opts.maxTokens ?? 1000,
-  }
-
-  const res = await fetch(HF_API, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${getHfToken()}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  })
-
-  const data = (await res.json()) as ChatResponse
-  if (!res.ok || data.error) {
-    throw new Error(`HF Vision: ${data.error?.message || res.status}`)
-  }
-
-  const content = data.choices?.[0]?.message?.content ?? ''
-  if (!content && data.choices?.[0]?.message?.reasoning) {
-    return data.choices[0].message.reasoning
-  }
-  return content
-}
-
-// Универсальный chat — LLM через Groq, Vision через HF
-async function hfChat(messages: ChatMessage[], opts: { vision?: boolean; maxTokens?: number } = {}): Promise<string> {
-  if (opts.vision) {
-    return visionChat(messages, opts)
-  }
-  return llmChat(messages, opts)
 }
 
 // Типы для результата работы AI
@@ -886,13 +834,10 @@ export async function recognizeInvoice(imageBase64: string): Promise<Array<{ bra
 }
 
 // ───────────────────────────────────────────
-// Транскрипция голоса через HF Whisper Large V3 Turbo (бесплатно)
 // ───────────────────────────────────────────
-const WHISPER_API = 'https://router.huggingface.co/hf-inference/models/openai/whisper-large-v3-turbo'
-
+// Транскрипция голоса через OpenAI Whisper
+// ───────────────────────────────────────────
 export async function transcribeAudio(audioBase64: string): Promise<string> {
-  const token = getHfToken()
-
   // Определяем формат аудио (Telegram присылает OGG/Opus)
   let mimeType = 'audio/wav'
   if (audioBase64.startsWith('data:')) {
@@ -902,7 +847,6 @@ export async function transcribeAudio(audioBase64: string): Promise<string> {
       audioBase64 = audioBase64.split(',')[1]
     }
   } else {
-    // Telegram OGG начинается с байтов 'OggS'
     try {
       const head = Buffer.from(audioBase64.slice(0, 8), 'base64').toString('ascii')
       if (head.startsWith('OggS')) mimeType = 'audio/ogg'
@@ -911,13 +855,19 @@ export async function transcribeAudio(audioBase64: string): Promise<string> {
 
   const audioBuffer = Buffer.from(audioBase64, 'base64')
 
-  const res = await fetch(WHISPER_API, {
+  // OpenAI Whisper через multipart/form-data
+  const formData = new FormData()
+  const ext = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('webm') ? 'webm' : 'wav'
+  formData.append('file', new Blob([audioBuffer], { type: mimeType }), `audio.${ext}`)
+  formData.append('model', 'whisper-1')
+  formData.append('language', 'ru')
+
+  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': mimeType,
+      Authorization: `Bearer ${getApiKey()}`,
     },
-    body: audioBuffer,
+    body: formData,
   })
 
   const data = (await res.json()) as { text?: string; error?: { message?: string } }
