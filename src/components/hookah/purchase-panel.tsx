@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { ScrollArea } from '@/components/ui/scroll-area' // keep for other uses
 import {
   Dialog,
   DialogContent,
@@ -1049,7 +1049,7 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
             {filter !== 'all' ? 'Ничего не найдено.' : isSenior ? 'Заявок и заказов пока нет.' : 'Ты ещё не оставил заявок.'}
           </div>
         ) : (
-          <ScrollArea className="max-h-[60vh]">
+          <div className="max-h-[50vh] overflow-y-auto">
             <div className="stagger-children">
               {filteredItems.map((item) => {
                 if (item.kind === 'request') {
@@ -1205,7 +1205,7 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
                 )
               })}
             </div>
-          </ScrollArea>
+          </div>
         )}
       </div>
 
