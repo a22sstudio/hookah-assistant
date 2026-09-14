@@ -11,7 +11,7 @@ import { parseDateFromText, startOfDay, formatDateRu, addDays } from '@/lib/date
 // ───────────────────────────────────────────
 
 const OR_API = 'https://openrouter.ai/api/v1/chat/completions'
-const LLM_MODEL = process.env.LLM_MODEL || 'nex-agi/nex-n2.5-pro:free'
+const LLM_MODEL = process.env.LLM_MODEL || 'nex-agi/nex-n2.5-mini:free'
 const VISION_MODEL = process.env.VISION_MODEL || 'inclusionai/ling-3.0-flash-vl:free'
 
 function getApiKey(): string {
