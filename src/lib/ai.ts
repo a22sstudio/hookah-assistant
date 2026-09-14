@@ -4,14 +4,26 @@ import { pushToSeniors } from '@/lib/notify'
 import { parseDateFromText, startOfDay, formatDateRu, addDays } from '@/lib/datetime-utils'
 
 // ───────────────────────────────────────────
-// Hugging Face Router (OpenAI-compatible)
-// Бесплатные модели: Qwen/Qwen3.8-27B (LLM), inclusionAI/Ling-3.0-flash-VL (Vision)
+// AI провайдеры:
+// LLM: Groq (Llama 3.3 70B) — бесплатно, быстро, 30 req/мин
+// Vision: Hugging Face Router (Ling-3.0-flash-VL) — бесплатно
+// ASR (Whisper): Hugging Face Inference — бесплатно
 // ───────────────────────────────────────────
+
+// Groq для LLM
+const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions'
+const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
+
+// HF для Vision и ASR
 const HF_API = 'https://router.huggingface.co/v1/chat/completions'
-const LLM_MODEL = process.env.HF_LLM_MODEL || 'Qwen/Qwen3.8-27B'
-const LLM_PROVIDER = process.env.HF_LLM_PROVIDER || 'ovhcloud'
 const VISION_MODEL = process.env.HF_VISION_MODEL || 'inclusionAI/Ling-3.0-flash-VL'
 const VISION_PROVIDER = process.env.HF_VISION_PROVIDER || 'novita'
+
+function getGroqToken(): string {
+  const t = process.env.GROQ_API_KEY
+  if (!t) throw new Error('GROQ_API_KEY не задан в переменных окружения')
+  return t
+}
 
 function getHfToken(): string {
   const t = process.env.HF_TOKEN
@@ -19,7 +31,7 @@ function getHfToken(): string {
   return t
 }
 
-interface HFChatMessage {
+interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
   content: string | Array<
     | { type: 'text'; text: string }
@@ -27,7 +39,7 @@ interface HFChatMessage {
   >
 }
 
-interface HFChatResponse {
+interface ChatResponse {
   choices?: Array<{
     message?: { content?: string; reasoning?: string }
     finish_reason?: string
@@ -35,15 +47,37 @@ interface HFChatResponse {
   error?: { message: string }
 }
 
-async function hfChat(messages: HFChatMessage[], opts: { vision?: boolean; maxTokens?: number } = {}): Promise<string> {
-  const model = opts.vision ? VISION_MODEL : LLM_MODEL
-  const provider = opts.vision ? VISION_PROVIDER : LLM_PROVIDER
+// LLM через Groq (Llama 3.3 70B)
+async function llmChat(messages: ChatMessage[], opts: { maxTokens?: number } = {}): Promise<string> {
+  const res = await fetch(GROQ_API, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${getGroqToken()}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      messages,
+      max_tokens: opts.maxTokens ?? 3000,
+      temperature: 0.3,
+    }),
+  })
 
+  const data = (await res.json()) as ChatResponse
+  if (!res.ok || data.error) {
+    throw new Error(`Groq: ${data.error?.message || res.status}`)
+  }
+
+  return data.choices?.[0]?.message?.content ?? ''
+}
+
+// Vision через Hugging Face Router
+async function visionChat(messages: ChatMessage[], opts: { maxTokens?: number } = {}): Promise<string> {
   const body: Record<string, unknown> = {
-    model,
-    provider,
+    model: VISION_MODEL,
+    provider: VISION_PROVIDER,
     messages,
-    max_tokens: opts.maxTokens ?? 3000,
+    max_tokens: opts.maxTokens ?? 1000,
   }
 
   const res = await fetch(HF_API, {
@@ -55,17 +89,24 @@ async function hfChat(messages: HFChatMessage[], opts: { vision?: boolean; maxTo
     body: JSON.stringify(body),
   })
 
-  const data = (await res.json()) as HFChatResponse
+  const data = (await res.json()) as ChatResponse
   if (!res.ok || data.error) {
-    throw new Error(data.error?.message || `HF API ${res.status}`)
+    throw new Error(`HF Vision: ${data.error?.message || res.status}`)
   }
 
   const content = data.choices?.[0]?.message?.content ?? ''
-  // Qwen3.8 возвращает reasoning вместо content для reasoning-моделей
   if (!content && data.choices?.[0]?.message?.reasoning) {
     return data.choices[0].message.reasoning
   }
   return content
+}
+
+// Универсальный chat — LLM через Groq, Vision через HF
+async function hfChat(messages: ChatMessage[], opts: { vision?: boolean; maxTokens?: number } = {}): Promise<string> {
+  if (opts.vision) {
+    return visionChat(messages, opts)
+  }
+  return llmChat(messages, opts)
 }
 
 // Типы для результата работы AI
