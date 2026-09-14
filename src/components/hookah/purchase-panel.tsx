@@ -1049,7 +1049,7 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
             {filter !== 'all' ? 'Ничего не найдено.' : isSenior ? 'Заявок и заказов пока нет.' : 'Ты ещё не оставил заявок.'}
           </div>
         ) : (
-          <div className="max-h-[50vh] overflow-y-auto">
+          <div className="max-h-[50vh] overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
             <div className="stagger-children">
               {filteredItems.map((item) => {
                 if (item.kind === 'request') {
