@@ -4,17 +4,24 @@ import { pushToSeniors } from '@/lib/notify'
 import { parseDateFromText, startOfDay, formatDateRu, addDays } from '@/lib/datetime-utils'
 
 // ───────────────────────────────────────────
-// AI: OpenAI (gpt-4o-mini) — LLM + Vision + ASR
-// Один провайдер для всего. ~$0.05/мес при 30 запросах/день.
+// AI провайдеры (все бесплатные):
+// LLM: OpenRouter nex-agi/nex-n2.5-pro:free
+// Vision: OpenRouter inclusionai/ling-3.0-flash-vl:free
+// ASR: Groq whisper-large-v3 (если работает на Railway)
 // ───────────────────────────────────────────
 
-const OPENAI_API = 'https://api.openai.com/v1/chat/completions'
-const LLM_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini'
+const OR_API = 'https://openrouter.ai/api/v1/chat/completions'
+const LLM_MODEL = process.env.LLM_MODEL || 'nex-agi/nex-n2.5-pro:free'
+const VISION_MODEL = process.env.VISION_MODEL || 'inclusionai/ling-3.0-flash-vl:free'
 
 function getApiKey(): string {
-  const t = process.env.OPENAI_API_KEY
-  if (!t) throw new Error('OPENAI_API_KEY не задан в переменных окружения')
+  const t = process.env.OPENROUTER_API_KEY
+  if (!t) throw new Error('OPENROUTER_API_KEY не задан в переменных окружения')
   return t
+}
+
+function getGroqKey(): string | null {
+  return process.env.GROQ_API_KEY || null
 }
 
 interface ChatMessage {
@@ -27,34 +34,40 @@ interface ChatMessage {
 
 interface ChatResponse {
   choices?: Array<{
-    message?: { content?: string }
+    message?: { content?: string; reasoning?: string }
     finish_reason?: string
   }>
   error?: { message: string }
 }
 
-// LLM + Vision через OpenAI (gpt-4o-mini поддерживает оба)
+// LLM + Vision через OpenRouter (бесплатные модели)
 async function hfChat(messages: ChatMessage[], opts: { vision?: boolean; maxTokens?: number } = {}): Promise<string> {
-  const res = await fetch(OPENAI_API, {
+  const model = opts.vision ? VISION_MODEL : LLM_MODEL
+
+  const res = await fetch(OR_API, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${getApiKey()}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: LLM_MODEL,
+      model,
       messages,
       max_tokens: opts.maxTokens ?? 3000,
-      temperature: 0.3,
     }),
   })
 
   const data = (await res.json()) as ChatResponse
   if (!res.ok || data.error) {
-    throw new Error(`OpenAI: ${data.error?.message || res.status}`)
+    throw new Error(`OpenRouter: ${data.error?.message || res.status}`)
   }
 
-  return data.choices?.[0]?.message?.content ?? ''
+  const content = data.choices?.[0]?.message?.content ?? ''
+  // Некоторые модели возвращают reasoning вместо content
+  if (!content && data.choices?.[0]?.message?.reasoning) {
+    return data.choices[0].message.reasoning
+  }
+  return content
 }
 
 // Типы для результата работы AI
@@ -834,10 +847,14 @@ export async function recognizeInvoice(imageBase64: string): Promise<Array<{ bra
 }
 
 // ───────────────────────────────────────────
-// ───────────────────────────────────────────
-// Транскрипция голоса через OpenAI Whisper
+// Транскрипция голоса через Groq Whisper (бесплатно)
 // ───────────────────────────────────────────
 export async function transcribeAudio(audioBase64: string): Promise<string> {
+  const groqKey = getGroqKey()
+  if (!groqKey) {
+    throw new Error('Распознавание голоса недоступно: GROQ_API_KEY не задан')
+  }
+
   // Определяем формат аудио (Telegram присылает OGG/Opus)
   let mimeType = 'audio/wav'
   if (audioBase64.startsWith('data:')) {
@@ -855,17 +872,17 @@ export async function transcribeAudio(audioBase64: string): Promise<string> {
 
   const audioBuffer = Buffer.from(audioBase64, 'base64')
 
-  // OpenAI Whisper через multipart/form-data
+  // Groq Whisper через multipart/form-data
   const formData = new FormData()
   const ext = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('webm') ? 'webm' : 'wav'
   formData.append('file', new Blob([audioBuffer], { type: mimeType }), `audio.${ext}`)
-  formData.append('model', 'whisper-1')
+  formData.append('model', 'whisper-large-v3')
   formData.append('language', 'ru')
 
-  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+  const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${getApiKey()}`,
+      Authorization: `Bearer ${groqKey}`,
     },
     body: formData,
   })
