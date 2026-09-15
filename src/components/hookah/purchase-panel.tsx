@@ -196,6 +196,18 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
   const [qty, setQty] = useState('1')
   const [unit, setUnit] = useState<'банок' | 'грамм'>('банок')
   const [note, setNote] = useState('')
+  // Список позиций в текущем структурированном заказе
+  const [structItems, setStructItems] = useState<Array<{
+    itemType: string
+    itemId: string | null
+    brand: string | null
+    line: string | null
+    flavor: string | null
+    name: string
+    packGrams: number | null
+    quantity: number
+    unit: string
+  }>>([])
   const [submittingStruct, setSubmittingStruct] = useState(false)
 
   // Диалог "Заказать всё мало"
@@ -423,8 +435,8 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
     }
   }
 
-  // ─── Создание структурированной заявки ───
-  const submitStructured = async () => {
+  // ─── Добавить позицию в структурированный заказ ───
+  const addStructItem = () => {
     const brand = brandInput === '__new__' ? newBrand.trim() : brandInput
     if (!brand) {
       toast.error('Выберите бренд или введите новый')
@@ -436,7 +448,6 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
       return
     }
 
-    // Определяем данные позиции
     let item: {
       itemType: string
       itemId: string | null
@@ -470,25 +481,42 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
       item = { itemType: 'TOBACCO', itemId: null, brand, line: null, flavor: '', name: brand, packGrams: null, quantity: qtyNum, unit }
     }
 
+    setStructItems((prev) => [...prev, item])
+    // Сброс формы для следующей позиции
+    setNewBrand('')
+    setFlavorId('')
+    setQty('1')
+    setNote('')
+    setBrandInput('__new__')
+    toast.success(`Добавлено: ${item.name} — ${qtyNum} ${unit}`)
+  }
+
+  const removeStructItem = (idx: number) => {
+    setStructItems((prev) => prev.filter((_, i) => i !== idx))
+  }
+
+  // ─── Отправить структурированный заказ (все позиции сразу) ───
+  const submitStructured = async () => {
+    if (structItems.length === 0) {
+      toast.error('Добавьте хотя бы одну позицию')
+      return
+    }
+
     setSubmittingStruct(true)
     try {
-      // Создаём PurchaseOrder (не MasterRequest!) — с кнопками Изменить/CSV/Удалить
+      // Создаём PurchaseOrder со всеми позициями
       const res = await fetch('/api/purchase-orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: [item] }),
+        body: JSON.stringify({ items: structItems }),
       })
       const d = await res.json()
       if (!res.ok) {
         toast.error(d.error || 'Ошибка')
         return
       }
-      toast.success(`Заказ создан: ${item.name} — ${qtyNum} ${unit}`)
-      setNewBrand('')
-      setFlavorId('')
-      setQty('1')
-      setNote('')
-      setBrandInput('__new__')
+      toast.success(`Заказ создан: ${structItems.length} поз.`)
+      setStructItems([])
       setShowStructured(false)
       await load()
       onRefresh()
@@ -931,16 +959,49 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
             </div>
 
             <Button
+              variant="outline"
               className="w-full"
-              disabled={submittingStruct}
+              onClick={addStructItem}
+            >
+              <Plus className="h-4 w-4 mr-1" /> Добавить позицию в заказ
+            </Button>
+
+            {/* Список добавленных позиций */}
+            {structItems.length > 0 && (
+              <div className="space-y-1.5 border border-border rounded-md p-2">
+                <span className="label-mono">В заказе: {structItems.length} поз.</span>
+                {structItems.map((it, idx) => (
+                  <div key={idx} className="flex items-center justify-between gap-2">
+                    <span className="body-sans text-sm truncate flex-1">
+                      {it.name}
+                    </span>
+                    <span className="font-mono text-sm tabular shrink-0">
+                      {it.quantity} {it.unit}
+                    </span>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 text-muted-foreground hover:text-ember shrink-0"
+                      onClick={() => removeStructItem(idx)}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <Button
+              className="w-full"
+              disabled={submittingStruct || structItems.length === 0}
               onClick={submitStructured}
             >
               {submittingStruct ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
-                <Plus className="h-4 w-4" />
+                <Send className="h-4 w-4" />
               )}
-              Отправить старшему
+              Отправить заказ ({structItems.length} поз.)
             </Button>
           </div>
         ) : (
