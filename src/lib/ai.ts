@@ -4,19 +4,18 @@ import { pushToSeniors } from '@/lib/notify'
 import { parseDateFromText, startOfDay, formatDateRu, addDays } from '@/lib/datetime-utils'
 
 // ───────────────────────────────────────────
-// AI провайдеры (бесплатные):
-// LLM: OpenRouter nex-agi/nex-n2.5-pro:free
-// Vision: OpenRouter inclusionai/ling-3.0-flash-vl:free
-// ASR: Groq whisper-large-v3
+// AI: Groq для всего (LLM + ASR)
+// LLM: llama-3.3-70b-versatile — быстро (0.3-1с), бесплатно, отлично с русским
+// ASR: whisper-large-v3 (уже работает на Railway)
+// Vision: Groq не поддерживает → фото накладных через PDF (текст)
 // ───────────────────────────────────────────
 
-const OR_API = 'https://openrouter.ai/api/v1/chat/completions'
-const LLM_MODEL = process.env.LLM_MODEL || 'nex-agi/nex-n2.5-mini:free'
-const VISION_MODEL = process.env.VISION_MODEL || 'inclusionai/ling-3.0-flash-vl:free'
+const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions'
+const LLM_MODEL = process.env.LLM_MODEL || 'llama-3.3-70b-versatile'
 
 function getApiKey(): string {
-  const t = process.env.OPENROUTER_API_KEY
-  if (!t) throw new Error('OPENROUTER_API_KEY не задан в переменных окружения')
+  const t = process.env.GROQ_API_KEY
+  if (!t) throw new Error('GROQ_API_KEY не задан в переменных окружения')
   return t
 }
 
@@ -41,23 +40,22 @@ interface ChatResponse {
 }
 
 async function hfChat(messages: ChatMessage[], opts: { vision?: boolean; maxTokens?: number } = {}): Promise<string> {
-  const model = opts.vision ? VISION_MODEL : LLM_MODEL
-
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 25000)
 
   let res: Response
   try {
-    res = await fetch(OR_API, {
+    res = await fetch(GROQ_API, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${getApiKey()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model,
+        model: LLM_MODEL,
         messages,
         max_tokens: opts.maxTokens ?? 2000,
+        temperature: 0.3,
       }),
       signal: controller.signal,
     })
@@ -72,14 +70,10 @@ async function hfChat(messages: ChatMessage[], opts: { vision?: boolean; maxToke
 
   const data = (await res.json()) as ChatResponse
   if (!res.ok || data.error) {
-    throw new Error(`OpenRouter: ${data.error?.message || res.status}`)
+    throw new Error(`Groq: ${data.error?.message || res.status}`)
   }
 
-  const content = data.choices?.[0]?.message?.content ?? ''
-  if (!content && data.choices?.[0]?.message?.reasoning) {
-    return data.choices[0].message.reasoning
-  }
-  return content
+  return data.choices?.[0]?.message?.content ?? ''
 }
 
 // Экспортируем hfChat для использования в других модулях (например, AI-парсер PDF накладных)
