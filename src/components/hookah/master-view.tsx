@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
@@ -24,17 +24,30 @@ import {
   Home,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { Tobacco } from '@/lib/types'
 
 interface MasterViewProps {
   master: { id: string; name: string; role: 'SENIOR' | 'REGULAR'; color: string }
   onLogout: () => void
 }
 
+interface PrefillItem {
+  itemType: string
+  brand?: string
+  line?: string
+  flavor?: string
+  name: string
+  packGrams?: number | null
+  quantity: number
+  unit: string
+}
+
 export function MasterView({ master, onLogout }: MasterViewProps) {
   const [refreshKey, setRefreshKey] = useState(0)
   const [mobileChatOpen, setMobileChatOpen] = useState(false)
   const [activeTab, setActiveTab] = useState('today')
-  const refresh = () => setRefreshKey((k) => k + 1)
+  const [prefillItem, setPrefillItem] = useState<PrefillItem | null>(null)
+  const refresh = useCallback(() => setRefreshKey((k) => k + 1), [])
 
   const handleLogout = async () => {
     try {
@@ -49,6 +62,27 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
   const navigate = (tab: string) => {
     setActiveTab(tab)
   }
+
+  // Обработчик "Заказ" из Склада → переключить на ЗАКУП + prefill
+  const handleOrderItem = useCallback((t: Tobacco) => {
+    const item: PrefillItem = {
+      itemType: 'TOBACCO',
+      brand: t.brand,
+      line: t.line,
+      flavor: t.flavor,
+      name: `${t.brand} ${t.line ? t.line + ' ' : ''}${t.flavor}`.trim(),
+      packGrams: t.defaultJarGrams,
+      quantity: 1,
+      unit: 'банок',
+    }
+    setPrefillItem(item)
+    setActiveTab('purchase')
+    toast.info(`Добавлено в форму: ${item.name}`)
+  }, [])
+
+  const handlePrefillConsumed = useCallback(() => {
+    setPrefillItem(null)
+  }, [])
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -130,6 +164,7 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
                   readOnly
                   refreshKey={refreshKey}
                   onRefresh={refresh}
+                  onOrderItem={handleOrderItem}
                 />
               </TabsContent>
               <TabsContent value="consumables" className="pt-6">
@@ -144,6 +179,8 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
                   role="REGULAR"
                   refreshKey={refreshKey}
                   onRefresh={refresh}
+                  prefillItem={prefillItem}
+                  onPrefillConsumed={handlePrefillConsumed}
                 />
               </TabsContent>
               <TabsContent value="wishes" className="pt-6">

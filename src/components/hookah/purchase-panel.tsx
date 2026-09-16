@@ -4,10 +4,8 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
-import { ScrollArea } from '@/components/ui/scroll-area' // keep for other uses
 import {
   Dialog,
   DialogContent,
@@ -25,7 +23,6 @@ import {
 import { MasterRequest, REQUEST_STATUS_LABELS } from '@/lib/types'
 import { masterAvatarClass, timeAgo, initials } from '@/lib/master-utils'
 import {
-  Send,
   Loader2,
   Inbox,
   ShoppingCart,
@@ -41,6 +38,7 @@ import {
   AlertTriangle,
   Pencil,
   Save,
+  Archive,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -87,13 +85,26 @@ interface Consumable {
   isLow: boolean
 }
 
+interface PrefillItem {
+  itemType: string
+  brand?: string
+  line?: string
+  flavor?: string
+  name: string
+  packGrams?: number | null
+  quantity: number
+  unit: string
+}
+
 interface PurchasePanelProps {
   role: 'SENIOR' | 'REGULAR'
   refreshKey: number
   onRefresh: () => void
+  prefillItem?: PrefillItem | null
+  onPrefillConsumed?: () => void
 }
 
-type FilterChip = 'all' | 'pending' | 'ordered' | 'received'
+type ListTab = 'active' | 'archive'
 
 const STATUS_STYLE_REQ: Record<MasterRequest['status'], string> = {
   PENDING: 'border-ember text-ember bg-transparent',
@@ -109,7 +120,7 @@ const NEXT_STATUS: Record<MasterRequest['status'], MasterRequest['status'] | nul
 
 const NEXT_LABEL: Record<MasterRequest['status'], string> = {
   PENDING: 'Заказать',
-  ORDERED: 'Получено',
+  ORDERED: 'Готово',
   DONE: '',
 }
 
@@ -117,24 +128,21 @@ const PURCHASE_STATUS_LABELS: Record<string, string> = {
   DRAFT: 'Черновик',
   SUBMITTED: 'Ожидает',
   ORDERED: 'Заказано',
-  RECEIVED: 'Получено',
-  MERGED: 'Объединён',
+  ARCHIVED: 'Архив',
 }
 
 const PURCHASE_NEXT_STATUS: Record<string, string | null> = {
   DRAFT: 'SUBMITTED',
   SUBMITTED: 'ORDERED',
-  ORDERED: 'RECEIVED',
-  RECEIVED: null,
-  MERGED: null,
+  ORDERED: 'ARCHIVED',
+  ARCHIVED: null,
 }
 
 const PURCHASE_NEXT_LABEL: Record<string, string> = {
   DRAFT: 'Отправить',
-  SUBMITTED: 'Заказать',
-  ORDERED: 'Получено',
-  RECEIVED: '',
-  MERGED: '',
+  SUBMITTED: 'Заказано',
+  ORDERED: 'В архив',
+  ARCHIVED: '',
 }
 
 type ListItem =
@@ -173,7 +181,17 @@ interface DraftItem {
 
 let DRAFT_SEQ = 0
 
-export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProps) {
+function makeKey(prefix: string) {
+  return `${prefix}-${DRAFT_SEQ++}-${Date.now()}`
+}
+
+export function PurchasePanel({
+  role,
+  refreshKey,
+  onRefresh,
+  prefillItem,
+  onPrefillConsumed,
+}: PurchasePanelProps) {
   const isSenior = role === 'SENIOR'
 
   const [requests, setRequests] = useState<MasterRequest[]>([])
@@ -181,22 +199,27 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
   const [tobaccos, setTobaccos] = useState<Tobacco[]>([])
   const [consumables, setConsumables] = useState<Consumable[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<FilterChip>('all')
 
-  // Свободный текст
-  const [text, setText] = useState('')
-  const [submitting, setSubmitting] = useState(false)
+  // Структурированная форма (always-on)
+  const [structItems, setStructItems] = useState<DraftItem[]>([])
+  const [submittingStruct, setSubmittingStruct] = useState(false)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
 
-  // Структурированная форма (inline)
-  const [showStructured, setShowStructured] = useState(false)
+  // Табак-инпуты
   const [brandInput, setBrandInput] = useState<string>('__new__')
   const [newBrand, setNewBrand] = useState('')
   const [flavorId, setFlavorId] = useState<string>('')
-  const [qty, setQty] = useState('1')
-  const [unit, setUnit] = useState<'банок' | 'грамм'>('банок')
-  const [note, setNote] = useState('')
-  const [submittingStruct, setSubmittingStruct] = useState(false)
+  const [tobQty, setTobQty] = useState('1')
+  const [tobUnit, setTobUnit] = useState<'банок' | 'грамм'>('банок')
+
+  // Расходник-инпуты
+  const [conId, setConId] = useState<string>('__new__')
+  const [newConName, setNewConName] = useState('')
+  const [conQty, setConQty] = useState('1')
+  const [conUnit, setConUnit] = useState('шт')
+
+  // Переключатель списков
+  const [listTab, setListTab] = useState<ListTab>('active')
 
   // Диалог "Заказать всё мало"
   const [bulkOpen, setBulkOpen] = useState(false)
@@ -267,7 +290,6 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
 
   const saveEditOrder = async () => {
     if (!editOrder) return
-    // Валидация
     for (const it of editItems) {
       if (!it.name.trim()) {
         toast.error('Заполните наименование всех позиций')
@@ -346,6 +368,24 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
     load()
   }, [load, refreshKey])
 
+  // ─── Prefill item: добавить один раз при изменении ───
+  useEffect(() => {
+    if (!prefillItem) return
+    const draft: DraftItem = {
+      key: makeKey('pre'),
+      itemType: prefillItem.itemType === 'CONSUMABLE' ? 'CONSUMABLE' : 'TOBACCO',
+      brand: prefillItem.brand,
+      line: prefillItem.line,
+      flavor: prefillItem.flavor,
+      name: prefillItem.name,
+      packGrams: prefillItem.packGrams ?? undefined,
+      quantity: prefillItem.quantity,
+      unit: prefillItem.unit,
+    }
+    setStructItems((prev) => [...prev, draft])
+    if (onPrefillConsumed) onPrefillConsumed()
+  }, [prefillItem, onPrefillConsumed])
+
   // Список уникальных брендов из существующих табаков
   const brands = useMemo(() => {
     const set = new Set<string>()
@@ -384,112 +424,190 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
       content: o.items.map((it) => formatItemName(it)).join('; '),
       data: o,
     }))
-    // Сортировка по дате убывание
     return [...reqs, ...ords].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   }, [requests, orders, isSenior])
 
-  const filteredItems = useMemo(() => {
-    if (filter === 'all') return allItems
-    if (filter === 'pending') return allItems.filter((i) => i.status === 'PENDING' || i.status === 'SUBMITTED' || i.status === 'DRAFT')
-    if (filter === 'ordered') return allItems.filter((i) => i.status === 'ORDERED')
-    if (filter === 'received') return allItems.filter((i) => i.status === 'DONE' || i.status === 'RECEIVED')
-    return allItems
-  }, [allItems, filter])
-
-  // ─── Создание свободной заявки ───
-  const submitText = async () => {
-    const t = text.trim()
-    if (!t) return
-    setSubmitting(true)
-    try {
-      const res = await fetch('/api/requests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: t }),
-      })
-      const d = await res.json()
-      if (!res.ok) {
-        toast.error(d.error || 'Ошибка')
-        return
+  // Активные: PENDING + ORDERED (requests) + DRAFT + SUBMITTED + ORDERED (orders)
+  const activeItems = useMemo(() => {
+    return allItems.filter((i) => {
+      if (i.kind === 'request') {
+        return i.status === 'PENDING' || i.status === 'ORDERED'
       }
-      toast.success('Заявка отправлена старшему')
-      setText('')
-      await load()
-      onRefresh()
-    } catch {
-      toast.error('Ошибка соединения')
-    } finally {
-      setSubmitting(false)
-    }
-  }
+      return i.status === 'DRAFT' || i.status === 'SUBMITTED' || i.status === 'ORDERED'
+    })
+  }, [allItems])
 
-  // ─── Создание структурированной заявки ───
-  const submitStructured = async () => {
+  // Архив: DONE (requests) + ARCHIVED (orders)
+  const archiveItems = useMemo(() => {
+    return allItems.filter((i) => {
+      if (i.kind === 'request') return i.status === 'DONE'
+      return i.status === 'ARCHIVED'
+    })
+  }, [allItems])
+
+  const visibleItems = listTab === 'active' ? activeItems : archiveItems
+
+  // ─── Добавление табака в structItems ───
+  const addTobacco = () => {
     const brand = brandInput === '__new__' ? newBrand.trim() : brandInput
     if (!brand) {
       toast.error('Выберите бренд или введите новый')
       return
     }
-    const qtyNum = Number(qty)
-    if (!qtyNum || qtyNum < 1) {
-      toast.error('Введите количество')
-      return
-    }
+    const qtyNum = parseInt(tobQty, 10) || 1
 
-    // Определяем данные позиции
-    let item: {
-      itemType: string
-      itemId: string | null
-      brand: string | null
-      line: string | null
-      flavor: string | null
-      name: string
-      packGrams: number | null
-      quantity: number
-      unit: string
-    }
-
+    let draft: DraftItem
     if (flavorId) {
       const t = tobaccos.find((x) => x.id === flavorId)
       if (t) {
-        item = {
+        draft = {
+          key: makeKey('t'),
           itemType: 'TOBACCO',
           itemId: t.id,
           brand: t.brand,
-          line: t.line || null,
+          line: t.line || undefined,
           flavor: t.flavor,
           name: `${t.brand} ${t.line ? t.line + ' ' : ''}${t.flavor}`.trim(),
           packGrams: t.defaultJarGrams,
           quantity: qtyNum,
-          unit,
+          unit: tobUnit,
         }
       } else {
-        item = { itemType: 'TOBACCO', itemId: null, brand, line: null, flavor: '', name: brand, packGrams: null, quantity: qtyNum, unit }
+        draft = {
+          key: makeKey('t'),
+          itemType: 'TOBACCO',
+          brand,
+          flavor: '',
+          name: brand,
+          quantity: qtyNum,
+          unit: tobUnit,
+        }
       }
     } else {
-      item = { itemType: 'TOBACCO', itemId: null, brand, line: null, flavor: '', name: brand, packGrams: null, quantity: qtyNum, unit }
+      draft = {
+        key: makeKey('t'),
+        itemType: 'TOBACCO',
+        brand,
+        flavor: '',
+        name: brand,
+        quantity: qtyNum,
+        unit: tobUnit,
+      }
     }
+    setStructItems((prev) => [...prev, draft])
+    setNewBrand('')
+    setFlavorId('')
+    setTobQty('1')
+    setBrandInput('__new__')
+  }
 
-    setSubmittingStruct(true)
-    try {
-      // Создаём PurchaseOrder (не MasterRequest!) — с кнопками Изменить/CSV/Удалить
-      const res = await fetch('/api/purchase-orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: [item] }),
-      })
-      const d = await res.json()
-      if (!res.ok) {
-        toast.error(d.error || 'Ошибка')
+  // ─── Добавление расходника в structItems ───
+  const addConsumable = () => {
+    const qtyNum = parseInt(conQty, 10) || 1
+    let draft: DraftItem
+    if (conId === '__new__') {
+      const name = newConName.trim()
+      if (!name) {
+        toast.error('Введите название расходника')
         return
       }
-      toast.success(`Заказ создан: ${item.name} — ${qtyNum} ${unit}`)
-      setNewBrand('')
-      setFlavorId('')
-      setQty('1')
-      setNote('')
-      setBrandInput('__new__')
-      setShowStructured(false)
+      draft = {
+        key: makeKey('c'),
+        itemType: 'CONSUMABLE',
+        name,
+        quantity: qtyNum,
+        unit: conUnit.trim() || 'шт',
+      }
+    } else {
+      const c = consumables.find((x) => x.id === conId)
+      if (!c) return
+      draft = {
+        key: makeKey('c'),
+        itemType: 'CONSUMABLE',
+        itemId: c.id,
+        name: c.name,
+        quantity: qtyNum,
+        unit: c.unit,
+      }
+    }
+    setStructItems((prev) => [...prev, draft])
+    setConId('__new__')
+    setNewConName('')
+    setConQty('1')
+    setConUnit('шт')
+  }
+
+  const removeStructItem = (key: string) => {
+    setStructItems((prev) => prev.filter((i) => i.key !== key))
+  }
+
+  const updateStructQty = (key: string, qtyStr: string) => {
+    const n = parseInt(qtyStr, 10)
+    if (isNaN(n) || n < 1) return
+    setStructItems((prev) => prev.map((i) => (i.key === key ? { ...i, quantity: n } : i)))
+  }
+
+  const updateStructUnit = (key: string, unit: string) => {
+    setStructItems((prev) => prev.map((i) => (i.key === key ? { ...i, unit } : i)))
+  }
+
+  // ─── Отправка всех structItems ───
+  const submitStructItems = async () => {
+    if (structItems.length === 0) {
+      toast.error('Добавьте хотя бы одну позицию')
+      return
+    }
+    setSubmittingStruct(true)
+    try {
+      if (isSenior) {
+        // SENIOR → создаёт PurchaseOrder (статус SUBMITTED по умолчанию)
+        const res = await fetch('/api/purchase-orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            status: 'SUBMITTED',
+            items: structItems.map((i) => ({
+              itemType: i.itemType,
+              itemId: i.itemId,
+              brand: i.brand,
+              line: i.line,
+              flavor: i.flavor,
+              name: i.name,
+              packGrams: i.packGrams ?? null,
+              quantity: i.quantity,
+              unit: i.unit,
+            })),
+          }),
+        })
+        const d = await res.json()
+        if (!res.ok) {
+          toast.error(d.error || 'Ошибка создания заказа')
+          return
+        }
+        toast.success(d.message || 'Заказ создан')
+      } else {
+        // REGULAR → создаёт MasterRequest с объединённым текстом
+        const text = structItems
+          .map((i) => {
+            if (i.itemType === 'TOBACCO') {
+              return `${i.name} — ${i.quantity} ${i.unit}`
+            }
+            return `${i.name} — ${i.quantity} ${i.unit}`
+          })
+          .join('; ')
+        const res = await fetch('/api/requests', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        })
+        const d = await res.json()
+        if (!res.ok) {
+          toast.error(d.error || 'Ошибка создания заявки')
+          return
+        }
+        toast.success('Заявка отправлена старшему')
+      }
+      setStructItems([])
       await load()
       onRefresh()
     } catch {
@@ -601,7 +719,7 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
     const items: DraftItem[] = []
     for (const t of lowTobaccos) {
       items.push({
-        key: `t-${t.id}-${DRAFT_SEQ++}`,
+        key: makeKey('t'),
         itemType: 'TOBACCO',
         itemId: t.id,
         brand: t.brand,
@@ -615,7 +733,7 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
     }
     for (const c of lowConsumables) {
       items.push({
-        key: `c-${c.id}-${DRAFT_SEQ++}`,
+        key: makeKey('c'),
         itemType: 'CONSUMABLE',
         itemId: c.id,
         name: c.name,
@@ -657,7 +775,7 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
     setBulkItems((prev) => [
       ...prev,
       {
-        key: `new-${DRAFT_SEQ++}`,
+        key: makeKey('new'),
         itemType: 'TOBACCO',
         brand,
         line: bulkAddLine.trim(),
@@ -678,7 +796,7 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
     setBulkItems((prev) => [
       ...prev,
       {
-        key: `con-${c.id}-${DRAFT_SEQ++}`,
+        key: makeKey('con'),
         itemType: 'CONSUMABLE',
         itemId: c.id,
         name: c.name,
@@ -736,7 +854,7 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
       toast.error('Выберите хотя бы 2 заказа')
       return
     }
-    if (!confirm(`Объединить ${selectedOrderIds.size} заказов в один? Исходные будут помечены как объединённые.`)) {
+    if (!confirm(`Объединить ${selectedOrderIds.size} заказов в один? Исходные будут удалены.`)) {
       return
     }
     setMerging(true)
@@ -834,144 +952,228 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
         </div>
       )}
 
-      {/* Форма добавления заявки — для всех мастеров */}
-      <div className="frame p-5 space-y-3 rounded-md shadow-sm-soft">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 label-mono">
-            <Package className="h-3.5 w-3.5" />
-            Новая заявка
-          </div>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setShowStructured((v) => !v)}
-            className="h-7 text-[11px]"
-          >
-            {showStructured ? 'Свободный ввод' : 'Структурированно'}
-          </Button>
+      {/* Форма оформления новой заявки — структурированная, для всех мастеров */}
+      <div className="frame p-5 space-y-4 rounded-md shadow-sm-soft">
+        <div className="flex items-center gap-2 label-mono">
+          <Package className="h-3.5 w-3.5" />
+          Оформление новой заявки
         </div>
 
-        {showStructured ? (
-          <div className="space-y-3">
+        {/* Секция: Табак */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 label-mono-sm">
+            <Flame className="h-3 w-3 text-ember" />
+            Табак
+          </div>
+          <div className="space-y-1.5">
+            <Label>Бренд</Label>
+            {brandInput === '__new__' && (
+              <Input
+                placeholder="Новый бренд, например BlackBurn"
+                value={newBrand}
+                onChange={(e) => setNewBrand(e.target.value)}
+              />
+            )}
+            <Select
+              value={brandInput}
+              onValueChange={(v) => { setBrandInput(v); setFlavorId('') }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Выберите бренд" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__new__">— новый бренд —</SelectItem>
+                {brands.map((b) => (
+                  <SelectItem key={b} value={b}>{b}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {brandInput !== '__new__' && flavorOptions.length > 0 && (
             <div className="space-y-1.5">
-              <Label>Бренд</Label>
-              {brandInput === '__new__' && (
-                <Input
-                  placeholder="Новый бренд, например BlackBurn"
-                  value={newBrand}
-                  onChange={(e) => setNewBrand(e.target.value)}
-                />
-              )}
-              <Select
-                value={brandInput}
-                onValueChange={(v) => { setBrandInput(v); setFlavorId('') }}
-              >
+              <Label>Линейка / вкус</Label>
+              <Select value={flavorId} onValueChange={setFlavorId}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Выберите бренд" />
+                  <SelectValue placeholder="Выберите вкус (необязательно)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__new__">— новый бренд —</SelectItem>
-                  {brands.map((b) => (
-                    <SelectItem key={b} value={b}>{b}</SelectItem>
+                  {flavorOptions.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.line} / {t.flavor}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+          )}
 
-            {brandInput !== '__new__' && flavorOptions.length > 0 && (
-              <div className="space-y-1.5">
-                <Label>Линейка / вкус</Label>
-                <Select value={flavorId} onValueChange={setFlavorId}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Выберите вкус (необязательно)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {flavorOptions.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.line} / {t.flavor}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            <div className="grid grid-cols-[1fr_auto] gap-2">
-              <div className="space-y-1.5">
-                <Label>Количество</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={qty}
-                  onChange={(e) => setQty(e.target.value)}
-                  className="font-mono tabular"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Единица</Label>
-                <Select value={unit} onValueChange={(v: 'банок' | 'грамм') => setUnit(v)}>
-                  <SelectTrigger className="w-[110px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="банок">банок</SelectItem>
-                    <SelectItem value="грамм">грамм</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
+          <div className="grid grid-cols-[1fr_auto_auto] gap-2">
             <div className="space-y-1.5">
-              <Label>Заметка (необязательно)</Label>
+              <Label>Количество</Label>
               <Input
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="например, срочно"
+                type="number"
+                min={1}
+                value={tobQty}
+                onChange={(e) => setTobQty(e.target.value)}
+                className="font-mono tabular"
               />
             </div>
-
-            <Button
-              className="w-full"
-              disabled={submittingStruct}
-              onClick={submitStructured}
-            >
-              {submittingStruct ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
+            <div className="space-y-1.5">
+              <Label>Единица</Label>
+              <Select value={tobUnit} onValueChange={(v: 'банок' | 'грамм') => setTobUnit(v)}>
+                <SelectTrigger className="w-[110px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="банок">банок</SelectItem>
+                  <SelectItem value="грамм">грамм</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-end">
+              <Button
+                variant="outline"
+                onClick={addTobacco}
+                className="w-full"
+                title="Добавить табак в список"
+              >
                 <Plus className="h-4 w-4" />
-              )}
-              Отправить старшему
-            </Button>
+              </Button>
+            </div>
           </div>
-        ) : (
-          <>
-            <Textarea
-              placeholder="Что закупить? Например: BlackBurn Energy 2 банки, угли Cocourth 26мм..."
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              rows={3}
-              disabled={submitting}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                  e.preventDefault()
-                  void submitText()
-                }
-              }}
-            />
-            <Button
-              className="w-full"
-              disabled={!text.trim() || submitting}
-              onClick={submitText}
+        </div>
+
+        {/* Секция: Расходники */}
+        <div className="space-y-3 border-t border-border pt-4">
+          <div className="flex items-center gap-2 label-mono-sm">
+            <Layers className="h-3 w-3 text-muted-foreground" />
+            Расходники
+          </div>
+          <div className="space-y-1.5">
+            <Label>Расходник</Label>
+            {conId === '__new__' && (
+              <Input
+                placeholder="Новый расходник, например Угли Cocourth 26мм"
+                value={newConName}
+                onChange={(e) => setNewConName(e.target.value)}
+              />
+            )}
+            <Select
+              value={conId}
+              onValueChange={setConId}
             >
-              {submitting ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-              Отправить старшему
-            </Button>
-          </>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Выберите расходник" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__new__">— новый расходник —</SelectItem>
+                {consumables.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-[1fr_auto_auto] gap-2">
+            <div className="space-y-1.5">
+              <Label>Количество</Label>
+              <Input
+                type="number"
+                min={1}
+                value={conQty}
+                onChange={(e) => setConQty(e.target.value)}
+                className="font-mono tabular"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Единица</Label>
+              <Input
+                value={conUnit}
+                onChange={(e) => setConUnit(e.target.value)}
+                placeholder="шт"
+                className="w-[110px] font-mono"
+              />
+            </div>
+            <div className="flex items-end">
+              <Button
+                variant="outline"
+                onClick={addConsumable}
+                className="w-full"
+                title="Добавить расходник в список"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Список добавленных позиций */}
+        {structItems.length > 0 && (
+          <div className="space-y-2 border-t border-border pt-4">
+            <div className="flex items-center justify-between">
+              <span className="label-mono">Позиции ({structItems.length})</span>
+            </div>
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+              {structItems.map((it) => (
+                <div key={it.key} className="flex items-center gap-2 border border-border rounded-md p-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      {it.itemType === 'TOBACCO' ? (
+                        <Flame className="h-3 w-3 text-ember shrink-0" />
+                      ) : (
+                        <Layers className="h-3 w-3 text-muted-foreground shrink-0" />
+                      )}
+                      <span className="font-mono text-sm font-bold tracking-tight text-foreground truncate">
+                        {it.name}
+                      </span>
+                    </div>
+                    {it.packGrams && (
+                      <span className="label-mono-sm text-muted-foreground">
+                        банка {it.packGrams}г
+                      </span>
+                    )}
+                  </div>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={it.quantity}
+                    onChange={(e) => updateStructQty(it.key, e.target.value)}
+                    className="w-16 font-mono tabular text-center"
+                  />
+                  <Input
+                    value={it.unit}
+                    onChange={(e) => updateStructUnit(it.key, e.target.value)}
+                    className="w-20 font-mono"
+                    placeholder="шт"
+                  />
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 text-muted-foreground hover:text-ember shrink-0"
+                    onClick={() => removeStructItem(it.key)}
+                    aria-label="Убрать"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
+
+        {/* Submit */}
+        <Button
+          className="w-full"
+          disabled={submittingStruct || structItems.length === 0}
+          onClick={submitStructItems}
+        >
+          {submittingStruct ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Plus className="h-4 w-4" />
+          )}
+          {isSenior ? 'Создать заявку' : 'Отправить старшему'} ({structItems.length})
+        </Button>
       </div>
 
       {/* Объединить выбранные заказы */}
@@ -1002,56 +1204,45 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
         </div>
       )}
 
-      {/* Sub-фильтры */}
+      {/* Переключатель списков: Активные | Архив */}
       <div className="flex gap-0 border border-border rounded-md overflow-hidden w-fit">
         <button
-          onClick={() => setFilter('all')}
-          className={`px-3 py-2 text-[11px] font-mono uppercase tracking-tight transition-base transition-colors border-r border-border ${
-            filter === 'all' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
+          onClick={() => setListTab('active')}
+          className={`px-4 py-2 text-[11px] font-mono uppercase tracking-tight transition-base transition-colors border-r border-border ${
+            listTab === 'active' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
           }`}
         >
-          Все
+          Активные ({activeItems.length})
         </button>
         <button
-          onClick={() => setFilter('pending')}
-          className={`px-3 py-2 text-[11px] font-mono uppercase tracking-tight transition-base transition-colors border-r border-border ${
-            filter === 'pending' ? 'bg-ember text-ember-foreground' : 'text-muted-foreground hover:bg-muted'
+          onClick={() => setListTab('archive')}
+          className={`px-4 py-2 text-[11px] font-mono uppercase tracking-tight transition-base transition-colors ${
+            listTab === 'archive' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
           }`}
         >
-          Ожидают
-        </button>
-        <button
-          onClick={() => setFilter('ordered')}
-          className={`px-3 py-2 text-[11px] font-mono uppercase tracking-tight transition-base transition-colors border-r border-border ${
-            filter === 'ordered' ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-muted'
-          }`}
-        >
-          Заказано
-        </button>
-        <button
-          onClick={() => setFilter('received')}
-          className={`px-3 py-2 text-[11px] font-mono uppercase tracking-tight transition-base transition-colors ${
-            filter === 'received' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
-          }`}
-        >
-          Получено
+          <Archive className="h-3 w-3 inline mr-1" />
+          Архив ({archiveItems.length})
         </button>
       </div>
 
-      {/* Единый список заявок и заказов */}
+      {/* Список (только один — активный или архивный) */}
       <div className="border border-border rounded-md shadow-sm-soft">
         {loading ? (
           <div className="p-8 text-center text-muted-foreground label-mono flex items-center justify-center gap-2">
             <Loader2 className="h-3 w-3 animate-spin" /> Загрузка...
           </div>
-        ) : filteredItems.length === 0 ? (
+        ) : visibleItems.length === 0 ? (
           <div className="p-8 text-center text-muted-foreground text-sm body-sans">
-            {filter !== 'all' ? 'Ничего не найдено.' : isSenior ? 'Заявок и заказов пока нет.' : 'Ты ещё не оставил заявок.'}
+            {listTab === 'active'
+              ? isSenior
+                ? 'Активных заявок и заказов пока нет.'
+                : 'У тебя нет активных заявок.'
+              : 'Архив пуст.'}
           </div>
         ) : (
           <div className="max-h-[50vh] overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
             <div className="stagger-children">
-              {filteredItems.map((item) => {
+              {visibleItems.map((item) => {
                 if (item.kind === 'request') {
                   const next = NEXT_STATUS[item.data.status]
                   return (
@@ -1109,7 +1300,7 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
                 const order = item.data
                 const nextStatus = PURCHASE_NEXT_STATUS[order.status]
                 const isSelected = selectedOrderIds.has(order.id)
-                const canSelect = order.status !== 'MERGED' && order.status !== 'RECEIVED'
+                const canSelect = order.status !== 'ARCHIVED'
                 return (
                   <div
                     key={order.id}
@@ -1368,7 +1559,7 @@ export function PurchasePanel({ role, refreshKey, onRefresh }: PurchasePanelProp
         </DialogContent>
       </Dialog>
 
-      {/* Диалог редактирования заказа (пока просто просмотр) */}
+      {/* Диалог редактирования заказа */}
       {editOrder && (
         <Dialog open={!!editOrder} onOpenChange={(o) => { if (!o || !editSaving) { setEditOrder(null) } }}>
           <DialogContent className="sm:max-w-[600px]">
@@ -1461,7 +1652,6 @@ function formatItemName(it: PurchaseOrderItem): string {
 function getStatusClass(status: string): string {
   if (status === 'SUBMITTED' || status === 'DRAFT') return 'border-ember text-ember bg-transparent'
   if (status === 'ORDERED') return 'border-foreground text-foreground bg-transparent'
-  if (status === 'RECEIVED') return 'border-border text-muted-foreground bg-transparent'
-  if (status === 'MERGED') return 'border-foreground/30 text-muted-foreground bg-muted/30'
+  if (status === 'ARCHIVED') return 'border-border text-muted-foreground bg-transparent'
   return 'border-border text-muted-foreground bg-transparent'
 }

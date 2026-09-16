@@ -23,7 +23,7 @@ async function requireSenior() {
 }
 
 // GET /api/purchase-orders — список заказов на закуп
-// ?status=SUBMITTED (по умолчанию — все кроме MERGED-исходников, мы их показываем тоже)
+// ?status=SUBMITTED (по умолчанию — все)
 export async function GET(req: NextRequest) {
   const me = await getCurrentMaster()
   if (!me) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
@@ -108,10 +108,9 @@ export async function POST(req: NextRequest) {
       include: { items: true },
     })
 
-    // Помечаем исходные заказы как MERGED
-    await db.purchaseOrder.updateMany({
+    // Удаляем исходные заказы (не помечаем как MERGED — они больше не нужны)
+    await db.purchaseOrder.deleteMany({
       where: { id: { in: body.mergeFrom } },
-      data: { status: 'MERGED' },
     })
 
     return NextResponse.json({

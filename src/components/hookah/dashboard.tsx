@@ -42,7 +42,6 @@ import {
   Search,
   Package,
   AlertTriangle,
-  TrendingUp,
   RefreshCw,
   Pencil,
   Trash2,
@@ -59,6 +58,7 @@ interface DashboardProps {
   refreshKey: number
   onRefresh: () => void
   readOnly?: boolean
+  onOrderItem?: (t: Tobacco) => void // NEW: callback to order item
 }
 
 function StatCard({
@@ -143,9 +143,9 @@ interface BrandEditState {
   lines: BrandLineEdit[]
 }
 
-type FilterChip = 'all' | 'low' | 'ok'
+type FilterChip = 'all' | 'low' | 'ok' | 'out'
 
-export function Dashboard({ refreshKey, onRefresh, readOnly = false }: DashboardProps) {
+export function Dashboard({ refreshKey, onRefresh, readOnly = false, onOrderItem }: DashboardProps) {
   const [tobaccos, setTobaccos] = useState<Tobacco[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -154,10 +154,11 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
   const [linesMap, setLinesMap] = useState<Record<string, string[]>>({})
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [orderingId, setOrderingId] = useState<string | null>(null)
   const [expandedBrands, setExpandedBrands] = useState<string[]>([])
   const [brandEdit, setBrandEdit] = useState<BrandEditState | null>(null)
   const [brandEditSaving, setBrandEditSaving] = useState(false)
+
+  // orderingId больше не нужен (нет автоматического создания заявки)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -210,10 +211,14 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
       t.brand.toLowerCase().includes(q) ||
       t.line.toLowerCase().includes(q) ||
       t.flavor.toLowerCase().includes(q)
+    const isOut = t.currentGrams === 0
+    const isLowItem = t.isLow && t.currentGrams > 0
+    const isOk = t.currentGrams >= t.thresholdGrams && t.currentGrams > 0
     const matchesFilter =
       filter === 'all' ||
-      (filter === 'low' && t.isLow) ||
-      (filter === 'ok' && !t.isLow)
+      (filter === 'low' && isLowItem) ||
+      (filter === 'ok' && isOk) ||
+      (filter === 'out' && isOut)
     return matchesSearch && matchesFilter
   })
 
@@ -237,8 +242,14 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
     setExpandedBrands(allBrands)
   }, [allBrandsKey])
 
-  const lowCount = tobaccos.filter((t) => t.isLow).length
-  const totalGrams = tobaccos.reduce((sum, t) => sum + t.currentGrams, 0)
+  // Классификация остатков:
+  // - Достаточно: currentGrams >= thresholdGrams и > 0
+  // - Мало: currentGrams > 0 и < thresholdGrams
+  // - Закончилось: currentGrams === 0
+  const lowCount = tobaccos.filter((t) => t.isLow && t.currentGrams > 0).length
+  const outCount = tobaccos.filter((t) => t.currentGrams === 0).length
+  const canOrder = (t: Tobacco) =>
+    (t.currentGrams === 0 || (t.isLow && t.currentGrams > 0)) && onOrderItem
 
   // ─── Derived form values ──────────────────────────────────────
   const formBrand = useMemo(() => {
@@ -399,34 +410,11 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
     }
   }
 
-  const quickOrder = async (t: Tobacco, e: React.MouseEvent) => {
+  const handleOrderClick = (t: Tobacco, e: React.MouseEvent) => {
     e.stopPropagation()
-    setOrderingId(t.id)
-    try {
-      const text = `${t.brand} ${t.line} ${t.flavor} — 1 банка`
-      const res = await fetch('/api/requests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, grams: t.defaultJarGrams }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        toast.error(data.error || 'Ошибка создания заявки')
-      } else {
-        toast.success(`Заявка создана: ${text}`)
-        onRefresh()
-      }
-    } catch {
-      toast.error('Ошибка сети')
-    } finally {
-      setOrderingId(null)
+    if (onOrderItem) {
+      onOrderItem(t)
     }
-  }
-
-  const toggleBrand = (brand: string) => {
-    setExpandedBrands((prev) =>
-      prev.includes(brand) ? prev.filter((b) => b !== brand) : [...prev, brand],
-    )
   }
 
   // ─── Brand edit dialog ─────────────────────────────────────────
@@ -656,22 +644,20 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
         </div>
       </div>
 
-      {/* Статистика */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard label="Позиций" value={tobaccos.length} icon={Package} />
+      {/* Статистика — 3 карточки */}
+      <div className="grid grid-cols-3 gap-3">
+        <StatCard label="Всего позиций" value={tobaccos.length} icon={Package} />
         <StatCard
           label="Мало"
           value={lowCount}
           icon={AlertTriangle}
           accent={lowCount > 0}
         />
-        <StatCard label="Грамм всего" value={totalGrams} icon={TrendingUp} />
         <StatCard
-          label="Ср. остаток"
-          value={
-            tobaccos.length > 0 ? Math.round(totalGrams / tobaccos.length) : 0
-          }
-          icon={RefreshCw}
+          label="Закончилось"
+          value={outCount}
+          icon={AlertTriangle}
+          accent={outCount > 0}
         />
       </div>
 
@@ -698,6 +684,16 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
             Весь склад
           </button>
           <button
+            onClick={() => setFilter('ok')}
+            className={`px-3 py-2 text-[11px] font-mono uppercase tracking-tight transition-base transition-colors border-r border-border ${
+              filter === 'ok'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:bg-muted'
+            }`}
+          >
+            Достаточно
+          </button>
+          <button
             onClick={() => setFilter('low')}
             className={`px-3 py-2 text-[11px] font-mono uppercase tracking-tight transition-base transition-colors border-r border-border ${
               filter === 'low'
@@ -708,14 +704,14 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
             Мало
           </button>
           <button
-            onClick={() => setFilter('ok')}
+            onClick={() => setFilter('out')}
             className={`px-3 py-2 text-[11px] font-mono uppercase tracking-tight transition-base transition-colors ${
-              filter === 'ok'
-                ? 'bg-primary text-primary-foreground'
+              filter === 'out'
+                ? 'bg-ember text-ember-foreground'
                 : 'text-muted-foreground hover:bg-muted'
             }`}
           >
-            Достаточно
+            Закончилось
           </button>
         </div>
       </div>
@@ -841,21 +837,16 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
                               </div>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
-                              {t.isLow && (
+                              {canOrder(t) && (
                                 <Button
                                   size="sm"
                                   variant="outline"
                                   className="h-7 text-[11px] border-ember text-ember hover:bg-ember hover:text-ember-foreground"
-                                  onClick={(e) => quickOrder(t, e)}
-                                  disabled={orderingId === t.id}
-                                  title="Заказать 1 банку"
+                                  onClick={(e) => handleOrderClick(t, e)}
+                                  title="Перейти к оформлению заявки"
                                 >
-                                  {orderingId === t.id ? (
-                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                  ) : (
-                                    <ArrowRight className="h-3 w-3" />
-                                  )}
-                                  заказ
+                                  <ArrowRight className="h-3 w-3" />
+                                  Заказ
                                 </Button>
                               )}
                               <span className="font-mono text-sm font-bold tabular text-foreground">
@@ -881,16 +872,13 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false }: Dashboard
       {/* Подсказка */}
       {!readOnly && (
         <p className="label-mono-sm">
-          Клик по позиции — редактирование · «→ заказ» — быстрый заказ 1 банки ·
-          {' '}
-          <span aria-hidden="true">⚙</span>
-          {' '}
-          на бренде — переименование и линейки
+          Клик по позиции — редактирование · «Заказ» — оформить заявку ·{' '}
+          <span aria-hidden="true">⚙</span> на бренде — переименование и линейки
         </p>
       )}
       {readOnly && (
         <p className="label-mono-sm">
-          Режим просмотра · «→ заказ» отправит заявку старшему
+          Режим просмотра · «Заказ» откроет форму заявки
         </p>
       )}
 

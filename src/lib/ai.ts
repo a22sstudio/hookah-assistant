@@ -68,6 +68,9 @@ async function hfChat(messages: ChatMessage[], opts: { vision?: boolean; maxToke
   return content
 }
 
+// Экспортируем hfChat для использования в других модулях (например, AI-парсер PDF накладных)
+export { hfChat }
+
 // ───────────────────────────────────────────
 // Типы действий
 // ───────────────────────────────────────────

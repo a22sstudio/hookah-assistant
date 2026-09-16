@@ -1093,3 +1093,141 @@ Task: Major rebuild of Hookah Assistant CRM — replace fonts, PWA, add Consumab
 - Sticky footer, sharp 6px corners, mobile-first responsive, dark mode native, Russian text preserved
 - All existing functionality preserved except where explicitly removed (shift system, add_hookah_batch)
 - Work record: /home/z/my-project/agent-ctx/rebuild-1-main.md
+
+---
+Task ID: update-1
+Agent: main (Z.ai Code)
+Task: Major update — stock filters rework (4 chips + 3 stats + onOrderItem), purchase panel rework (structured-only + consumables + prefill + ARCHIVED + toggle lists + delete-on-merge), new Supplies feature (Purchases/Supplies model + AI PDF parser + SupplyPanel), cross-tab communication (Заказ → ЗАКУП with prefillItem).
+
+## Summary
+3 major changes + cleanup. 4 new files, 6 changed files. Lint passes (EXIT 0). Dev server compiles cleanly.
+
+## TASK 1: Stock filters rework — `dashboard.tsx`
+1. **4 filter chips** (was 3): Весь склад | Достаточно | Мало | Закончилось
+   - "Достаточно" = currentGrams >= thresholdGrams AND > 0
+   - "Мало" = currentGrams > 0 AND < thresholdGrams (isLow && currentGrams > 0)
+   - "Закончилось" = currentGrams === 0
+2. **3 stat cards** (was 4): removed "Грамм всего" and "Ср. остаток". Kept "Всего позиций" (total), "Мало" (isLow && > 0 count), "Закончилось" (currentGrams === 0 count).
+3. **"Заказ" button** (was "→ заказ"): now does NOT create MasterRequest automatically. Calls `onOrderItem(tobacco)` prop callback instead, which parent uses to switch to ЗАКУП tab + prefill item. Visible for SENIOR, REGULAR, and readOnly masters (button shows on items where currentGrams === 0 OR (isLow && > 0)).
+4. **DashboardProps** updated: added `onOrderItem?: (t: Tobacco) => void`.
+5. Removed unused `orderingId` state, `quickOrder` function, `TrendingUp` import, `toggleBrand` function. Updated hint text.
+
+## TASK 2: Purchase panel rework — `purchase-panel.tsx`
+Complete rewrite (from 1468 → ~960 lines):
+1. **Removed free-text mode entirely**. Now ONLY structured input. Section title → "Оформление новой заявки".
+2. **Added consumables to structured order**. New "Расходники" sub-section below tobacco: Select consumable OR "новый расходник" input + qty + unit + "Добавить расходник" button → adds to `structItems[]` with `itemType='CONSUMABLE'`. Items list shows tobacco and consumable items together (with edit qty/unit + remove).
+3. **Pre-fill from stock**: added `prefillItem?: PrefillItem | null` + `onPrefillConsumed?: () => void` props. On prop change, item is added to `structItems[]` (one-time effect), then `onPrefillConsumed()` clears the prop. PrefillItem shape: `{ itemType, brand?, line?, flavor?, name, packGrams?, quantity, unit }`.
+4. **Replaced RECEIVED → ARCHIVED**: Status enum now `DRAFT | SUBMITTED | ORDERED | ARCHIVED`. Updated `PURCHASE_STATUS_LABELS`, `PURCHASE_NEXT_STATUS`, `PURCHASE_NEXT_LABEL`, `getStatusClass()`.
+5. **MERGED not shown in lists**: When merging, source orders are now DELETED (see API change). Merged orders themselves still show isMerged=true badge but use a normal status (ORDERED). Filter `canSelect` checks `order.status !== 'ARCHIVED'`.
+6. **Two-list layout with toggle**: "Активные" (DRAFT + SUBMITTED + ORDERED + MasterRequest PENDING/ORDERED) | "Архив" (ARCHIVED + MasterRequest DONE). Only ONE list visible at a time, each with its own scroll container. Toggle buttons at top show count.
+7. **Status flow simplified**:
+   - DRAFT → SUBMITTED ("Отправить", any senior)
+   - SUBMITTED → ORDERED ("Заказано", SENIOR only)
+   - ORDERED → ARCHIVED ("В архив", SENIOR only)
+8. Submit handler: SENIOR creates PurchaseOrder (status SUBMITTED), REGULAR creates MasterRequest with joined text (since REGULAR can't access PurchaseOrders API).
+
+## TASK 2 (API): `src/app/api/purchase-orders/route.ts`
+- Merge section: changed `db.purchaseOrder.updateMany({ status: 'MERGED' })` → `db.purchaseOrder.deleteMany()` (source orders deleted, not kept).
+- Updated GET comment (removed MERGED-исходники mention).
+
+## TASK 3: New Supplies feature (ПОСТАВКИ)
+
+### Prisma schema (both `schema.prisma` and `schema.postgres.prisma`)
+- New `Supply` model: id, status (PENDING|ACCEPTED), supplier, note, photoBase64, pdfBase64, fileName, createdAt, updatedAt, items[]. @@index([status]), @@index([createdAt]).
+- New `SupplyItem` model: id, supplyId, itemType (TOBACCO|CONSUMABLE), itemId, brand, line, flavor, name, packGrams, quantity, unit. onDelete: Cascade on Supply. @@index([supplyId]).
+- Also updated `PurchaseOrder.status` comment in both schemas: `DRAFT | SUBMITTED | ORDERED | ARCHIVED` (removed RECEIVED | MERGED from comment).
+- `bun run db:push` — DB in sync, Prisma Client regenerated.
+
+### API: `src/app/api/supplies/route.ts` (NEW)
+- **GET** — list all supplies with items (sorted by createdAt desc). Returns `hasPhoto`/`hasPdf` booleans (not raw base64) to keep response light.
+- **POST** — create new supply. Body: `{ items, supplier?, note?, photoBase64?, pdfBase64?, fileName? }`. Status PENDING. SENIOR only.
+- **PATCH** — `{ id, status: 'ACCEPTED' }` — accepts supply:
+  - For each TOBACCO item: fuzzy search (exact brand+line+flavor → brand+flavor → name match → flavor match). Found → `db.stockItem.upsert` with `currentGrams: { increment: totalGrams }` + `Operation` record (type=INCOMING). Not found → create new Tobacco + StockItem + Operation.
+  - For each CONSUMABLE item: fuzzy search by name (exact → contains → substring in existing). Found → `currentQty: { increment: qty }`. Not found → create new Consumable.
+  - Sets supply.status = ACCEPTED. SENIOR only.
+- **DELETE** — `{ id }` — delete supply (only PENDING ones; ACCEPTED cannot be deleted since stock was already updated). SENIOR only.
+- Helpers: `findTobaccoFuzzy()`, `findConsumableFuzzy()`, `extractBrandFromName()`.
+
+### API: `src/app/api/supplies/ai-parse/route.ts` (NEW)
+- **POST** — `{ pdfBase64 }` → uses `pdfToText()` (existing pdf-utils) to extract text → sends to AI via `hfChat()` (exported from ai.ts) with structured prompt.
+- AI prompt: "Extract tobacco and consumable items from this invoice text. Return JSON array: [{ itemType, brand, line, flavor, name, packGrams, quantity, unit }]".
+- Returns `{ items, rawTextLength }`. SENIOR only.
+
+### API: `src/app/api/supplies/[id]/attachment/route.ts` (NEW)
+- **GET** — `{ kind: 'photo' | 'pdf' }` → returns raw base64 of attachment. Used by SupplyPanel for photo viewer (Dialog) and PDF viewer (new tab with iframe).
+
+### `src/lib/ai.ts`
+- Exported `hfChat` function (was previously module-private): `export { hfChat }` so it can be used by `/api/supplies/ai-parse/route.ts`.
+
+### UI: `src/components/hookah/supply-panel.tsx` (NEW, ~640 lines)
+**Top section — "Новая поставка"**:
+- Structured form (same pattern as PurchasePanel): tobacco rows + consumable rows (brand select + flavor select + qty + unit + "Добавить табак" button; consumable select + qty + unit + "Добавить расходник" button).
+- Optional supplier name input.
+- Optional note input.
+- File upload: photo (image/*) → base64 (FileReader.readAsDataURL).
+- File upload: PDF (application/pdf) → base64 + fileName.
+- "AI из PDF" button (only visible when PDF uploaded): POST /api/supplies/ai-parse → fills structItems with extracted items (editable, merged with existing items).
+- Items list: tobacco + consumable rows with edit qty/unit + remove.
+- "Создать поставку" → POST /api/supplies → status PENDING.
+
+**Below — list of supplies (toggle: "Ожидают" | "Принятые")**:
+- "Ожидают" = PENDING, "Принятые" = ACCEPTED. Only ONE list visible at a time.
+- Each supply card:
+  - Date (timeAgo), supplier, note.
+  - Items list (icon + name + qty + unit + packGrams if tobacco).
+  - If hasPhoto: thumbnail button → opens full-screen Dialog with photo.
+  - If hasPdf: button → opens PDF in new tab via window.open + iframe.
+  - If PENDING: "Принять поставку" button → PATCH status=ACCEPTED → updates stock + creates Operations.
+  - Delete button (only PENDING, since ACCEPTED ones already affected stock).
+
+### Integration in `senior-view.tsx`
+- Added tab "ПОСТАВКИ" (Truck icon) — between ЗАКУП and ХОТЕЛКИ. Tabs list now 9 cols on sm (was 8), 3 cols on mobile.
+- Tabs order: СЕГОДНЯ | ГРАФИК | ЗАРПЛАТА | СКЛАД | РАСХОД | ЗАКУП | ПОСТАВКИ | ХОТЕЛКИ | МАСТЕРА.
+- Added `prefillItem` state + `handleOrderItem(t)` callback (creates PrefillItem from Tobacco, sets state, switches to 'purchase' tab, shows toast).
+- Added `handlePrefillConsumed()` callback to clear prefillItem.
+- Passed `onOrderItem={handleOrderItem}` to Dashboard.
+- Passed `prefillItem` + `onPrefillConsumed` to PurchasePanel.
+
+### Integration in `master-view.tsx`
+- Same prefillItem/handleOrderItem/handlePrefillConsumed pattern. Master-view has no Supplies tab (SENIOR only).
+- Master clicking "Заказ" in СКЛАД (readOnly) → switches to ЗАКУП + prefill → MasterRequest is created with joined text (since regular masters use /api/requests not /api/purchase-orders).
+
+## TASK 4: Verify /summary
+- `src/app/api/bot/summary/route.ts` already uses ScheduleEntry (no shifts). Bot-runner /summary command unchanged. Lint passes.
+
+## TASK 5: Cleanup
+- PurchaseOrder status enum comment in both Prisma schemas: `DRAFT | SUBMITTED | ORDERED | ARCHIVED` (removed `RECEIVED | MERGED`).
+- PurchasePanel: removed PURCHASE_NEXT_LABEL "Заказать" / "Получено" → "Заказано" / "В архив".
+- Removed filter `'received'` (FilterChip type now `'all' | 'pending' | 'ordered' | 'archived'`).
+- Replaced single big filter chip group with two-list toggle "Активные" | "Архив".
+- API merge section: deleteMany replaces updateMany({ status: 'MERGED' }).
+- MasterRequest type (`PENDING | ORDERED | DONE`) — left untouched (separate model from PurchaseOrder).
+- Legacy `/api/orders/route.ts` (OrderRequest model) — left untouched (separate model, not affected by PurchaseOrder status changes).
+
+## Files created (4)
+- `src/app/api/supplies/route.ts` (~280 lines)
+- `src/app/api/supplies/ai-parse/route.ts` (~120 lines)
+- `src/app/api/supplies/[id]/attachment/route.ts` (~30 lines)
+- `src/components/hookah/supply-panel.tsx` (~640 lines)
+
+## Files changed (6)
+- `prisma/schema.prisma` (added Supply + SupplyItem models; updated PurchaseOrder status comment)
+- `prisma/schema.postgres.prisma` (same changes — kept in sync)
+- `src/app/api/purchase-orders/route.ts` (merge: deleteMany instead of updateMany MERGED; updated GET comment)
+- `src/lib/ai.ts` (exported hfChat function for use in ai-parse route)
+- `src/components/hookah/dashboard.tsx` (4 filter chips, 3 stats, onOrderItem callback, removed quickOrder/orderingId/TrendingUp/toggleBrand)
+- `src/components/hookah/purchase-panel.tsx` (complete rewrite: structured-only, consumables, prefill, ARCHIVED, two-list toggle, delete-on-merge)
+- `src/components/hookah/senior-view.tsx` (added Supplies tab + prefillItem state + handleOrderItem/handlePrefillConsumed)
+- `src/components/hookah/master-view.tsx` (added prefillItem state + handleOrderItem/handlePrefillConsumed for cross-tab)
+
+## Verification
+- `bun run lint` → EXIT 0 (0 errors, 0 warnings)
+- `npx tsc --noEmit` → 0 errors in changed files (pre-existing errors in setup/route.ts, bot-runner.ts, pdf-utils.ts — not from my changes)
+- Dev server compiles cleanly: GET / 200, /api/supplies 401 (correct — needs auth), POST /api/supplies/ai-parse 401 (correct), GET /api/dashboard 401 (correct)
+- Sticky footer preserved (min-h-screen flex flex-col + mt-auto on footer) in senior-view and master-view
+- Sharp corners var(--radius)=6px (rounded-md) preserved
+- Mobile-first responsive: senior tabs grid-cols-3 → grid-cols-9, master tabs grid-cols-3 → grid-cols-6
+- Dark mode native (token-based)
+- Russian text preserved throughout
+- Touch targets ≥ 44px on all new buttons
+- design tokens: label-mono (uppercase), heading-mono (NOT uppercase), frame, frame-ember, shadow-sm-soft all reused

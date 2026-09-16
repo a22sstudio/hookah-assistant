@@ -245,7 +245,7 @@ model Consumable {
 
 model PurchaseOrder {
   id        String   @id @default(cuid())
-  status    String   @default("DRAFT") // DRAFT | SUBMITTED | ORDERED | RECEIVED | MERGED
+  status    String   @default("DRAFT") // DRAFT | SUBMITTED | ORDERED | ARCHIVED
   isMerged  Boolean  @default(false) // true если это объединённый заказ из нескольких
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -269,4 +269,41 @@ model PurchaseOrderItem {
   order     PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
+}
+
+// ============================================
+// Поставки (входящие накладные от поставщика)
+// ============================================
+
+model Supply {
+  id          String   @id @default(cuid())
+  status      String   @default("PENDING") // PENDING (not yet accepted) | ACCEPTED (received, stock updated)
+  supplier    String?  // name of supplier/distributor
+  note        String?
+  photoBase64 String?  // base64 photo of invoice
+  pdfBase64   String?  // base64 PDF of invoice
+  fileName    String?  // original file name
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  items       SupplyItem[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model SupplyItem {
+  id        String @id @default(cuid())
+  supplyId  String
+  itemType  String // "TOBACCO" | "CONSUMABLE"
+  itemId    String? // reference to Tobacco or Consumable
+  brand     String?
+  line      String?
+  flavor    String?
+  name      String
+  packGrams Int?
+  quantity  Int     // number of jars/packs
+  unit      String  @default("шт")
+  supply    Supply  @relation(fields: [supplyId], references: [id], onDelete: Cascade)
+
+  @@index([supplyId])
 }
