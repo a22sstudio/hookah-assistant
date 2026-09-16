@@ -43,18 +43,32 @@ interface ChatResponse {
 async function hfChat(messages: ChatMessage[], opts: { vision?: boolean; maxTokens?: number } = {}): Promise<string> {
   const model = opts.vision ? VISION_MODEL : LLM_MODEL
 
-  const res = await fetch(OR_API, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${getApiKey()}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      max_tokens: opts.maxTokens ?? 2000,
-    }),
-  })
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 25000)
+
+  let res: Response
+  try {
+    res = await fetch(OR_API, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${getApiKey()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        max_tokens: opts.maxTokens ?? 2000,
+      }),
+      signal: controller.signal,
+    })
+  } catch (e) {
+    clearTimeout(timeout)
+    if (e instanceof Error && e.name === 'AbortError') {
+      throw new Error('AI не ответил за 25 сек')
+    }
+    throw e
+  }
+  clearTimeout(timeout)
 
   const data = (await res.json()) as ChatResponse
   if (!res.ok || data.error) {
