@@ -15,24 +15,20 @@ cmds = [
   "cp prisma/schema.postgres.prisma prisma/schema.prisma",
   "bunx prisma generate",
   "bun run build",
-  # Копируем статику и public в standalone (нужно для standalone build)
   "cp -r .next/static .next/standalone/.next/",
   "cp -r public .next/standalone/",
-  # Копируем prisma schema в standalone (для db:push)
   "cp -r prisma .next/standalone/",
-  # Копируем node_modules/@prisma в standalone
   "mkdir -p .next/standalone/node_modules/@prisma",
   "cp -r node_modules/@prisma/* .next/standalone/node_modules/@prisma/",
-  # Копируем pdf-parse в standalone
   "mkdir -p .next/standalone/node_modules/pdf-parse",
   "cp -r node_modules/pdf-parse/* .next/standalone/node_modules/pdf-parse/"
 ]
 
 [phases.start]
-# db:push + standalone server (минимальное потребление памяти)
+# db:push из standalone, затем запускаем standalone server
 cmds = [
-  "sh -c 'cd /app/.next/standalone && if [ -z \"$DATABASE_URL\" ]; then echo \"⚠️ DATABASE_URL не задан\"; else npx prisma db push --accept-data-loss --schema=prisma/schema.prisma || echo \"⚠️ db:push не удался\"; fi'",
-  "node .next/standalone/server.js"
+  "cd /app/.next/standalone && npx prisma db push --accept-data-loss --schema=prisma/schema.prisma || true",
+  "node /app/.next/standalone/server.js"
 ]
 
 [variables]
