@@ -1,41 +1,20 @@
 import 'server-only'
-import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 
-// Конвертация первой страницы PDF в base64 PNG
-// Используется для распознавания накладных в PDF через VLM
-export async function pdfFirstPageToBase64(pdfBuffer: Buffer): Promise<string> {
-  const loadingTask = getDocument({ data: new Uint8Array(pdfBuffer) })
-  const pdf = await loadingTask.promise
+// pdfjs-dist v6 требует worker в браузере, но в Node.js мы можем отключить его.
+// Используем disableWorker + useSystemFonts для работы без worker.
 
-  // Берём первую страницу
-  const page = await pdf.getPage(1)
-  const viewport = page.getViewport({ scale: 2 }) // scale 2 для качества
-
-  // Создаём canvas через @napi-rs/canvas или используем node-canvas
-  // В среде без DOM используем pdfjs с custom CanvasFactory
-  // Простой способ: использовать page.getData и отрисовать через offscreen canvas
-
-  // Альтернатива: получить текст PDF напрямую (без отрисовки)
-  const textContent = await page.getTextContent()
-  const text = textContent.items
-    .map((item: unknown) => {
-      const i = item as { str?: string }
-      return i.str || ''
-    })
-    .join(' ')
-
-  await pdf.destroy()
-
-  if (!text.trim()) {
-    throw new Error('PDF не содержит текста (возможно скан изображения)')
-  }
-
-  return text.trim()
-}
-
-// Альтернативная функция: получить весь текст PDF (все страницы)
+// Динамический импорт чтобы избежать проблем с Turbopack bundling
 export async function pdfToText(pdfBuffer: Buffer): Promise<string> {
-  const loadingTask = getDocument({ data: new Uint8Array(pdfBuffer) })
+  // Динамический импорт — avoids Turbopack trying to bundle pdf.worker.mjs
+  const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs')
+  const getDocument = pdfjsLib.getDocument
+
+  const loadingTask = getDocument({
+    data: new Uint8Array(pdfBuffer),
+    disableWorker: true,
+    useSystemFonts: true,
+  })
+
   const pdf = await loadingTask.promise
 
   const numPages = pdf.numPages
@@ -54,6 +33,11 @@ export async function pdfToText(pdfBuffer: Buffer): Promise<string> {
     pages.push(`--- Страница ${i} ---\n${text}`)
   }
 
-  await pdf.destroy()
+  await pdf.cleanup?.()
   return pages.join('\n\n')
+}
+
+// Совместимость со старым именем
+export async function pdfFirstPageToBase64(pdfBuffer: Buffer): Promise<string> {
+  return pdfToText(pdfBuffer)
 }
