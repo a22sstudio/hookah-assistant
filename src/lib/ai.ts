@@ -4,18 +4,17 @@ import { pushToSeniors } from '@/lib/notify'
 import { parseDateFromText, startOfDay, formatDateRu, addDays } from '@/lib/datetime-utils'
 
 // ───────────────────────────────────────────
-// AI: Groq для всего (LLM + ASR)
-// LLM: llama-3.3-70b-versatile — быстро (0.3-1с), бесплатно, отлично с русским
-// ASR: whisper-large-v3 (уже работает на Railway)
-// Vision: Groq не поддерживает → фото накладных через PDF (текст)
+// AI: OpenRouter для LLM, Groq для ASR
+// LLM: nex-agi/nex-n2.5-mini:free — работает (1сек), бесплатно
+// ASR: Groq whisper-large-v3 (работает на Railway)
 // ───────────────────────────────────────────
 
-const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions'
-const LLM_MODEL = process.env.LLM_MODEL || 'llama-3.1-8b-instant'
+const OR_API = 'https://openrouter.ai/api/v1/chat/completions'
+const LLM_MODEL = process.env.LLM_MODEL || 'nex-agi/nex-n2.5-mini:free'
 
 function getApiKey(): string {
-  const t = process.env.GROQ_API_KEY
-  if (!t) throw new Error('GROQ_API_KEY не задан в переменных окружения')
+  const t = process.env.OPENROUTER_API_KEY
+  if (!t) throw new Error('OPENROUTER_API_KEY не задан в переменных окружения')
   return t
 }
 
@@ -45,7 +44,7 @@ async function hfChat(messages: ChatMessage[], opts: { vision?: boolean; maxToke
 
   let res: Response
   try {
-    res = await fetch(GROQ_API, {
+    res = await fetch(OR_API, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${getApiKey()}`,
@@ -70,7 +69,7 @@ async function hfChat(messages: ChatMessage[], opts: { vision?: boolean; maxToke
 
   const data = (await res.json()) as ChatResponse
   if (!res.ok || data.error) {
-    throw new Error(`Groq: ${data.error?.message || res.status}`)
+    throw new Error(`OpenRouter: ${data.error?.message || res.status}`)
   }
 
   return data.choices?.[0]?.message?.content ?? ''
