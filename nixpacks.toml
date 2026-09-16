@@ -1,33 +1,41 @@
 # ─── Railway Nixpacks конфиг ───
-# Nixpacks — это нативный Railway buildpack, быстрее Dockerfile.
+# Standalone build — минимальный сервер, меньше памяти
 
 [phases.setup]
-# Устанавливаем OpenSSL для Prisma + Node.js
 aptPkgs = ["openssl", "ca-certificates"]
 nixPkgs = ["nodejs_22", "bun"]
 
 [phases.install]
-# Устанавливаем зависимости
 cmds = [
   "bun install"
 ]
 
 [phases.build]
-# Переключаемся на PostgreSQL-схему, генерируем Prisma, билдим Next.js
 cmds = [
   "cp prisma/schema.postgres.prisma prisma/schema.prisma",
   "bunx prisma generate",
-  "bun run build"
+  "bun run build",
+  # Копируем статику и public в standalone (нужно для standalone build)
+  "cp -r .next/static .next/standalone/.next/",
+  "cp -r public .next/standalone/",
+  # Копируем prisma schema в standalone (для db:push)
+  "cp -r prisma .next/standalone/",
+  # Копируем node_modules/@prisma в standalone
+  "mkdir -p .next/standalone/node_modules/@prisma",
+  "cp -r node_modules/@prisma/* .next/standalone/node_modules/@prisma/",
+  # Копируем pdf-parse в standalone
+  "mkdir -p .next/standalone/node_modules/pdf-parse",
+  "cp -r node_modules/pdf-parse/* .next/standalone/node_modules/pdf-parse/"
 ]
 
 [phases.start]
-# Применяем схему к БД (с таймаутом) и стартуем через node (не bun)
-# Node.js стабильнее для Next.js production server
+# db:push + standalone server (минимальное потребление памяти)
 cmds = [
-  "sh -c 'if [ -z \"$DATABASE_URL\" ]; then echo \"⚠️ DATABASE_URL не задан\"; else timeout 30 npx prisma db push --accept-data-loss || echo \"⚠️ db:push не удался — стартую всё равно\"; fi'",
-  "npx next start"
+  "sh -c 'cd /app/.next/standalone && if [ -z \"$DATABASE_URL\" ]; then echo \"⚠️ DATABASE_URL не задан\"; else npx prisma db push --accept-data-loss --schema=prisma/schema.prisma || echo \"⚠️ db:push не удался\"; fi'",
+  "node .next/standalone/server.js"
 ]
 
 [variables]
 NODE_ENV = "production"
 NEXT_TELEMETRY_DISABLED = "1"
+HOSTNAME = "0.0.0.0"
