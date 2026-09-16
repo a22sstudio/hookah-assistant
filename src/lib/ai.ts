@@ -11,7 +11,7 @@ import { parseDateFromText, startOfDay, formatDateRu, addDays } from '@/lib/date
 // ───────────────────────────────────────────
 
 const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions'
-const LLM_MODEL = process.env.LLM_MODEL || 'llama-3.3-70b-versatile'
+const LLM_MODEL = process.env.LLM_MODEL || 'llama-3.1-8b-instant'
 
 function getApiKey(): string {
   const t = process.env.GROQ_API_KEY
