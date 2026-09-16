@@ -1,19 +1,16 @@
 # ─── Railway конфиг ───
-# Используем Nixpacks (нативный, быстрее Dockerfile) — конфиг в nixpacks.toml
-# Nixpacks автоматически определит Next.js + Bun, быстрее собирается
+# Используем Dockerfile (полный контроль, не nixpacks)
 
 [deploy]
-# Railway выдаст публичный URL автоматически
 healthcheckPath = "/api/auth/me"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 
 # ─── Переменные окружения (задаются в Railway dashboard) ───
-# DATABASE_URL=postgresql://... (Railway PostgreSQL plugin выдаст автоматически)
-# HF_TOKEN=hf_... (Hugging Face токен для AI)
+# DATABASE_URL=postgresql://...
+# OPENROUTER_API_KEY=sk-or-v1-...
+# GROQ_API_KEY=gsk_...
+# BOT_SECRET=hookah-secret-2024
 # TELEGRAM_BOT_TOKEN=...
-# BOT_SECRET=любая-случайная-строка
-# NEXT_API_URL=https://твой-апп.up.railway.app
-# WEBHOOK_URL=https://твой-апп.up.railway.app
 # USE_POLLING=0

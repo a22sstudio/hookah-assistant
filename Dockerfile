@@ -1,46 +1,45 @@
-# ─── Dockerfile для деплоя Hookah Assistant ───
-# Простой одно-образный билд на Bun
+# ─── Dockerfile — полный контроль, standalone build ───
 
-FROM oven/bun:1.2
+FROM oven/bun:1.2 AS base
 WORKDIR /app
 
-# CACHE_BUSTER — меняется при каждом пуше, гарантирует пересборку без кеша
-ARG CACHE_BUSTER=0
-RUN echo "cache-bust: $CACHE_BUSTER"
-
-# Устанавливаем OpenSSL — нужен Prisma для PostgreSQL
+# OpenSSL для Prisma
 RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
-# Копируем package.json + lockfile и устанавливаем зависимости ОТДЕЛЬНО (кеш Docker)
+# Install
 COPY package.json bun.lock* ./
 RUN bun install
 
-# Копируем остальной код
+# Copy + Build
 COPY . .
-
-# Z.ai конфиг НЕ копируем из репо (он в .gitignore, не попадает в git).
-# Вместо этого код (src/lib/ai.ts: ensureZaiConfig) создаёт .z-ai-config из env vars:
-#   - ZAI_CONFIG (полный JSON) — самый простой способ
-#   - или ZAI_API_KEY + ZAI_BASE_URL + ZAI_TOKEN + ZAI_CHAT_ID + ZAI_USER_ID
-# Задай эти env vars в Railway Variables.
-
-# Автоматически переключаемся на PostgreSQL-схему для продакшена
 RUN if [ -f prisma/schema.postgres.prisma ]; then cp prisma/schema.postgres.prisma prisma/schema.prisma; fi
-
-# Генерируем Prisma клиент (используем bunx чтобы гарантированно найти prisma)
 RUN bunx prisma generate
-
-# Билдим Next.js
-ENV NEXT_TELEMETRY_DISABLED=1
 RUN bun run build
+
+# Copy standalone artifacts
+RUN cp -r .next/static .next/standalone/.next/
+RUN cp -r public .next/standalone/
+RUN cp -r prisma .next/standalone/
+RUN mkdir -p .next/standalone/node_modules/@prisma && \
+    cp -r node_modules/@prisma/* .next/standalone/node_modules/@prisma/
+RUN mkdir -p .next/standalone/node_modules/pdf-parse && \
+    cp -r node_modules/pdf-parse/* .next/standalone/node_modules/pdf-parse/
+
+# ─── Production ───
+FROM node:22-slim AS runner
+WORKDIR /app
+
+RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+
+COPY --from=base /app/.next/standalone ./
+COPY --from=base /app/.next/standalone/node_modules ./node_modules
+COPY --from=base /app/prisma ./prisma
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-# Railway автоматически задаёт $PORT — приложение должно слушать его
 ENV HOSTNAME=0.0.0.0
 
-EXPOSE 3000
+EXPOSE 8080
 
-# Запуск: db:push + next start
-# Next.js сам читает PORT env (Railway задаёт его автоматически), дефолт 3000
-CMD ["sh", "-c", "echo '=== Запуск ===' && bun --version && echo PORT=$PORT && if [ -z \"$DATABASE_URL\" ]; then echo '⚠️ DATABASE_URL не задан'; else echo '🔄 db:push...'; timeout 30 bunx prisma db push --accept-data-loss || echo '⚠️ db:push не удался — стартую всё равно'; fi && bun run start"]
+# db:push + standalone server (минимальное потребление памяти)
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss --schema=prisma/schema.prisma || true && node server.js"]
