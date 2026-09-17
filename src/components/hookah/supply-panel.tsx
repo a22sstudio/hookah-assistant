@@ -84,14 +84,14 @@ interface Tobacco {
   line: string
   flavor: string
   defaultJarGrams: number
-  active: boolean
+  active?: boolean
 }
 
 interface Consumable {
   id: string
   name: string
   unit: string
-  active: boolean
+  active?: boolean
 }
 
 interface SupplyPanelProps {
@@ -816,14 +816,14 @@ function ItemsEditor({
     setItems((prev) => [...prev, emptyItem(itemType)])
   }
 
-  // Существующие бренды (case-insensitive, отсортированы)
+  // Существующие бренды (API /api/tobaccos уже возвращает только active=true,
+  // поэтому повторный фильтр не нужен — он только ломает список, если active не пришёл)
   const brands = Array.from(
-    new Set(tobaccos.filter((t) => t.active).map((t) => t.brand)),
+    new Set(tobaccos.map((t) => t.brand)),
   ).sort()
 
   // Для расходников: имена
   const consumableNames = consumables
-    .filter((c) => c.active)
     .map((c) => ({ id: c.id, name: c.name, unit: c.unit }))
 
   if (items.length === 0) {
@@ -842,7 +842,7 @@ function ItemsEditor({
 
         // Найти вкусы для текущего бренда (case-insensitive)
         const flavorsForBrand = it.brand
-          ? tobaccos.filter((t) => t.active && norm(t.brand) === norm(it.brand!))
+          ? tobaccos.filter((t) => norm(t.brand) === norm(it.brand!))
           : []
 
         // Является ли бренд существующим в базе (case-insensitive)
