@@ -2,15 +2,20 @@ import 'server-only'
 
 // ───────────────────────────────────────────
 // Парсер текста накладной в структурированные позиции.
-// Без ИИ — чистая эвристика по регуляркам.
-// Понимает 3 основных формата поставщиков:
+// Без ИИ — чистая эвристика.
 //
+// Стратегия:
+// 1. Разбиваем текст на блоки по номерам позиций (1, 2, 3...).
+//    Блок = все строки от одного номера до следующего.
+//    Если номер стоит на отдельной строке ("5\nТабак..."), он начинает блок.
+// 2. Внутри блока ищем: бренд, линейку, вкус, вес, количество.
+// 3. Цены/суммы игнорируем (не используем), но вырезаем из текста.
+//
+// Поддерживаемые форматы:
 //   1) "5 Табак для кальяна BLACKBURN с ароматом «Бархатный персик», 200г. 1450,00 2 шт 2900,00"
 //   2) "8 DEUS 100 г WHITE PEACH (Аромат белого персика) 730,00 1 шт 730,00"
 //   3) "34 Уголь Cocoloco 25мм Horeca 1кг 470,00 40 шт 18800,00"
-//
-// Внимание: цены и суммы ИГНОРИРУЕМ — работаем только по количеству позиций.
-// А также: переносы строк (наименование на 2 строки), пустые номера.
+//   4) С переносами строк внутри позиции (номер на отдельной строке)
 // ───────────────────────────────────────────
 
 export interface ParsedSupplyItem {
@@ -22,36 +27,74 @@ export interface ParsedSupplyItem {
   packGrams: number | null
   quantity: number
   unit: string
-  // Заполняется на уровне API (parse-text) после мэтча с базой:
-  itemId?: string | null   // ID существующего табака/расходника (null = новый)
-  isNovelty?: boolean      // true = такого нет на складе (новинка, будет создан)
-  isMatch?: boolean         // true = найден в базе по fuzzy match
+  itemId?: string | null
+  isNovelty?: boolean
+  isMatch?: boolean
+  rawText?: string  // исходный текст позиции (для отладки и LLM)
 }
 
 // Ключевые слова расходников
 const CONSUMABLE_KEYWORDS: Array<{ keywords: string[]; unit: string }> = [
   { keywords: ['уголь', 'coal', 'cocoloco', 'cocourth', 'kalahoud'], unit: 'шт' },
   { keywords: ['колба', 'vessel', 'кристалл'], unit: 'шт' },
-  { keywords: ['шланг', 'hose', 'мундштук', 'mandstuk'], unit: 'шт' },
+  { keywords: ['шланг', 'hose', 'мундштук'], unit: 'шт' },
   { keywords: ['чаша', 'bowl', 'phunnel'], unit: 'шт' },
   { keywords: ['фольга', 'foil'], unit: 'рул' },
-  { keywords: ['тросник', 'тростник', 'cane', 'mint'], unit: 'шт' },
+  { keywords: ['тросник', 'тростник', 'cane mint'], unit: 'шт' },
   { keywords: ['щипцы', 'tongs'], unit: 'шт' },
   { keywords: ['диффузор'], unit: 'шт' },
   { keywords: ['блюдце'], unit: 'шт' },
   { keywords: ['молоко'], unit: 'л' },
 ]
 
+// Известные бренды табака (расширенный список)
 const TOBACCO_BRANDS = [
-  'BLACKBURN', 'BLACK BURN', 'DARKSIDE', 'TANGIERS', 'MUSTHAVE', 'DARK BURN',
-  'DEUS', 'JENT', 'SEBERO', 'OVERDOSE', 'САРМА', 'SARMA', 'НАШ', 'NASH', 'BACCY',
-  'COYOTE', 'NORTH', 'ELEMENT', 'DUOTTO', 'SAPO', 'BRAVA', 'ADALIA', 'VINI',
-  'TANBACCO', 'JOON', 'ARGELINI', 'FASIL', 'SERBETLI', 'Nakhla', 'NAKHLA',
+  'BLACKBURN', 'BLACK BURN',
+  'DARKSIDE', 'DARK SIDE',
+  'TANGIERS', 'TANGIER',
+  'MUSTHAVE', 'MUST HAVE',
+  'DEUS',
+  'JENT',
+  'SEBERO',
+  'OVERDOSE',
+  'САРМА', 'SARMA',
+  'НАШ', 'NASH',
+  'BACCY',
+  'COYOTE',
+  'NORTH',
+  'ELEMENT',
+  'DUOTTO',
+  'SAPO',
+  'BRAVA',
+  'ADALIA',
+  'VINI',
+  'TANBACCO',
+  'JOON',
+  'ARGELINI',
+  'FASIL',
+  'SERBETLI',
+  'NAKHLA',
+  'DAILY HOOKAH',
+  'BURN',
+  'COBRA',
+  'AFDAL',
+  'ADANA',
+  'DERIN',
+  'NABIL',
+  'WTO',
+  'SAFARI',
 ]
 
-function isConsumable(name: string): boolean {
-  const lower = name.toLowerCase()
-  return CONSUMABLE_KEYWORDS.some((c) => c.keywords.some((k) => lower.includes(k.toLowerCase())))
+// Нормализуем строку для сравнения
+function norm(s: string): string {
+  return (s || '').toUpperCase().replace(/\s+/g, ' ').trim()
+}
+
+function isConsumable(text: string): boolean {
+  const lower = text.toLowerCase()
+  return CONSUMABLE_KEYWORDS.some((c) =>
+    c.keywords.some((k) => lower.includes(k.toLowerCase())),
+  )
 }
 
 function detectUnit(name: string): string {
@@ -64,15 +107,18 @@ function detectUnit(name: string): string {
   return 'шт'
 }
 
+// Case-insensitive поиск бренда в тексте.
+// Возвращает { brand: normalized, original: substring, rest: text without brand }
 function findBrand(text: string): { brand: string; rest: string } | null {
   const upper = text.toUpperCase()
-  for (const brand of TOBACCO_BRANDS) {
+  // Сначала ищем самые длинные бренды (чтобы "BLACK BURN" не побеждал "BLACKBURN")
+  const sortedBrands = [...TOBACCO_BRANDS].sort((a, b) => b.length - a.length)
+  for (const brand of sortedBrands) {
     const idx = upper.indexOf(brand)
     if (idx >= 0) {
-      // вырезаем brand из исходной строки (с сохранением остального текста)
       const before = text.slice(0, idx)
       const after = text.slice(idx + brand.length)
-      // нормализуем "BLACK BURN" → "BLACKBURN"
+      // Нормализуем "BLACK BURN" → "BLACKBURN" (без пробелов внутри)
       const normBrand = brand.replace(/\s+/g, '').toUpperCase()
       return { brand: normBrand, rest: (before + ' ' + after).trim() }
     }
@@ -80,55 +126,37 @@ function findBrand(text: string): { brand: string; rest: string } | null {
   return null
 }
 
-// Извлекаем вес упаковки из текста: "200г", "200 гр.", "100 г", "1кг", "1 кг"
+// Извлекаем вес упаковки: "200г", "200 гр.", "100 г", "1кг", "1 кг"
 function extractPackGrams(text: string): { grams: number; rest: string } | null {
-  // Сначала кг (1кг, 1 кг, 1000 г)
   const kgMatch = text.match(/(\d+(?:[.,]\d+)?)\s*кг/i)
   if (kgMatch) {
     const kg = parseFloat(kgMatch[1].replace(',', '.'))
     const grams = Math.round(kg * 1000)
-    const rest = text.replace(kgMatch[0], ' ')
-    return { grams, rest }
+    return { grams, rest: text.replace(kgMatch[0], ' ') }
   }
 
-  const gMatch = text.match(/(\d+)\s*(?:г|гр|gr|g)\b\.?/i)
+  // \b не работает с кириллицей — используем negative lookahead (?![а-яёa-z])
+  const gMatch = text.match(/(\d+)\s*(?:гр|г|gr|g)(?![а-яёa-z])/i)
   if (gMatch) {
     const grams = parseInt(gMatch[1], 10)
     if (grams > 0 && grams <= 5000) {
-      const rest = text.replace(gMatch[0], ' ')
-      return { grams, rest }
+      return { grams, rest: text.replace(gMatch[0], ' ') }
     }
   }
   return null
 }
 
-// Извлекаем только количество из хвоста строки: "1450,00 2 шт 2900,00"
-// Цену и сумму игнорируем (не используем), но ВЫРЕЗАЕМ их из текста,
-// чтобы в name/brand/flavor попало только чистое наименование.
+// Извлекаем количество: ищем "N шт" (N — целое число)
 function extractQuantity(text: string): { quantity: number; rest: string } {
-  // Сначала ищем "<число> шт" — это количество
   const qtyMatch = text.match(/(\d+)\s*шт\.?\s*/i)
-  let quantity = 1
-  let rest = text
-
   if (qtyMatch) {
-    quantity = parseInt(qtyMatch[1], 10)
-    if (quantity <= 0) quantity = 1
-    // Убираем "N шт" из строки
-    rest = text.replace(qtyMatch[0], ' ')
+    const qty = parseInt(qtyMatch[1], 10)
+    return { quantity: qty > 0 ? qty : 1, rest: text.replace(qtyMatch[0], ' ') }
   }
-
-  // Вырезаем ВСЕ ценовые числа: "1450,00", "18800,00", "730.00"
-  // Формат: число (2+ цифр) с обязательной десятичной частью через , или .
-  // Так мы не трогаем граммовки (100, 200, 1кг), которые обрабатываются отдельно
-  // в extractPackGrams — они без десятичной части.
-  rest = rest.replace(/\b\d{2,}([.,]\d{1,2})\b/g, ' ')
-
-  return { quantity, rest: rest.replace(/\s{2,}/g, ' ').trim() }
+  return { quantity: 1, rest: text }
 }
 
-// Извлекаем линейку из текста (после brand)
-// Паттерны: "Классическая линейка", "Сигарная линейка", "Classic", "Core", "Supernova"
+// Извлекаем линейку: "Классическая линейка", "Сигарная линейка", "Core", "Supernova"
 function extractLine(text: string): { line: string; rest: string } | null {
   // Полные фразы
   const fullLineMatch = text.match(
@@ -140,8 +168,15 @@ function extractLine(text: string): { line: string; rest: string } | null {
     return { line, rest: text.replace(fullLineMatch[0], ' ') }
   }
 
-  // Короткие ключевые слова
-  const shortMatch = text.match(/\b(core|medium|supernova|classic|rare|origin|black)\b/i)
+  // "Классик" — отдельное слово
+  const classicMatch = text.match(/\b(классик|classic)\b/i)
+  if (classicMatch) {
+    return { line: 'Классик', rest: text.replace(classicMatch[0], ' ') }
+  }
+
+  // Короткие ключевые слова для известных линеек
+  // "white" убран — часто часть названия (WHITE PEACH, НАШ WHITE)
+  const shortMatch = text.match(/\b(core|medium|supernova|origin|black|rare)\b/i)
   if (shortMatch) {
     return {
       line: shortMatch[1].charAt(0).toUpperCase() + shortMatch[1].slice(1).toLowerCase(),
@@ -152,24 +187,23 @@ function extractLine(text: string): { line: string; rest: string } | null {
   return null
 }
 
-// Извлекаем вкус из текста (в кавычках, после "аромат" или просто после бренда)
+// Извлекаем вкус:
+//   - в кавычках «...» или "..."
+//   - после "с ароматом" / "аромат"
+//   - или как текст после бренда
 function extractFlavor(text: string): { flavor: string; rest: string } | null {
-  // «Бархатный персик», "Ice Grape"
-  const quoted = text.match(/[«""]([^»""]{2,60})[»""]/)
+  // В кавычках
+  const quoted = text.match(/[«""]([^»""]{2,80})[»""]/)
   if (quoted) {
-    return {
-      flavor: quoted[1].trim(),
-      rest: text.replace(quoted[0], ' '),
-    }
+    return { flavor: quoted[1].trim(), rest: text.replace(quoted[0], ' ') }
   }
 
-  // "с ароматом X" / "аромат X"
-  const aromMatch = text.match(/с?\s*аромат(?:ом)?\s+([A-Za-zА-Яа-яЁё\s,()]+?)(?:[,.\s]\s*\d)/i)
+  // "с ароматом X" — берём до конца или до запятой/точки с числом
+  const aromMatch = text.match(/с\s+аромат(?:ом)?\s+([A-Za-zА-Яа-яЁё\s,()]+?)(?=,|\.\s*\d|$)/i)
   if (aromMatch) {
     const flavor = aromMatch[1].trim().replace(/[,\s]+$/, '')
-    return {
-      flavor,
-      rest: text.replace(aromMatch[0], ' '),
+    if (flavor.length >= 2) {
+      return { flavor, rest: text.replace(aromMatch[0], aromMatch[1]) }
     }
   }
 
@@ -177,13 +211,13 @@ function extractFlavor(text: string): { flavor: string; rest: string } | null {
 }
 
 // Очистка от типового мусора
-function cleanName(text: string): string {
+function cleanText(text: string): string {
   return text
-    .replace(/Табак\s+для\s+кальяна/i, ' ')
-    .replace(/с\s+ароматом\s+/i, ' ')
+    .replace(/Табак\s+для\s+кальяна/gi, ' ')
+    .replace(/с\s+ароматом\s+/gi, ' ')
+    .replace(/,?\s*\d+\s*гр?\.?/gi, ' ')  // "200г" / "200 гр"
     .replace(/[«""]/g, ' ')
     .replace(/[»""]/g, ' ')
-    .replace(/,?\s*\d+\s*гр?\.?/gi, ' ')
     .replace(/\(\s*\)/g, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim()
@@ -193,44 +227,69 @@ function cleanName(text: string): string {
 export function parseInvoiceText(rawText: string): ParsedSupplyItem[] {
   if (!rawText || !rawText.trim()) return []
 
-  // Нормализуем переносы — одиночные \n внутри позиции склеиваем
-  // Считаем что новая позиция начинается с номера + пробела
+  // Нормализуем переносы
   const lines = rawText
     .replace(/\r\n/g, '\n')
     .split('\n')
     .map((l) => l.trim())
-    .filter(Boolean)
 
-  // Склеиваем переносы строк внутри одной позиции
-  // Эвристика: строка, начинающаяся с числа (1-3 цифры), — начало новой позиции
-  // Если строка НЕ начинается с числа — это продолжение предыдущей
-  const blocks: string[] = []
-  let current = ''
+  // ─── Разбиваем на блоки по номерам позиций ───
+  // Блок = все строки от одного номера позиции до следующего.
+  // ВАЖНО: номер позиции это 1-3 цифры, после которых идёт ПРОБЕЛ, точка или конец строки.
+  // "1450,00" — это цена, не позиция (после 145 идёт "0", а не пробел).
+  const blocks: Array<{ number: number; text: string }> = []
+  let currentBlock: { number: number; text: string } | null = null
 
   for (const line of lines) {
-    const startsWithNumber = /^\d{1,3}[\s.]/.test(line)
-    if (startsWithNumber && current) {
-      blocks.push(current)
-      current = line
-    } else if (current) {
-      // продолжение предыдущей
-      current += ' ' + line
-    } else {
-      current = line
+    if (!line) continue
+
+    // Проверяем: строка состоит ТОЛЬКО из номера (1-3 цифры)
+    const isOnlyNumber = /^\d{1,3}$/.test(line)
+    // Или: строка начинается с номера + пробел/точка + есть текст после
+    // ВАЖНО: \s* (не \s+) — потому что [.\s] уже съел один пробел
+    const startsWithNumber = /^(\d{1,3})[.\s]\s*(\S.*)$/.test(line)
+
+    if (isOnlyNumber) {
+      const num = parseInt(line, 10)
+      if (num >= 1 && num <= 200) {
+        if (currentBlock) blocks.push(currentBlock)
+        currentBlock = { number: num, text: '' }
+        continue
+      }
+    }
+
+    if (startsWithNumber) {
+      const match = line.match(/^(\d{1,3})[.\s]\s*(\S.*)$/)!
+      const num = parseInt(match[1], 10)
+      if (num >= 1 && num <= 200) {
+        if (currentBlock) blocks.push(currentBlock)
+        currentBlock = { number: num, text: match[2].trim() }
+        continue
+      }
+    }
+
+    // Обычная строка (текст, цена/кол-во) — добавляем к текущему блоку
+    if (currentBlock) {
+      currentBlock.text += (currentBlock.text ? ' ' : '') + line
     }
   }
-  if (current) blocks.push(current)
+  if (currentBlock) blocks.push(currentBlock)
 
+  // ─── Парсим каждый блок ───
   const items: ParsedSupplyItem[] = []
 
   for (const block of blocks) {
-    // Убираем начальный номер
-    let text = block.replace(/^\d{1,3}[\s.]+/, ' ').trim()
+    let text = block.text.trim()
     if (!text) continue
 
-    // Извлекаем количество (цены/сумму игнорируем)
+    // Извлекаем количество (цены/сумму вырезаем)
     const qtyResult = extractQuantity(text)
+    const quantity = qtyResult.quantity
     text = qtyResult.rest.trim()
+
+    // Вырезаем все цены: "1450,00", "18800,00" (числа с десятичной частью через , или .)
+    text = text.replace(/\b\d{2,}([.,]\d{1,2})\b/g, ' ')
+    text = text.replace(/\s{2,}/g, ' ').trim()
 
     if (!text) continue
 
@@ -274,17 +333,16 @@ export function parseInvoiceText(rawText: string): ParsedSupplyItem[] {
 
       // Если вкус не найден — берём остаток очищенный
       if (!flavor) {
-        const cleaned = cleanName(rest)
+        const cleaned = cleanText(rest)
         if (cleaned) flavor = cleaned
       }
 
-      // Если brand не нашли, но есть "Табак для кальяна X" — попытаемся brand взять из первого слова
+      // Если brand не нашли — попытаемся взять из первого слова
       if (!brand) {
-        const cleaned = cleanName(rest)
+        const cleaned = cleanText(rest)
         const words = cleaned.split(/\s+/).filter(Boolean)
         if (words.length >= 1) {
           const first = words[0].toUpperCase()
-          // Проверяем, похож ли он на бренд (3+ буквы, не "ТАБАК")
           if (first.length >= 3 && first !== 'ТАБАК' && first !== 'АРОМАТ') {
             brand = first
             flavor = words.slice(1).join(' ') || first
@@ -303,18 +361,31 @@ export function parseInvoiceText(rawText: string): ParsedSupplyItem[] {
           flavor: flavor.slice(0, 80),
           name: `${brand}${line ? ' ' + line : ''} ${flavor}`.trim(),
           packGrams,
-          quantity: qtyResult.quantity,
+          quantity,
           unit: 'шт',
+          rawText: block.text,
+        })
+      } else if (block.text.length > 5) {
+        // Не распознали полностью — добавим как "сырой" табак для LLM
+        items.push({
+          itemType: 'TOBACCO',
+          brand: brand || '',
+          line: '',
+          flavor: '',
+          name: cleanText(block.text).slice(0, 100) || `Позиция ${block.number}`,
+          packGrams: null,
+          quantity,
+          unit: 'шт',
+          rawText: block.text,
         })
       }
     } else {
       // Расходник
-      const cleaned = cleanName(text)
+      const cleaned = cleanText(text)
       const unit = detectUnit(text)
-      // packGrams для угля 1кг → 1000
       let packGrams: number | null = null
       const gramsFound = extractPackGrams(text)
-      if (gramsFound && (unit === 'шт')) {
+      if (gramsFound && unit === 'шт') {
         packGrams = gramsFound.grams
       }
 
@@ -326,8 +397,9 @@ export function parseInvoiceText(rawText: string): ParsedSupplyItem[] {
           flavor: '',
           name: cleaned,
           packGrams,
-          quantity: qtyResult.quantity,
-          unit: unit === 'шт' && packGrams ? 'кг' : unit,
+          quantity,
+          unit: packGrams ? 'кг' : unit,
+          rawText: block.text,
         })
       }
     }

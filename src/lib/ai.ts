@@ -713,6 +713,86 @@ export async function processMasterMessage(
 }
 
 // ───────────────────────────────────────────
+// LLM-дошлифовка распознавания накладной
+// Используется как fallback для позиций, которые не смог распознать regex-парсер.
+// ───────────────────────────────────────────
+export interface LLMParsedItem {
+  itemType: 'TOBACCO' | 'CONSUMABLE'
+  brand: string
+  line: string
+  flavor: string
+  name: string
+  packGrams: number | null
+  quantity: number
+  unit: string
+}
+
+export async function parseInvoiceWithLLM(
+  rawItems: Array<{ rawText: string; index: number }>,
+): Promise<Array<{ index: number; item: LLMParsedItem }>> {
+  if (rawItems.length === 0) return []
+
+  const prompt = `Ты распознаёшь позиции из накладной на кальянный табак и расходники.
+Для каждой позиции верни JSON с полями: brand, line (если есть), flavor (вкус), name (полное название), packGrams (вес в граммах одной банки, число), quantity (количество, число), unit (шт/кг), itemType ("TOBACCO" для табака, "CONSUMABLE" для угля/колб/тросника/фольги и т.п.).
+
+ВАЖНО:
+- Если в тексте есть "с ароматом X" — X это flavor
+- Если есть бренд (Darkside, BLACKBURN, DEUS, JENT, SEBERO, OVERDOSE, Сарма, НАШ, Burn, Tangiers, Musthave, Daily Hookah, Coyote, Element, North, Brava, Adalia, Sapo, Duotto, Vini, Nakhla, Argelini, Fasil, Serbetli) — это brand
+- "Классическая линейка" / "Сигарная линейка" → line: "Классическая" / "Сигарная"
+- "100 г", "200г", "1кг" → packGrams (1кг = 1000)
+- "N шт" → quantity = N
+- Цены и суммы ИГНОРИРУЕМ
+- Если это расходник (уголь, колба, мундштук, фольга, чаша, тросник) — itemType: "CONSUMABLE"
+
+Верни СТРОГО JSON-массив без markdown, по одному объекту на каждую позицию в порядке получения. Порядок объектов должен совпадать с порядком входных позиций.`
+
+  const itemsBlock = rawItems
+    .map((r) => `[${r.index + 1}] ${r.rawText}`)
+    .join('\n')
+
+  const userContent = `${prompt}\n\nПОЗИЦИИ ИЗ НАКЛАДНОЙ:\n${itemsBlock}\n\nВерни JSON-массив.`
+
+  try {
+    const content = await hfChat(
+      [
+        { role: 'system', content: 'Ты полезный ассистент, который парсит накладные. Отвечаешь только JSON.' },
+        { role: 'user', content: userContent },
+      ],
+      { maxTokens: 4000 },
+    )
+
+    // Извлекаем JSON-массив из ответа
+    let cleaned = content.trim()
+    const jsonMatch = cleaned.match(/\[[\s\S]*\]/)
+    if (jsonMatch) cleaned = jsonMatch[0]
+
+    const parsed = JSON.parse(cleaned)
+    if (!Array.isArray(parsed)) return []
+
+    return parsed
+      .map((item: unknown, idx: number) => {
+        const i = item as Record<string, unknown>
+        if (!i || typeof i !== 'object') return null
+        const result: LLMParsedItem = {
+          itemType: i.itemType === 'CONSUMABLE' ? 'CONSUMABLE' : 'TOBACCO',
+          brand: typeof i.brand === 'string' ? i.brand.trim() : '',
+          line: typeof i.line === 'string' ? i.line.trim() : '',
+          flavor: typeof i.flavor === 'string' ? i.flavor.trim() : '',
+          name: typeof i.name === 'string' ? i.name.trim() : '',
+          packGrams: typeof i.packGrams === 'number' ? i.packGrams : null,
+          quantity: typeof i.quantity === 'number' && i.quantity > 0 ? i.quantity : 1,
+          unit: typeof i.unit === 'string' && i.unit.trim() ? i.unit.trim() : 'шт',
+        }
+        return { index: idx, item: result }
+      })
+      .filter((x): x is { index: number; item: LLMParsedItem } => x !== null)
+  } catch (e) {
+    console.error('LLM parse error:', (e as Error).message)
+    return []
+  }
+}
+
+// ───────────────────────────────────────────
 // Транскрипция голоса через Groq Whisper
 // ───────────────────────────────────────────
 export async function transcribeAudio(audioBase64: string): Promise<string> {

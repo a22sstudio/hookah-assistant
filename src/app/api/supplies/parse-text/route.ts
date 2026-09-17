@@ -1,21 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentMaster } from '@/lib/auth'
 import { parseInvoiceText, ParsedSupplyItem } from '@/lib/invoice-parser'
+import { parseInvoiceWithLLM } from '@/lib/ai'
 import { db } from '@/lib/db'
 
 // POST /api/supplies/parse-text
-// body: { text: string }
+// body: { text: string, useLLM?: boolean }
 // → { items: ParsedSupplyItem[], warnings: string[] }
 //
-// Regex-парсер (без ИИ, мгновенно, 100% офлайн) + fuzzy-мэтч с базой табаков/расходников.
-// Если позиция совпала с существующей — проставляем itemId, isMatch=true.
-// Если нет — isNovelty=true (новинка, будет создана при приёмке поставки).
+// 1) Regex-парсер (мгновенно, офлайн) — основные позиции.
+// 2) LLM-дошлифовка (опционально, через OpenRouter) — для позиций,
+//    где regex не нашёл brand+flavor.
 export async function POST(req: NextRequest) {
   const me = await getCurrentMaster()
   if (!me) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
 
   const body = await req.json()
   const text = typeof body.text === 'string' ? body.text : ''
+  const useLLM = body.useLLM !== false // по умолчанию включён
 
   if (!text.trim()) {
     return NextResponse.json({ error: 'Пустой текст' }, { status: 400 })
@@ -49,11 +51,9 @@ export async function POST(req: NextRequest) {
     }),
   ])
 
-  // Normalize для сравнения: upper + trim + collapse spaces
   const norm = (s: string): string =>
     (s || '').toUpperCase().replace(/\s+/g, ' ').trim()
 
-  // Для табака сравниваем brand+line+flavor
   const findTobaccoMatch = (item: ParsedSupplyItem) => {
     const brandN = norm(item.brand)
     const lineN = norm(item.line)
@@ -73,15 +73,14 @@ export async function POST(req: NextRequest) {
     match = allTobaccos.find((t) => {
       return norm(t.brand) === brandN
         && norm(t.flavor) === flavorN
-        && (!t.line || !lineN)  // у одного из них line пустой
+        && (!t.line || !lineN)
     })
     if (match) return match
 
-    // 3) Только brand совпадает, flavor похожий (содержит или содержится)
+    // 3) Brand совпадает, flavor содержит или содержится
     match = allTobaccos.find((t) => {
       if (norm(t.brand) !== brandN) return false
       const tFlavor = norm(t.flavor)
-      // если flavor полностью содержит или содержится в t.flavor
       return tFlavor && (tFlavor.includes(flavorN) || flavorN.includes(tFlavor))
     })
     if (match) return match
@@ -89,16 +88,13 @@ export async function POST(req: NextRequest) {
     return null
   }
 
-  // Для расходника: точное совпадение по имени
   const findConsumableMatch = (item: ParsedSupplyItem) => {
     const nameN = norm(item.name)
     if (!nameN) return null
 
-    // 1) Точное совпадение
     let match = allConsumables.find((c) => norm(c.name) === nameN)
     if (match) return match
 
-    // 2) One is substring of the other
     match = allConsumables.find((c) => {
       const cName = norm(c.name)
       return cName && (cName.includes(nameN) || nameN.includes(cName))
@@ -108,7 +104,7 @@ export async function POST(req: NextRequest) {
     return null
   }
 
-  const enriched: ParsedSupplyItem[] = parsed.map((item) => {
+  let enriched: ParsedSupplyItem[] = parsed.map((item) => {
     if (item.itemType === 'TOBACCO') {
       const match = findTobaccoMatch(item)
       if (match) {
@@ -117,15 +113,12 @@ export async function POST(req: NextRequest) {
           itemId: match.id,
           isMatch: true,
           isNovelty: false,
-          // Подставляем packGrams из базы если не извлекли из текста
           packGrams: item.packGrams ?? match.defaultJarGrams,
         }
       }
-      // Не найден в базе — новинка
       return { ...item, itemId: null, isMatch: false, isNovelty: true }
     }
 
-    // Расходник
     const match = findConsumableMatch(item)
     if (match) {
       return {
@@ -137,6 +130,77 @@ export async function POST(req: NextRequest) {
     }
     return { ...item, itemId: null, isMatch: false, isNovelty: true }
   })
+
+  // ─── Слой 3: LLM-дошлифовка для проблемных позиций ───
+  // Отправляем в LLM только позиции, где brand ИЛИ flavor пустые, либо распознаны плохо.
+  const problemItems = enriched
+    .map((item, idx) => ({ item, idx }))
+    .filter(({ item }) => {
+      if (item.itemType !== 'TOBACCO') return false
+      // нет brand или нет flavor → не распознан полностью
+      return !item.brand || !item.flavor || item.flavor.length < 2
+    })
+
+  if (useLLM && problemItems.length > 0) {
+    try {
+      const llmResults = await parseInvoiceWithLLM(
+        problemItems.map(({ item }) => ({
+          rawText: item.rawText || item.name,
+          index: 0,
+        })),
+      )
+
+      // Применяем LLM-результаты: заменяем проблемные позиции
+      problemItems.forEach(({ item, idx }, i) => {
+        const llmItem = llmResults[i]?.item
+        if (llmItem && (llmItem.brand || llmItem.flavor || llmItem.name)) {
+          // Заменяем позицию данными от LLM, сохраняя quantity если LLM не дал
+          const merged: ParsedSupplyItem = {
+            ...item,
+            itemType: llmItem.itemType,
+            brand: llmItem.brand || item.brand,
+            line: llmItem.line || item.line,
+            flavor: llmItem.flavor || item.flavor,
+            name: llmItem.name || item.name,
+            packGrams: llmItem.packGrams ?? item.packGrams,
+            quantity: llmItem.quantity || item.quantity,
+            unit: llmItem.unit || item.unit,
+          }
+
+          // Повторно ищем матч с базой для LLM-результата
+          if (merged.itemType === 'TOBACCO') {
+            const match = findTobaccoMatch(merged)
+            if (match) {
+              merged.itemId = match.id
+              merged.isMatch = true
+              merged.isNovelty = false
+              merged.packGrams = merged.packGrams ?? match.defaultJarGrams
+            } else {
+              merged.itemId = null
+              merged.isMatch = false
+              merged.isNovelty = true
+            }
+          } else {
+            const match = findConsumableMatch(merged)
+            if (match) {
+              merged.itemId = match.id
+              merged.isMatch = true
+              merged.isNovelty = false
+            } else {
+              merged.itemId = null
+              merged.isMatch = false
+              merged.isNovelty = true
+            }
+          }
+
+          enriched[idx] = merged
+        }
+      })
+    } catch (e) {
+      console.error('LLM fallback error:', (e as Error).message)
+      // Не падаем — возвращаем что есть
+    }
+  }
 
   const warnings: string[] = []
   const noveltyCount = enriched.filter((i) => i.isNovelty).length
@@ -163,6 +227,7 @@ export async function POST(req: NextRequest) {
     count: enriched.length,
     matchedCount: enriched.filter((i) => i.isMatch).length,
     noveltyCount,
+    llmUsed: useLLM && problemItems.length > 0,
     warnings,
   })
 }

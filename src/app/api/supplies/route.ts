@@ -47,7 +47,6 @@ export async function GET(req: NextRequest) {
       receivedAt: s.receivedAt,
       itemsCount: s.items.length,
       totalQuantity: s.items.reduce((sum, it) => sum + it.quantity, 0),
-      totalSum: s.items.reduce((sum, it) => sum + (it.price ?? 0) * it.quantity, 0),
       items: s.items.map((it) => ({
         id: it.id,
         itemType: it.itemType,
@@ -59,7 +58,6 @@ export async function GET(req: NextRequest) {
         packGrams: it.packGrams,
         quantity: it.quantity,
         unit: it.unit,
-        price: it.price,
       })),
     })),
     total: supplies.length,

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -48,6 +48,7 @@ import {
   AlertTriangle,
   X,
   Sparkles,
+  Check,
 } from 'lucide-react'
 
 interface SupplyItem {
@@ -63,6 +64,7 @@ interface SupplyItem {
   unit: string
   isNovelty?: boolean
   isMatch?: boolean
+  rawText?: string
 }
 
 interface Supply {
@@ -133,33 +135,31 @@ function emptyItem(itemType: 'TOBACCO' | 'CONSUMABLE' = 'TOBACCO'): SupplyItem {
   }
 }
 
+// Нормализуем для case-insensitive сравнения
+const norm = (s: string): string => (s || '').toUpperCase().replace(/\s+/g, ' ').trim()
+
 export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
   const [supplies, setSupplies] = useState<Supply[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'ALL' | 'DRAFT' | 'RECEIVED'>('ALL')
 
-  // Справочники
   const [tobaccos, setTobaccos] = useState<Tobacco[]>([])
   const [consumables, setConsumables] = useState<Consumable[]>([])
 
-  // ─── Модалка создания ───
   const [createOpen, setCreateOpen] = useState(false)
   const [mode, setMode] = useState<'MANUAL' | 'AI'>('MANUAL')
   const [items, setItems] = useState<SupplyItem[]>([emptyItem()])
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
 
-  // ─── Модалка AI-парсера ───
   const [aiText, setAiText] = useState('')
   const [parsing, setParsing] = useState(false)
   const [warnings, setWarnings] = useState<string[]>([])
 
-  // ─── Модалка редактирования ───
   const [editSupply, setEditSupply] = useState<Supply | null>(null)
   const [editItems, setEditItems] = useState<SupplyItem[]>([])
   const [editSaving, setEditSaving] = useState(false)
 
-  // ─── Принятие ───
   const [receivingId, setReceivingId] = useState<string | null>(null)
   const [receiveResult, setReceiveResult] = useState<
     Array<{ name: string; ok: boolean; message: string; type: string }> | null
@@ -169,11 +169,11 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
     setLoading(true)
     try {
       const res = await fetch(`/api/supplies?status=${filter !== 'ALL' ? filter : ''}`)
-      if (!res.ok) throw new Error('Не удалось получить поставки')
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
       setSupplies(data.supplies ?? [])
     } catch (e) {
-      toast.error((e as Error).message)
+      toast.error('Не удалось получить поставки: ' + (e as Error).message)
     } finally {
       setLoading(false)
     }
@@ -194,7 +194,7 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
         setConsumables(d.consumables ?? [])
       }
     } catch {
-      // silent
+      // silent — каталоги не критичны для отображения
     }
   }, [])
 
@@ -206,7 +206,6 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
     fetchCatalogs()
   }, [fetchCatalogs, refreshKey])
 
-  // ─── Создание поставки ───
   const resetForm = () => {
     setItems([emptyItem()])
     setNote('')
@@ -220,16 +219,37 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
       toast.error('Добавьте хотя бы одну позицию')
       return
     }
+    // Проверим что все валидны
+    const invalidCount = items.filter((it) => {
+      if (it.itemType === 'TOBACCO') return !it.brand || !it.flavor
+      return !it.name
+    }).length
+    if (invalidCount > 0) {
+      toast.error(`Заполните brand+flavor у ${invalidCount} поз. табака или имя расходника`)
+      return
+    }
     setSaving(true)
     try {
+      // Чистим items — убираем rawText и isMatch/isNovelty (не нужны в БД)
+      const cleanItems = items.map((it) => ({
+        itemType: it.itemType,
+        itemId: it.itemId ?? null,
+        brand: it.brand ?? null,
+        line: it.line ?? null,
+        flavor: it.flavor ?? null,
+        name: it.name,
+        packGrams: it.packGrams ?? null,
+        quantity: it.quantity,
+        unit: it.unit,
+      }))
       const res = await fetch('/api/supplies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ note, items }),
+        body: JSON.stringify({ note, items: cleanItems }),
       })
       if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || 'Ошибка создания')
+        const err = await res.json().catch(() => ({ error: 'Неизвестная ошибка' }))
+        throw new Error(err.error || `HTTP ${res.status}`)
       }
       toast.success('Поставка создана')
       setCreateOpen(false)
@@ -243,7 +263,6 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
     }
   }
 
-  // ─── AI парсинг текста ───
   const handleParseText = async () => {
     if (!aiText.trim()) {
       toast.error('Вставьте текст накладной')
@@ -255,19 +274,21 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
       const res = await fetch('/api/supplies/parse-text', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: aiText }),
+        body: JSON.stringify({ text: aiText, useLLM: true }),
       })
       if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || 'Ошибка парсинга')
+        const err = await res.json().catch(() => ({ error: 'Неизвестная ошибка' }))
+        throw new Error(err.error || `HTTP ${res.status}`)
       }
       const data = await res.json()
       if (data.items && data.items.length > 0) {
         setItems(data.items)
         setWarnings(data.warnings ?? [])
-        toast.success(`Распознано ${data.items.length} позиций`)
+        toast.success(
+          `Распознано ${data.items.length} поз. (${data.matchedCount} на складе, ${data.noveltyCount} новых)`,
+        )
       } else {
-        toast.error('Не удалось распознать позиции. Попробуйте вручную.')
+        toast.error('Не удалось распознать позиции')
       }
     } catch (e) {
       toast.error((e as Error).message)
@@ -276,7 +297,6 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
     }
   }
 
-  // ─── Редактирование ───
   const openEdit = (s: Supply) => {
     setEditSupply(s)
     setEditItems(s.items.map((it) => ({ ...it })))
@@ -290,14 +310,25 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
     }
     setEditSaving(true)
     try {
+      const cleanItems = editItems.map((it) => ({
+        itemType: it.itemType,
+        itemId: it.itemId ?? null,
+        brand: it.brand ?? null,
+        line: it.line ?? null,
+        flavor: it.flavor ?? null,
+        name: it.name,
+        packGrams: it.packGrams ?? null,
+        quantity: it.quantity,
+        unit: it.unit,
+      }))
       const res = await fetch('/api/supplies', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: editSupply.id, items: editItems }),
+        body: JSON.stringify({ id: editSupply.id, items: cleanItems }),
       })
       if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || 'Ошибка обновления')
+        const err = await res.json().catch(() => ({ error: 'Ошибка' }))
+        throw new Error(err.error || `HTTP ${res.status}`)
       }
       toast.success('Поставка обновлена')
       setEditSupply(null)
@@ -310,15 +341,14 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
     }
   }
 
-  // ─── Принятие поставки ───
   const handleReceive = async (s: Supply) => {
     setReceivingId(s.id)
     setReceiveResult(null)
     try {
       const res = await fetch(`/api/supplies/receive?id=${s.id}`, { method: 'POST' })
       if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || 'Ошибка приёмки')
+        const err = await res.json().catch(() => ({ error: 'Ошибка' }))
+        throw new Error(err.error || `HTTP ${res.status}`)
       }
       const data = await res.json()
       setReceiveResult(data.results)
@@ -336,8 +366,8 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
     try {
       const res = await fetch(`/api/supplies?id=${id}`, { method: 'DELETE' })
       if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || 'Ошибка удаления')
+        const err = await res.json().catch(() => ({ error: 'Ошибка' }))
+        throw new Error(err.error || `HTTP ${res.status}`)
       }
       toast.success('Поставка удалена')
       fetchSupplies()
@@ -395,7 +425,6 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
                 <DialogTitle className="label-mono">Новая поставка</DialogTitle>
               </DialogHeader>
 
-              {/* Режим: Ручной / ИИ */}
               <div className="flex gap-2 border-b border-border pb-3 shrink-0">
                 <Button
                   variant={mode === 'MANUAL' ? 'default' : 'outline'}
@@ -415,7 +444,6 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
                 </Button>
               </div>
 
-              {/* Скроллируемая область */}
               <div className="flex-1 min-h-0 overflow-y-auto pr-1 -mr-1 space-y-3">
                 {mode === 'AI' && (
                   <div className="space-y-3 pb-2">
@@ -435,7 +463,7 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
                         ) : (
                           <Wand2 className="h-4 w-4" />
                         )}
-                        Распознать
+                        Распознать {parsing && '(ИИ думает...)'}
                       </Button>
                       <Button
                         variant="outline"
@@ -482,12 +510,17 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
                         ))}
                       </div>
                     )}
-                    {items.length > 0 && (
+                    {items.length > 0 && mode === 'AI' && (
                       <div className="rounded-md border border-border p-2 bg-muted/30">
-                        <p className="text-xs text-muted-foreground px-1 pb-2">
-                          Распознано {items.length} позиций — проверьте и при необходимости
-                          поправьте ниже:
-                        </p>
+                        <div className="flex items-center justify-between px-1 pb-2">
+                          <p className="text-xs text-muted-foreground">
+                            Распознано {items.length} позиций — проверьте и поправьте:
+                          </p>
+                          <Badge variant="outline" className="label-mono-sm text-[10px]">
+                            {items.filter((i) => i.isMatch).length} на складе ·{' '}
+                            {items.filter((i) => i.isNovelty).length} новых
+                          </Badge>
+                        </div>
                         <ItemsEditor
                           items={items}
                           setItems={setItems}
@@ -614,7 +647,6 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
                 </div>
               </div>
 
-              {/* Раскрывающийся список позиций */}
               <SupplyItemsList items={s.items} />
             </div>
           ))}
@@ -752,8 +784,6 @@ function SupplyItemsList({ items }: { items: SupplyItem[] }) {
 }
 
 // ─── Редактор позиций: структурированный ввод ───
-// Табак: brand select (с опцией "новый") → flavor select (для выбранного бренда)
-// Расходник: select из существующих + опция "новый"
 function ItemsEditor({
   items,
   setItems,
@@ -775,17 +805,15 @@ function ItemsEditor({
     setItems((prev) => [...prev, emptyItem(itemType)])
   }
 
-  // Существующие бренды (отсортированы)
-  const brands = useMemo(() => {
-    const set = new Set<string>()
-    for (const t of tobaccos) if (t.active) set.add(t.brand)
-    return Array.from(set).sort()
-  }, [tobaccos])
+  // Существующие бренды (case-insensitive, отсортированы)
+  const brands = Array.from(
+    new Set(tobaccos.filter((t) => t.active).map((t) => t.brand)),
+  ).sort()
 
   // Для расходников: имена
-  const consumableNames = useMemo(() => {
-    return consumables.filter((c) => c.active).map((c) => ({ id: c.id, name: c.name, unit: c.unit }))
-  }, [consumables])
+  const consumableNames = consumables
+    .filter((c) => c.active)
+    .map((c) => ({ id: c.id, name: c.name, unit: c.unit }))
 
   if (items.length === 0) {
     return (
@@ -798,14 +826,16 @@ function ItemsEditor({
   return (
     <div className="space-y-2">
       {items.map((it, idx) => {
-        // Определяем isSelected/isNovelty
         const isNovelty = it.isNovelty === true
         const isMatch = it.isMatch === true
 
-        // Найти вкусы для текущего бренда (без useMemo — расчёт маленький)
+        // Найти вкусы для текущего бренда (case-insensitive)
         const flavorsForBrand = it.brand
-          ? tobaccos.filter((t) => t.active && t.brand === it.brand)
+          ? tobaccos.filter((t) => t.active && norm(t.brand) === norm(it.brand!))
           : []
+
+        // Является ли бренд существующим в базе (case-insensitive)
+        const brandExistsInBase = it.brand && brands.some((b) => norm(b) === norm(it.brand!))
 
         return (
           <div
@@ -820,7 +850,7 @@ function ItemsEditor({
                     : 'border-border bg-muted/30'
             }`}
           >
-            {/* Шапка строки: тип + бейджи + кнопка удаления */}
+            {/* Шапка строки */}
             <div className="flex items-center gap-2 mb-2">
               <Select
                 value={it.itemType}
@@ -837,7 +867,7 @@ function ItemsEditor({
 
               {isMatch && (
                 <Badge variant="outline" className="label-mono-sm text-[10px] py-0 border-emerald-500/40 text-emerald-600 bg-emerald-500/10">
-                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                  <Check className="h-3 w-3 mr-1" />
                   На складе
                 </Badge>
               )}
@@ -865,6 +895,7 @@ function ItemsEditor({
                 item={it}
                 brands={brands}
                 flavorsForBrand={flavorsForBrand}
+                brandExistsInBase={!!brandExistsInBase}
                 update={(patch) => update(idx, patch)}
               />
             ) : (
@@ -897,20 +928,19 @@ function TobaccoItemEditor({
   item,
   brands,
   flavorsForBrand,
+  brandExistsInBase,
   update,
 }: {
   item: SupplyItem
   brands: string[]
   flavorsForBrand: Tobacco[]
+  brandExistsInBase: boolean
   update: (patch: Partial<SupplyItem>) => void
 }) {
-  // 3 режима brand: 
-  //   - itemId есть → существующий табак выбран (brand из select)
-  //   - itemId=null + brand в списке brands → существующий, но конкретный вкус не выбран
-  //   - itemId=null + brand НЕ в списке → новый бренд
-  const isNewBrand = !!item.brand && !brands.includes(item.brand)
+  // Если brand не в базе (или пустой) — показываем как "новый бренд"
+  const isNewBrand = !!item.brand && !brandExistsInBase
 
-  const onBrandChange = (value: string) => {
+  const onBrandSelect = (value: string) => {
     if (value === '__new__') {
       update({
         brand: '',
@@ -921,40 +951,50 @@ function TobaccoItemEditor({
         isNovelty: true,
       })
     } else {
-      // Выбрали существующий бренд — сбрасываем вкус, пусть выберет из списка
+      // Выбрали существующий бренд — сбрасываем вкус
       update({
         brand: value,
         line: '',
         flavor: '',
         itemId: null,
         isMatch: false,
-        isNovelty: false, // покажется Novlety только если вкус не выбран из списка при сохранении
-      })
-    }
-  }
-
-  const onFlavorChange = (tobaccoId: string) => {
-    const t = flavorsForBrand.find((x) => x.id === tobaccoId)
-    if (t) {
-      update({
-        itemId: t.id,
-        brand: t.brand,
-        line: t.line,
-        flavor: t.flavor,
-        packGrams: item.packGrams ?? t.defaultJarGrams,
-        isMatch: true,
         isNovelty: false,
       })
     }
   }
 
+  const onFlavorSelect = (value: string) => {
+    if (value === '__custom__') {
+      // Выбрали "новый вкус" — оставляем flavor пустым для ввода
+      update({
+        flavor: '',
+        itemId: null,
+        isMatch: false,
+        isNovelty: true,
+      })
+    } else {
+      const t = flavorsForBrand.find((x) => x.id === value)
+      if (t) {
+        update({
+          itemId: t.id,
+          brand: t.brand,  // на случай если был кейс-несовпадение
+          line: t.line,
+          flavor: t.flavor,
+          packGrams: item.packGrams ?? t.defaultJarGrams,
+          isMatch: true,
+          isNovelty: false,
+        })
+      }
+    }
+  }
+
   return (
     <div className="space-y-2">
-      {/* Бренд: select из существующих + "новый" */}
+      {/* Бренд + Вкус */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
         <div>
           <Label className="text-[10px] text-muted-foreground label-mono-sm">Бренд</Label>
-          {isNewBrand ? (
+          {isNewBrand && (
             <Input
               placeholder="Новый бренд"
               value={item.brand ?? ''}
@@ -966,12 +1006,12 @@ function TobaccoItemEditor({
                   isNovelty: true,
                 })
               }
-              className="h-8 text-xs"
+              className="h-8 text-xs mb-1"
             />
-          ) : null}
+          )}
           <Select
-            value={isNewBrand ? '__new__' : (item.brand || '__new__')}
-            onValueChange={onBrandChange}
+            value={isNewBrand || !item.brand ? '__new__' : item.brand}
+            onValueChange={onBrandSelect}
           >
             <SelectTrigger className="h-8 text-xs">
               <SelectValue placeholder="Выберите бренд" />
@@ -985,13 +1025,12 @@ function TobaccoItemEditor({
           </Select>
         </div>
 
-        {/* Линейка / вкус */}
         <div>
           <Label className="text-[10px] text-muted-foreground label-mono-sm">Линейка / вкус</Label>
-          {!isNewBrand && flavorsForBrand.length > 0 ? (
+          {brandExistsInBase && flavorsForBrand.length > 0 ? (
             <Select
-              value={(item.itemId && flavorsForBrand.some((t) => t.id === item.itemId)) ? item.itemId : '__custom__'}
-              onValueChange={onFlavorChange}
+              value={item.itemId && flavorsForBrand.some((t) => t.id === item.itemId) ? item.itemId : '__custom__'}
+              onValueChange={onFlavorSelect}
             >
               <SelectTrigger className="h-8 text-xs">
                 <SelectValue placeholder="Выберите вкус" />
@@ -1007,14 +1046,14 @@ function TobaccoItemEditor({
             </Select>
           ) : (
             <Input
-              placeholder={isNewBrand ? 'Вкус" напр. Бархатный персик' : 'Сначала выберите бренд'}
+              placeholder="Вкус, напр. Бархатный персик"
               value={item.flavor ?? ''}
               onChange={(e) =>
                 update({
                   flavor: e.target.value,
                   itemId: null,
                   isMatch: false,
-                  isNovelty: !!item.brand,
+                  isNovelty: true,
                 })
               }
               className="h-8 text-xs"
@@ -1024,12 +1063,12 @@ function TobaccoItemEditor({
       </div>
 
       {/* Если выбран "новый вкус" для существующего бренда — показываем поле */}
-      {!isNewBrand && flavorsForBrand.length > 0 && item.itemId === null && item.flavor && !flavorsForBrand.some((t) => t.id === item.itemId) && (
+      {brandExistsInBase && flavorsForBrand.length > 0 && item.itemId === null && !item.isMatch && (
         <div>
           <Label className="text-[10px] text-muted-foreground label-mono-sm">Новый вкус (нет на складе)</Label>
           <Input
             placeholder="Например: Бархатный персик"
-            value={item.flavor}
+            value={item.flavor ?? ''}
             onChange={(e) =>
               update({
                 flavor: e.target.value,
@@ -1043,7 +1082,7 @@ function TobaccoItemEditor({
         </div>
       )}
 
-      {/* Линейка (опционально) + Вес + Кол-во */}
+      {/* Линейка + Вес + Кол-во + Ед. */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
         <div>
           <Label className="text-[10px] text-muted-foreground label-mono-sm">Линейка (опц.)</Label>
@@ -1098,9 +1137,9 @@ function ConsumableItemEditor({
   consumableNames: Array<{ id: string; name: string; unit: string }>
   update: (patch: Partial<SupplyItem>) => void
 }) {
-  const isNewName = !!item.name && !consumableNames.some((c) => c.name === item.name)
+  const isNewName = !!item.name && !consumableNames.some((c) => norm(c.name) === norm(item.name!))
 
-  const onConsumableChange = (value: string) => {
+  const onConsumableSelect = (value: string) => {
     if (value === '__new__') {
       update({
         name: '',
@@ -1138,12 +1177,12 @@ function ConsumableItemEditor({
                 isNovelty: true,
               })
             }
-            className="h-8 text-xs"
+            className="h-8 text-xs mb-1"
           />
         )}
         <Select
-          value={isNewName ? '__new__' : (item.itemId || '__new__')}
-          onValueChange={onConsumableChange}
+          value={isNewName || !item.itemId ? '__new__' : item.itemId}
+          onValueChange={onConsumableSelect}
         >
           <SelectTrigger className="h-8 text-xs">
             <SelectValue placeholder="Выберите расходник" />
