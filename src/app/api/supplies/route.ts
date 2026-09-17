@@ -95,19 +95,27 @@ export async function POST(req: NextRequest) {
           packGrams?: number | null
           quantity?: number
           unit?: string
-          price?: number | null
-        }) => ({
-          itemType: it.itemType === 'CONSUMABLE' ? 'CONSUMABLE' : 'TOBACCO',
-          itemId: it.itemId ?? null,
-          brand: it.brand ?? null,
-          line: it.line ?? null,
-          flavor: it.flavor ?? null,
-          name: typeof it.name === 'string' && it.name.trim() ? it.name.trim() : 'Без названия',
-          packGrams: typeof it.packGrams === 'number' ? it.packGrams : null,
-          quantity: typeof it.quantity === 'number' && it.quantity > 0 ? it.quantity : 1,
-          unit: typeof it.unit === 'string' && it.unit.trim() ? it.unit.trim() : 'шт',
-          price: typeof it.price === 'number' && it.price >= 0 ? it.price : null,
-        })),
+        }) => {
+          const itemType = it.itemType === 'CONSUMABLE' ? 'CONSUMABLE' : 'TOBACCO'
+          // Для табака генерируем name из brand/line/flavor если он пустой
+          let name = typeof it.name === 'string' && it.name.trim() ? it.name.trim() : ''
+          if (!name && itemType === 'TOBACCO') {
+            name = [it.brand, it.line, it.flavor].filter(Boolean).join(' ') || 'Без названия'
+          } else if (!name) {
+            name = 'Без названия'
+          }
+          return {
+            itemType,
+            itemId: it.itemId ?? null,
+            brand: it.brand ?? null,
+            line: it.line ?? null,
+            flavor: it.flavor ?? null,
+            name,
+            packGrams: typeof it.packGrams === 'number' ? it.packGrams : null,
+            quantity: typeof it.quantity === 'number' && it.quantity > 0 ? it.quantity : 1,
+            unit: typeof it.unit === 'string' && it.unit.trim() ? it.unit.trim() : 'шт',
+          }
+        }),
       },
     },
     include: { items: true },
@@ -175,20 +183,27 @@ export async function PATCH(req: NextRequest) {
           packGrams?: number | null
           quantity?: number
           unit?: string
-          price?: number | null
-        }) => ({
-          supplyId: id,
-          itemType: it.itemType === 'CONSUMABLE' ? 'CONSUMABLE' : 'TOBACCO',
-          itemId: it.itemId ?? null,
-          brand: it.brand ?? null,
-          line: it.line ?? null,
-          flavor: it.flavor ?? null,
-          name: typeof it.name === 'string' && it.name.trim() ? it.name.trim() : 'Без названия',
-          packGrams: typeof it.packGrams === 'number' ? it.packGrams : null,
-          quantity: typeof it.quantity === 'number' && it.quantity > 0 ? it.quantity : 1,
-          unit: typeof it.unit === 'string' && it.unit.trim() ? it.unit.trim() : 'шт',
-          price: typeof it.price === 'number' && it.price >= 0 ? it.price : null,
-        })),
+        }) => {
+          const itemType = it.itemType === 'CONSUMABLE' ? 'CONSUMABLE' : 'TOBACCO'
+          let name = typeof it.name === 'string' && it.name.trim() ? it.name.trim() : ''
+          if (!name && itemType === 'TOBACCO') {
+            name = [it.brand, it.line, it.flavor].filter(Boolean).join(' ') || 'Без названия'
+          } else if (!name) {
+            name = 'Без названия'
+          }
+          return {
+            supplyId: id,
+            itemType,
+            itemId: it.itemId ?? null,
+            brand: it.brand ?? null,
+            line: it.line ?? null,
+            flavor: it.flavor ?? null,
+            name,
+            packGrams: typeof it.packGrams === 'number' ? it.packGrams : null,
+            quantity: typeof it.quantity === 'number' && it.quantity > 0 ? it.quantity : 1,
+            unit: typeof it.unit === 'string' && it.unit.trim() ? it.unit.trim() : 'шт',
+          }
+        }),
       })
     }
 

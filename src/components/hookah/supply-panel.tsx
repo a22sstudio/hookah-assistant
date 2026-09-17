@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -32,7 +32,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { toast } from 'sonner'
 import {
   Package,
@@ -48,6 +47,7 @@ import {
   RefreshCw,
   AlertTriangle,
   X,
+  Sparkles,
 } from 'lucide-react'
 
 interface SupplyItem {
@@ -61,6 +61,8 @@ interface SupplyItem {
   packGrams?: number | null
   quantity: number
   unit: string
+  isNovelty?: boolean
+  isMatch?: boolean
 }
 
 interface Supply {
@@ -72,6 +74,22 @@ interface Supply {
   itemsCount: number
   totalQuantity: number
   items: SupplyItem[]
+}
+
+interface Tobacco {
+  id: string
+  brand: string
+  line: string
+  flavor: string
+  defaultJarGrams: number
+  active: boolean
+}
+
+interface Consumable {
+  id: string
+  name: string
+  unit: string
+  active: boolean
 }
 
 interface SupplyPanelProps {
@@ -109,6 +127,9 @@ function emptyItem(itemType: 'TOBACCO' | 'CONSUMABLE' = 'TOBACCO'): SupplyItem {
     packGrams: null,
     quantity: 1,
     unit: 'шт',
+    itemId: null,
+    isNovelty: false,
+    isMatch: false,
   }
 }
 
@@ -116,6 +137,10 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
   const [supplies, setSupplies] = useState<Supply[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'ALL' | 'DRAFT' | 'RECEIVED'>('ALL')
+
+  // Справочники
+  const [tobaccos, setTobaccos] = useState<Tobacco[]>([])
+  const [consumables, setConsumables] = useState<Consumable[]>([])
 
   // ─── Модалка создания ───
   const [createOpen, setCreateOpen] = useState(false)
@@ -154,9 +179,32 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
     }
   }, [filter])
 
+  const fetchCatalogs = useCallback(async () => {
+    try {
+      const [tobRes, conRes] = await Promise.all([
+        fetch('/api/tobaccos'),
+        fetch('/api/consumables'),
+      ])
+      if (tobRes.ok) {
+        const d = await tobRes.json()
+        setTobaccos(d.tobaccos ?? [])
+      }
+      if (conRes.ok) {
+        const d = await conRes.json()
+        setConsumables(d.consumables ?? [])
+      }
+    } catch {
+      // silent
+    }
+  }, [])
+
   useEffect(() => {
     fetchSupplies()
   }, [fetchSupplies, refreshKey])
+
+  useEffect(() => {
+    fetchCatalogs()
+  }, [fetchCatalogs, refreshKey])
 
   // ─── Создание поставки ───
   const resetForm = () => {
@@ -342,13 +390,13 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
                 <span className="hidden sm:inline">Новая поставка</span>
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-[1000px] w-[95vw] max-h-[92vh] flex flex-col">
-              <DialogHeader>
+            <DialogContent className="max-w-[1000px] w-[95vw] h-[92vh] flex flex-col p-4 sm:p-6 gap-3 overflow-hidden">
+              <DialogHeader className="shrink-0">
                 <DialogTitle className="label-mono">Новая поставка</DialogTitle>
               </DialogHeader>
 
               {/* Режим: Ручной / ИИ */}
-              <div className="flex gap-2 border-b border-border pb-3">
+              <div className="flex gap-2 border-b border-border pb-3 shrink-0">
                 <Button
                   variant={mode === 'MANUAL' ? 'default' : 'outline'}
                   size="sm"
@@ -367,19 +415,20 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
                 </Button>
               </div>
 
-              <ScrollArea className="flex-1 min-h-0 -mx-1 px-1">
+              {/* Скроллируемая область */}
+              <div className="flex-1 min-h-0 overflow-y-auto pr-1 -mr-1 space-y-3">
                 {mode === 'AI' && (
-                  <div className="space-y-3 pb-4">
+                  <div className="space-y-3 pb-2">
                     <div>
                       <Label className="text-xs">Текст накладной (Ctrl+V)</Label>
                       <Textarea
                         value={aiText}
                         onChange={(e) => setAiText(e.target.value)}
                         placeholder="Вставьте сюда текст накладной из PDF/Excel/почты..."
-                        className="font-mono text-xs min-h-[200px] max-h-[300px]"
+                        className="font-mono text-xs min-h-[150px] max-h-[250px]"
                       />
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <Button onClick={handleParseText} disabled={parsing} size="sm">
                         {parsing ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -439,20 +488,28 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
                           Распознано {items.length} позиций — проверьте и при необходимости
                           поправьте ниже:
                         </p>
-                        <ItemsEditor items={items} setItems={setItems} />
+                        <ItemsEditor
+                          items={items}
+                          setItems={setItems}
+                          tobaccos={tobaccos}
+                          consumables={consumables}
+                        />
                       </div>
                     )}
                   </div>
                 )}
 
                 {mode === 'MANUAL' && (
-                  <div className="pb-4">
-                    <ItemsEditor items={items} setItems={setItems} />
-                  </div>
+                  <ItemsEditor
+                    items={items}
+                    setItems={setItems}
+                    tobaccos={tobaccos}
+                    consumables={consumables}
+                  />
                 )}
-              </ScrollArea>
+              </div>
 
-              <DialogFooter className="border-t border-border pt-3">
+              <DialogFooter className="border-t border-border pt-3 shrink-0">
                 <Input
                   placeholder="Заметка к поставке (необязательно)"
                   value={note}
@@ -566,17 +623,22 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
 
       {/* Модалка редактирования */}
       <Dialog open={!!editSupply} onOpenChange={(o) => !o && setEditSupply(null)}>
-        <DialogContent className="max-w-[1000px] w-[95vw] max-h-[92vh] flex flex-col">
-          <DialogHeader>
+        <DialogContent className="max-w-[1000px] w-[95vw] h-[92vh] flex flex-col p-4 sm:p-6 gap-3 overflow-hidden">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="label-mono">
               Редактирование поставки
               {editSupply && ` · ${formatDate(editSupply.createdAt)}`}
             </DialogTitle>
           </DialogHeader>
-          <ScrollArea className="flex-1 min-h-0 -mx-1 px-1">
-            <ItemsEditor items={editItems} setItems={setEditItems} />
-          </ScrollArea>
-          <DialogFooter className="border-t border-border pt-3">
+          <div className="flex-1 min-h-0 overflow-y-auto pr-1 -mr-1">
+            <ItemsEditor
+              items={editItems}
+              setItems={setEditItems}
+              tobaccos={tobaccos}
+              consumables={consumables}
+            />
+          </div>
+          <DialogFooter className="border-t border-border pt-3 shrink-0">
             <Button variant="outline" onClick={() => setEditSupply(null)}>
               Отмена
             </Button>
@@ -590,11 +652,11 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
 
       {/* Модалка с результатом приёмки */}
       <Dialog open={!!receiveResult} onOpenChange={(o) => !o && setReceiveResult(null)}>
-        <DialogContent className="max-w-[600px] w-[95vw] max-h-[80vh] flex flex-col">
-          <DialogHeader>
+        <DialogContent className="max-w-[600px] w-[95vw] h-[80vh] flex flex-col p-4 sm:p-6 gap-3 overflow-hidden">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="label-mono">Результат приёмки</DialogTitle>
           </DialogHeader>
-          <ScrollArea className="flex-1 min-h-0">
+          <div className="flex-1 min-h-0 overflow-y-auto pr-1 -mr-1">
             <div className="space-y-2">
               {receiveResult?.map((r, i) => (
                 <div
@@ -620,8 +682,8 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
                 </div>
               ))}
             </div>
-          </ScrollArea>
-          <DialogFooter>
+          </div>
+          <DialogFooter className="shrink-0">
             <Button onClick={() => setReceiveResult(null)}>Закрыть</Button>
           </DialogFooter>
         </DialogContent>
@@ -689,13 +751,19 @@ function SupplyItemsList({ items }: { items: SupplyItem[] }) {
   )
 }
 
-// ─── Редактор позиций ───
+// ─── Редактор позиций: структурированный ввод ───
+// Табак: brand select (с опцией "новый") → flavor select (для выбранного бренда)
+// Расходник: select из существующих + опция "новый"
 function ItemsEditor({
   items,
   setItems,
+  tobaccos,
+  consumables,
 }: {
   items: SupplyItem[]
   setItems: (updater: (prev: SupplyItem[]) => SupplyItem[]) => void
+  tobaccos: Tobacco[]
+  consumables: Consumable[]
 }) {
   const update = (idx: number, patch: Partial<SupplyItem>) => {
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)))
@@ -707,6 +775,18 @@ function ItemsEditor({
     setItems((prev) => [...prev, emptyItem(itemType)])
   }
 
+  // Существующие бренды (отсортированы)
+  const brands = useMemo(() => {
+    const set = new Set<string>()
+    for (const t of tobaccos) if (t.active) set.add(t.brand)
+    return Array.from(set).sort()
+  }, [tobaccos])
+
+  // Для расходников: имена
+  const consumableNames = useMemo(() => {
+    return consumables.filter((c) => c.active).map((c) => ({ id: c.id, name: c.name, unit: c.unit }))
+  }, [consumables])
+
   if (items.length === 0) {
     return (
       <div className="text-center py-6 text-muted-foreground text-sm">
@@ -717,109 +797,86 @@ function ItemsEditor({
 
   return (
     <div className="space-y-2">
-      {items.map((it, idx) => (
-        <div
-          key={idx}
-          className={`rounded-md border p-2 ${
-            it.itemType === 'TOBACCO'
-              ? 'border-border bg-card'
-              : 'border-border bg-muted/30'
-          }`}
-        >
-          <div className="flex items-start gap-2">
-            <Select
-              value={it.itemType}
-              onValueChange={(v) => update(idx, { itemType: v as 'TOBACCO' | 'CONSUMABLE' })}
-            >
-              <SelectTrigger className="h-8 w-[80px] text-[11px] shrink-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="TOBACCO">Табак</SelectItem>
-                <SelectItem value="CONSUMABLE">Расход.</SelectItem>
-              </SelectContent>
-            </Select>
+      {items.map((it, idx) => {
+        // Определяем isSelected/isNovelty
+        const isNovelty = it.isNovelty === true
+        const isMatch = it.isMatch === true
+
+        // Найти вкусы для текущего бренда (без useMemo — расчёт маленький)
+        const flavorsForBrand = it.brand
+          ? tobaccos.filter((t) => t.active && t.brand === it.brand)
+          : []
+
+        return (
+          <div
+            key={idx}
+            className={`rounded-md border p-2 transition-colors ${
+              isNovelty
+                ? 'border-amber-500/50 bg-amber-500/5 ring-1 ring-amber-500/20'
+                : isMatch
+                  ? 'border-emerald-500/30 bg-emerald-500/5'
+                  : it.itemType === 'TOBACCO'
+                    ? 'border-border bg-card'
+                    : 'border-border bg-muted/30'
+            }`}
+          >
+            {/* Шапка строки: тип + бейджи + кнопка удаления */}
+            <div className="flex items-center gap-2 mb-2">
+              <Select
+                value={it.itemType}
+                onValueChange={(v) => update(idx, { itemType: v as 'TOBACCO' | 'CONSUMABLE' })}
+              >
+                <SelectTrigger className="h-7 w-[80px] text-[11px] shrink-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="TOBACCO">Табак</SelectItem>
+                  <SelectItem value="CONSUMABLE">Расход.</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {isMatch && (
+                <Badge variant="outline" className="label-mono-sm text-[10px] py-0 border-emerald-500/40 text-emerald-600 bg-emerald-500/10">
+                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                  На складе
+                </Badge>
+              )}
+              {isNovelty && (
+                <Badge variant="outline" className="label-mono-sm text-[10px] py-0 border-amber-500/40 text-amber-600 bg-amber-500/10">
+                  <Sparkles className="h-3 w-3 mr-1" />
+                  Новинка
+                </Badge>
+              )}
+
+              <div className="flex-1" />
+
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0"
+                onClick={() => remove(idx)}
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            </div>
 
             {it.itemType === 'TOBACCO' ? (
-              <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                <Input
-                  placeholder="Бренд"
-                  value={it.brand ?? ''}
-                  onChange={(e) => update(idx, { brand: e.target.value })}
-                  className="h-8 text-xs"
-                />
-                <Input
-                  placeholder="Линейка"
-                  value={it.line ?? ''}
-                  onChange={(e) => update(idx, { line: e.target.value })}
-                  className="h-8 text-xs"
-                />
-                <Input
-                  placeholder="Вкус"
-                  value={it.flavor ?? ''}
-                  onChange={(e) =>
-                    update(idx, {
-                      flavor: e.target.value,
-                      name: `${it.brand ?? ''} ${it.line ?? ''} ${e.target.value}`.trim(),
-                    })
-                  }
-                  className="h-8 text-xs"
-                />
-                <Input
-                  placeholder="Вес (г)"
-                  type="number"
-                  value={it.packGrams ?? ''}
-                  onChange={(e) =>
-                    update(idx, { packGrams: e.target.value ? parseInt(e.target.value, 10) : null })
-                  }
-                  className="h-8 text-xs"
-                />
-              </div>
+              <TobaccoItemEditor
+                item={it}
+                brands={brands}
+                flavorsForBrand={flavorsForBrand}
+                update={(patch) => update(idx, patch)}
+              />
             ) : (
-              <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                <Input
-                  placeholder="Название расходника"
-                  value={it.name}
-                  onChange={(e) => update(idx, { name: e.target.value })}
-                  className="h-8 text-xs col-span-2 sm:col-span-1"
-                />
-                <Input
-                  placeholder="Ед. изм (шт/кг/л)"
-                  value={it.unit}
-                  onChange={(e) => update(idx, { unit: e.target.value })}
-                  className="h-8 text-xs"
-                />
-                <Input
-                  placeholder="Вес/объём (опц.)"
-                  type="number"
-                  value={it.packGrams ?? ''}
-                  onChange={(e) =>
-                    update(idx, { packGrams: e.target.value ? parseInt(e.target.value, 10) : null })
-                  }
-                  className="h-8 text-xs"
-                />
-              </div>
+              <ConsumableItemEditor
+                item={it}
+                consumableNames={consumableNames}
+                update={(patch) => update(idx, patch)}
+              />
             )}
-
-            <Input
-              placeholder="Кол-во"
-              type="number"
-              value={it.quantity}
-              onChange={(e) => update(idx, { quantity: parseInt(e.target.value, 10) || 0 })}
-              className="h-8 w-[70px] text-xs"
-            />
-
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 shrink-0"
-              onClick={() => remove(idx)}
-            >
-              <Trash2 className="h-4 w-4 text-destructive" />
-            </Button>
           </div>
-        </div>
-      ))}
+        )
+      })}
 
       <div className="flex gap-2 pt-2">
         <Button variant="outline" size="sm" onClick={() => add('TOBACCO')}>
@@ -830,6 +887,306 @@ function ItemsEditor({
           <Plus className="h-4 w-4" />
           Расходник
         </Button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Редактор табачной позиции ───
+function TobaccoItemEditor({
+  item,
+  brands,
+  flavorsForBrand,
+  update,
+}: {
+  item: SupplyItem
+  brands: string[]
+  flavorsForBrand: Tobacco[]
+  update: (patch: Partial<SupplyItem>) => void
+}) {
+  // 3 режима brand: 
+  //   - itemId есть → существующий табак выбран (brand из select)
+  //   - itemId=null + brand в списке brands → существующий, но конкретный вкус не выбран
+  //   - itemId=null + brand НЕ в списке → новый бренд
+  const isNewBrand = !!item.brand && !brands.includes(item.brand)
+
+  const onBrandChange = (value: string) => {
+    if (value === '__new__') {
+      update({
+        brand: '',
+        line: '',
+        flavor: '',
+        itemId: null,
+        isMatch: false,
+        isNovelty: true,
+      })
+    } else {
+      // Выбрали существующий бренд — сбрасываем вкус, пусть выберет из списка
+      update({
+        brand: value,
+        line: '',
+        flavor: '',
+        itemId: null,
+        isMatch: false,
+        isNovelty: false, // покажется Novlety только если вкус не выбран из списка при сохранении
+      })
+    }
+  }
+
+  const onFlavorChange = (tobaccoId: string) => {
+    const t = flavorsForBrand.find((x) => x.id === tobaccoId)
+    if (t) {
+      update({
+        itemId: t.id,
+        brand: t.brand,
+        line: t.line,
+        flavor: t.flavor,
+        packGrams: item.packGrams ?? t.defaultJarGrams,
+        isMatch: true,
+        isNovelty: false,
+      })
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      {/* Бренд: select из существующих + "новый" */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+        <div>
+          <Label className="text-[10px] text-muted-foreground label-mono-sm">Бренд</Label>
+          {isNewBrand ? (
+            <Input
+              placeholder="Новый бренд"
+              value={item.brand ?? ''}
+              onChange={(e) =>
+                update({
+                  brand: e.target.value,
+                  itemId: null,
+                  isMatch: false,
+                  isNovelty: true,
+                })
+              }
+              className="h-8 text-xs"
+            />
+          ) : null}
+          <Select
+            value={isNewBrand ? '__new__' : (item.brand || '__new__')}
+            onValueChange={onBrandChange}
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="Выберите бренд" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__new__">— новый бренд —</SelectItem>
+              {brands.map((b) => (
+                <SelectItem key={b} value={b}>{b}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Линейка / вкус */}
+        <div>
+          <Label className="text-[10px] text-muted-foreground label-mono-sm">Линейка / вкус</Label>
+          {!isNewBrand && flavorsForBrand.length > 0 ? (
+            <Select
+              value={(item.itemId && flavorsForBrand.some((t) => t.id === item.itemId)) ? item.itemId : '__custom__'}
+              onValueChange={onFlavorChange}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Выберите вкус" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__custom__">— новый вкус —</SelectItem>
+                {flavorsForBrand.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.line ? `${t.line} / ` : ''}{t.flavor}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input
+              placeholder={isNewBrand ? 'Вкус" напр. Бархатный персик' : 'Сначала выберите бренд'}
+              value={item.flavor ?? ''}
+              onChange={(e) =>
+                update({
+                  flavor: e.target.value,
+                  itemId: null,
+                  isMatch: false,
+                  isNovelty: !!item.brand,
+                })
+              }
+              className="h-8 text-xs"
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Если выбран "новый вкус" для существующего бренда — показываем поле */}
+      {!isNewBrand && flavorsForBrand.length > 0 && item.itemId === null && item.flavor && !flavorsForBrand.some((t) => t.id === item.itemId) && (
+        <div>
+          <Label className="text-[10px] text-muted-foreground label-mono-sm">Новый вкус (нет на складе)</Label>
+          <Input
+            placeholder="Например: Бархатный персик"
+            value={item.flavor}
+            onChange={(e) =>
+              update({
+                flavor: e.target.value,
+                itemId: null,
+                isMatch: false,
+                isNovelty: true,
+              })
+            }
+            className="h-8 text-xs"
+          />
+        </div>
+      )}
+
+      {/* Линейка (опционально) + Вес + Кол-во */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+        <div>
+          <Label className="text-[10px] text-muted-foreground label-mono-sm">Линейка (опц.)</Label>
+          <Input
+            placeholder="Core, Medium…"
+            value={item.line ?? ''}
+            onChange={(e) => update({ line: e.target.value })}
+            className="h-8 text-xs"
+          />
+        </div>
+        <div>
+          <Label className="text-[10px] text-muted-foreground label-mono-sm">Вес (г)</Label>
+          <Input
+            type="number"
+            placeholder="250"
+            value={item.packGrams ?? ''}
+            onChange={(e) =>
+              update({ packGrams: e.target.value ? parseInt(e.target.value, 10) : null })
+            }
+            className="h-8 text-xs"
+          />
+        </div>
+        <div>
+          <Label className="text-[10px] text-muted-foreground label-mono-sm">Кол-во</Label>
+          <Input
+            type="number"
+            value={item.quantity}
+            onChange={(e) => update({ quantity: parseInt(e.target.value, 10) || 0 })}
+            className="h-8 text-xs"
+          />
+        </div>
+        <div>
+          <Label className="text-[10px] text-muted-foreground label-mono-sm">Ед.</Label>
+          <Input
+            value={item.unit}
+            onChange={(e) => update({ unit: e.target.value })}
+            className="h-8 text-xs"
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Редактор позиции расходника ───
+function ConsumableItemEditor({
+  item,
+  consumableNames,
+  update,
+}: {
+  item: SupplyItem
+  consumableNames: Array<{ id: string; name: string; unit: string }>
+  update: (patch: Partial<SupplyItem>) => void
+}) {
+  const isNewName = !!item.name && !consumableNames.some((c) => c.name === item.name)
+
+  const onConsumableChange = (value: string) => {
+    if (value === '__new__') {
+      update({
+        name: '',
+        itemId: null,
+        isMatch: false,
+        isNovelty: true,
+      })
+    } else {
+      const c = consumableNames.find((x) => x.id === value)
+      if (c) {
+        update({
+          itemId: c.id,
+          name: c.name,
+          unit: c.unit,
+          isMatch: true,
+          isNovelty: false,
+        })
+      }
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div>
+        <Label className="text-[10px] text-muted-foreground label-mono-sm">Расходник</Label>
+        {isNewName && (
+          <Input
+            placeholder="Новый расходник"
+            value={item.name}
+            onChange={(e) =>
+              update({
+                name: e.target.value,
+                itemId: null,
+                isMatch: false,
+                isNovelty: true,
+              })
+            }
+            className="h-8 text-xs"
+          />
+        )}
+        <Select
+          value={isNewName ? '__new__' : (item.itemId || '__new__')}
+          onValueChange={onConsumableChange}
+        >
+          <SelectTrigger className="h-8 text-xs">
+            <SelectValue placeholder="Выберите расходник" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__new__">— новый расходник —</SelectItem>
+            {consumableNames.map((c) => (
+              <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid grid-cols-3 gap-1.5">
+        <div>
+          <Label className="text-[10px] text-muted-foreground label-mono-sm">Кол-во</Label>
+          <Input
+            type="number"
+            value={item.quantity}
+            onChange={(e) => update({ quantity: parseInt(e.target.value, 10) || 0 })}
+            className="h-8 text-xs"
+          />
+        </div>
+        <div>
+          <Label className="text-[10px] text-muted-foreground label-mono-sm">Ед. изм</Label>
+          <Input
+            value={item.unit}
+            onChange={(e) => update({ unit: e.target.value })}
+            className="h-8 text-xs"
+          />
+        </div>
+        <div>
+          <Label className="text-[10px] text-muted-foreground label-mono-sm">Вес/объём (опц.)</Label>
+          <Input
+            type="number"
+            placeholder="1000"
+            value={item.packGrams ?? ''}
+            onChange={(e) =>
+              update({ packGrams: e.target.value ? parseInt(e.target.value, 10) : null })
+            }
+            className="h-8 text-xs"
+          />
+        </div>
       </div>
     </div>
   )

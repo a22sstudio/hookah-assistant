@@ -64,7 +64,22 @@ export async function POST(req: NextRequest) {
         const line = (item.line ?? '').trim()
         const flavor = (item.flavor ?? '').trim()
 
-        if (!brand || !flavor) {
+        // Ищем существующий табак — сначала по itemId, потом по brand/line/flavor
+        let tobacco: { id: string } | null = null
+        if (item.itemId) {
+          tobacco = await db.tobacco.findUnique({
+            where: { id: item.itemId },
+            select: { id: true },
+          })
+        }
+        if (!tobacco && brand && flavor) {
+          tobacco = await db.tobacco.findFirst({
+            where: { brand, line, flavor },
+            select: { id: true },
+          })
+        }
+
+        if (!tobacco && (!brand || !flavor)) {
           results.push({
             name: item.name,
             ok: false,
@@ -74,17 +89,12 @@ export async function POST(req: NextRequest) {
           continue
         }
 
-        // Ищем существующий табак
-        let tobacco = await db.tobacco.findFirst({
-          where: { brand, line, flavor },
-        })
-
         const gramsPerPack = item.packGrams ?? 250
         const incomingGrams = gramsPerPack * item.quantity
 
         if (!tobacco) {
           // Создаём новый табак + StockItem + Operation
-          tobacco = await db.tobacco.create({
+          const created = await db.tobacco.create({
             data: {
               brand,
               line,
@@ -106,8 +116,9 @@ export async function POST(req: NextRequest) {
                 },
               },
             },
-            include: { stock: true },
+            select: { id: true },
           })
+          tobacco = created
 
           results.push({
             name: item.name,
@@ -164,7 +175,7 @@ export async function POST(req: NextRequest) {
       } else {
         // ─── Расходник ───
         const name = item.name.trim()
-        if (!name) {
+        if (!name && !item.itemId) {
           results.push({
             name: item.name,
             ok: false,
@@ -174,9 +185,20 @@ export async function POST(req: NextRequest) {
           continue
         }
 
-        let consumable = await db.consumable.findUnique({
-          where: { name },
-        })
+        // Ищем расходник по itemId, иначе по name
+        let consumable: { id: string; currentQty: number } | null = null
+        if (item.itemId) {
+          consumable = await db.consumable.findUnique({
+            where: { id: item.itemId },
+            select: { id: true, currentQty: true },
+          })
+        }
+        if (!consumable && name) {
+          consumable = await db.consumable.findUnique({
+            where: { name },
+            select: { id: true, currentQty: true },
+          })
+        }
 
         if (!consumable) {
           consumable = await db.consumable.create({
@@ -186,6 +208,7 @@ export async function POST(req: NextRequest) {
               currentQty: item.quantity,
               threshold: 5,
             },
+            select: { id: true, currentQty: true },
           })
           results.push({
             name: item.name,

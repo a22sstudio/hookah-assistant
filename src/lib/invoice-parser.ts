@@ -22,6 +22,10 @@ export interface ParsedSupplyItem {
   packGrams: number | null
   quantity: number
   unit: string
+  // Заполняется на уровне API (parse-text) после мэтча с базой:
+  itemId?: string | null   // ID существующего табака/расходника (null = новый)
+  isNovelty?: boolean      // true = такого нет на складе (новинка, будет создан)
+  isMatch?: boolean         // true = найден в базе по fuzzy match
 }
 
 // Ключевые слова расходников
