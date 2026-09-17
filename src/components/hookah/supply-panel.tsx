@@ -848,6 +848,13 @@ function ItemsEditor({
         // Является ли бренд существующим в базе (case-insensitive)
         const brandExistsInBase = it.brand && brands.some((b) => norm(b) === norm(it.brand!))
 
+        // Каноничное написание бренда из БД (нужно для Radix Select value)
+        // Если бренд "САРМА" от парсера, а в БД "Сарма" — Select не найдёт value.
+        // Поэтому используем каноничное значение для value.
+        const canonicalBrand = it.brand && brandExistsInBase
+          ? brands.find((b) => norm(b) === norm(it.brand!)) || it.brand
+          : it.brand
+
         return (
           <div
             key={idx}
@@ -907,6 +914,7 @@ function ItemsEditor({
                 brands={brands}
                 flavorsForBrand={flavorsForBrand}
                 brandExistsInBase={!!brandExistsInBase}
+                canonicalBrand={canonicalBrand}
                 update={(patch) => update(idx, patch)}
               />
             ) : (
@@ -940,14 +948,19 @@ function TobaccoItemEditor({
   brands,
   flavorsForBrand,
   brandExistsInBase,
+  canonicalBrand,
   update,
 }: {
   item: SupplyItem
   brands: string[]
   flavorsForBrand: Tobacco[]
   brandExistsInBase: boolean
+  canonicalBrand?: string | null
   update: (patch: Partial<SupplyItem>) => void
 }) {
+  // Каноничное написание бренда для Radix Select value
+  // Если brandExistsInBase=true, то canonicalBrand = точное имя из БД
+  const brandValue = (brandExistsInBase && canonicalBrand) ? canonicalBrand : ''
   // Если brand не в базе (или пустой) — показываем как "новый бренд"
   const isNewBrand = !!item.brand && !brandExistsInBase
 
@@ -1021,7 +1034,7 @@ function TobaccoItemEditor({
             />
           )}
           <Select
-            value={isNewBrand || !item.brand ? '__new__' : item.brand}
+            value={isNewBrand || !item.brand ? '__new__' : brandValue}
             onValueChange={onBrandSelect}
           >
             <SelectTrigger className="h-8 text-xs">

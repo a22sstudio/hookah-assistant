@@ -112,6 +112,11 @@ export async function POST(req: NextRequest) {
         return {
           ...item,
           itemId: match.id,
+          // Каноничное написание бренда/линейки/вкуса из БД —
+          // иначе Radix Select не найдёт value (САРМА vs Сарма)
+          brand: match.brand,
+          line: match.line || item.line,
+          flavor: match.flavor,
           isMatch: true,
           isNovelty: false,
           packGrams: item.packGrams ?? match.defaultJarGrams,
@@ -125,6 +130,8 @@ export async function POST(req: NextRequest) {
       return {
         ...item,
         itemId: match.id,
+        name: match.name,  // каноничное имя
+        unit: match.unit || item.unit,
         isMatch: true,
         isNovelty: false,
       }
