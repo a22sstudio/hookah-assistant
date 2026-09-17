@@ -280,6 +280,7 @@ model Supply {
   status     String   @default("DRAFT") // DRAFT | RECEIVED
   note       String?
   createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
   receivedAt DateTime?
   items      SupplyItem[]
 
@@ -288,7 +289,7 @@ model Supply {
 }
 
 model SupplyItem {
-  id         String  @id @default(cuid())
+  id         String   @id @default(cuid())
   supplyId   String
   itemType   String  // "TOBACCO" | "CONSUMABLE"
   itemId     String? // привязка к Tobacco/Consumable (заполняется после приёмки)
@@ -299,6 +300,7 @@ model SupplyItem {
   packGrams  Int?    // вес одной банки/упаковки в граммах (для табака)
   quantity   Int
   unit       String  @default("шт")
+  updatedAt  DateTime @updatedAt
   supply     Supply  @relation(fields: [supplyId], references: [id], onDelete: Cascade)
 
   @@index([supplyId])
