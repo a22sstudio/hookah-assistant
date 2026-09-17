@@ -130,6 +130,22 @@ export async function POST(req: NextRequest) {
       results.push({ step: 'indexes', ok: false, message: (e as Error).message })
     }
 
+    // ─── Шаг 5.5: updatedAt — Prisma требует для моделей без @updatedAt, но с триггером ───
+    // Добавляем колонку updatedAt (по умолчанию NOW()) чтобы Prisma могла создавать записи.
+    // Это не нужно по схеме, но если в БД уже есть старая колонка — обновим её.
+    try {
+      await db.$executeRaw`ALTER TABLE "Supply" ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP`
+      results.push({ step: 'Supply.updatedAt', ok: true, message: 'column ready' })
+    } catch (e) {
+      results.push({ step: 'Supply.updatedAt', ok: false, message: (e as Error).message })
+    }
+    try {
+      await db.$executeRaw`ALTER TABLE "SupplyItem" ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP`
+      results.push({ step: 'SupplyItem.updatedAt', ok: true, message: 'column ready' })
+    } catch (e) {
+      results.push({ step: 'SupplyItem.updatedAt', ok: false, message: (e as Error).message })
+    }
+
     // ─── Шаг 6: foreign key SupplyItem.supplyId → Supply.id (опционально) ───
     try {
       await db.$executeRaw`
