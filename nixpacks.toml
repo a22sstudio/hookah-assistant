@@ -1,0 +1,35 @@
+# ─── Railway Nixpacks конфиг ───
+# Nixpacks — это нативный Railway buildpack, быстрее Dockerfile.
+# Этот файл указывает как собирать и запускать приложение.
+
+[phases.setup]
+# Устанавливаем OpenSSL для Prisma + bun
+aptPkgs = ["openssl", "ca-certificates"]
+nixPkgs = ["bun"]
+
+[phases.install]
+# Устанавливаем зависимости
+cmds = [
+  "bun install"
+]
+
+[phases.build]
+# Переключаемся на PostgreSQL-схему, генерируем Prisma, билдим Next.js
+cmds = [
+  "cp prisma/schema.postgres.prisma prisma/schema.prisma",
+  "bunx prisma generate",
+  "bun run build"
+]
+
+[phases.start]
+# Применяем схему к БД (с таймаутом) и стартуем
+# Next.js сам читает PORT env
+cmds = [
+  "sh -c 'if [ -z \"$DATABASE_URL\" ]; then echo \"⚠️ DATABASE_URL не задан\"; else timeout 30 bunx prisma db push --accept-data-loss || echo \"⚠️ db:push не удался — стартую всё равно\"; fi'",
+  "bun run start"
+]
+
+[variables]
+# Railway автоматически задаёт PORT
+NODE_ENV = "production"
+NEXT_TELEMETRY_DISABLED = "1"
