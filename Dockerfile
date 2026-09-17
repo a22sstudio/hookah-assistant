@@ -22,6 +22,9 @@ RUN cp -r public .next/standalone/
 RUN cp -r prisma .next/standalone/
 RUN mkdir -p .next/standalone/node_modules/@prisma && \
     cp -r node_modules/@prisma/* .next/standalone/node_modules/@prisma/
+# Копируем prisma CLI (для db:push на старте)
+RUN mkdir -p .next/standalone/node_modules/prisma && \
+    cp -r node_modules/prisma/* .next/standalone/node_modules/prisma/
 RUN mkdir -p .next/standalone/node_modules/pdf-parse && \
     cp -r node_modules/pdf-parse/* .next/standalone/node_modules/pdf-parse/
 
@@ -41,5 +44,5 @@ ENV HOSTNAME=0.0.0.0
 
 EXPOSE 8080
 
-# db:push + standalone server (минимальное потребление памяти)
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss --schema=prisma/schema.prisma || true && node server.js"]
+# db:push через локальный prisma (не npx — он ставит prisma@8.0.0-rc и падает OOM)
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js db push --accept-data-loss --schema=prisma/schema.prisma || true && node server.js"]
