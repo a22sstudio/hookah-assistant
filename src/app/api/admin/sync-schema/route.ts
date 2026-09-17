@@ -34,8 +34,9 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Запускаем prisma db push
-    const cmd = `npx prisma db push --accept-data-loss --schema=${schemaPath} 2>&1`
+    // Запускаем prisma db push через локальный бинарь (без npx — иначе ставит RC версии)
+    const prismaBin = path.join(process.cwd(), 'node_modules', '.bin', 'prisma')
+    const cmd = `"${prismaBin}" db push --accept-data-loss --schema=${schemaPath} 2>&1`
     let output = ''
     let exitCode = 0
     try {
@@ -44,6 +45,7 @@ export async function POST(req: NextRequest) {
         timeout: 60_000,
         env: process.env,
         cwd: process.cwd(),
+        maxBuffer: 1024 * 1024 * 5,
       })
     } catch (e) {
       output = (e as { stdout?: string; stderr?: string; message: string }).stdout
@@ -52,11 +54,17 @@ export async function POST(req: NextRequest) {
       exitCode = 1
     }
 
-    // Дополнительно — сгенерировать клиента
+    // Дополнительно — сгенерировать клиента (тоже через локальный бинарь)
     try {
       const genOutput = execSync(
-        `npx prisma generate --schema=${schemaPath} 2>&1`,
-        { encoding: 'utf-8', timeout: 60_000, env: process.env, cwd: process.cwd() },
+        `"${prismaBin}" generate --schema=${schemaPath} 2>&1`,
+        {
+          encoding: 'utf-8',
+          timeout: 60_000,
+          env: process.env,
+          cwd: process.cwd(),
+          maxBuffer: 1024 * 1024 * 5,
+        },
       )
       output += '\n--- generate ---\n' + genOutput
     } catch (e) {
