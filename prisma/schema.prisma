@@ -245,7 +245,7 @@ model Consumable {
 
 model PurchaseOrder {
   id        String   @id @default(cuid())
-  status    String   @default("DRAFT") // DRAFT | SUBMITTED | ORDERED | ARCHIVED
+  status    String   @default("DRAFT") // DRAFT | SUBMITTED | ORDERED | RECEIVED | MERGED
   isMerged  Boolean  @default(false) // true если это объединённый заказ из нескольких
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -272,38 +272,35 @@ model PurchaseOrderItem {
 }
 
 // ============================================
-// Поставки (входящие накладные от поставщика)
+// Поставки (приход товара на склад)
 // ============================================
 
 model Supply {
-  id          String   @id @default(cuid())
-  status      String   @default("PENDING") // PENDING (not yet accepted) | ACCEPTED (received, stock updated)
-  supplier    String?  // name of supplier/distributor
-  note        String?
-  photoBase64 String?  // base64 photo of invoice
-  pdfBase64   String?  // base64 PDF of invoice
-  fileName    String?  // original file name
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  items       SupplyItem[]
+  id         String   @id @default(cuid())
+  status     String   @default("DRAFT") // DRAFT | RECEIVED
+  note       String?
+  createdAt  DateTime @default(now())
+  receivedAt DateTime?
+  items      SupplyItem[]
 
   @@index([status])
   @@index([createdAt])
 }
 
 model SupplyItem {
-  id        String @id @default(cuid())
-  supplyId  String
-  itemType  String // "TOBACCO" | "CONSUMABLE"
-  itemId    String? // reference to Tobacco or Consumable
-  brand     String?
-  line      String?
-  flavor    String?
-  name      String
-  packGrams Int?
-  quantity  Int     // number of jars/packs
-  unit      String  @default("шт")
-  supply    Supply  @relation(fields: [supplyId], references: [id], onDelete: Cascade)
+  id         String  @id @default(cuid())
+  supplyId   String
+  itemType   String  // "TOBACCO" | "CONSUMABLE"
+  itemId     String? // привязка к Tobacco/Consumable (заполняется после приёмки)
+  brand      String?
+  line       String?
+  flavor     String?
+  name       String
+  packGrams  Int?    // вес одной банки/упаковки в граммах (для табака)
+  quantity   Int
+  unit       String  @default("шт")
+  price      Float?  // цена за единицу
+  supply     Supply  @relation(fields: [supplyId], references: [id], onDelete: Cascade)
 
   @@index([supplyId])
 }

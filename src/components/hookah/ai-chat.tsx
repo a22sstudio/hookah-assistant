@@ -133,52 +133,12 @@ export function AIChat({ onAction }: AIChatProps) {
     setPendingImageName('')
     addMessage({ role: 'assistant', content: '', pending: true })
 
-    try {
-      // Шаг 1: распознать накладную через VLM
-      const vlmRes = await fetch('/api/vlm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: pendingImage }),
-      })
-      const vlmData = await vlmRes.json()
-      if (!vlmData.items || vlmData.items.length === 0) {
-        updateLastAssistant(
-          '⚠️ Не удалось распознать позиции на фото. Попробуй другое фото или добавь вручную.',
-        )
-        return
-      }
-
-      // Шаг 2: отправить распознанное в чат-движок для оформления прихода
-      const chatRes = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: instruction || 'оформи приход по накладной',
-          source: 'PHOTO',
-          invoiceItems: vlmData.items,
-        }),
-      })
-      const chatData = await chatRes.json()
-      if (chatData.error) {
-        updateLastAssistant(`⚠️ ${chatData.error}`)
-      } else {
-        const recognizedList = vlmData.items
-          .map(
-            (i: { brand: string; line: string; flavor: string; grams: number }) =>
-              `• ${i.brand} ${i.line} ${i.flavor} — ${i.grams}г`,
-          )
-          .join('\n')
-        updateLastAssistant(
-          `${chatData.reply}\n\nРАСПОЗНАНО:\n${recognizedList}`,
-          chatData.executedActions,
-        )
-        if (chatData.executedActions?.length > 0) onAction()
-      }
-    } catch {
-      updateLastAssistant('⚠️ Ошибка обработки изображения')
-    } finally {
-      setLoading(false)
-    }
+    updateLastAssistant(
+      '📦 Распознавание накладных по фото отключено.\n\n' +
+      'Теперь для приёма поставок есть удобный модуль — открой вкладку «Поставки» → «Новая поставка» → «ИИ из текста».\n\n' +
+      'Вставь текст из накладной (Ctrl+V) и нажми «Распознать» — это быстрее и точнее, чем распознавание по фото.',
+    )
+    setLoading(false)
   }
 
   // Запись голоса

@@ -4,9 +4,9 @@ import { pushToSeniors } from '@/lib/notify'
 import { parseDateFromText, startOfDay, formatDateRu, addDays } from '@/lib/datetime-utils'
 
 // ───────────────────────────────────────────
-// AI: OpenRouter для LLM, Groq для ASR
-// LLM: nex-agi/nex-n2.5-mini:free — работает (1сек), бесплатно
-// ASR: Groq whisper-large-v3 (работает на Railway)
+// AI провайдеры (бесплатные):
+// LLM: OpenRouter nex-agi/nex-n2.5-pro:free
+// ASR: Groq whisper-large-v3
 // ───────────────────────────────────────────
 
 const OR_API = 'https://openrouter.ai/api/v1/chat/completions'
@@ -38,45 +38,31 @@ interface ChatResponse {
   error?: { message: string }
 }
 
-async function hfChat(messages: ChatMessage[], opts: { vision?: boolean; maxTokens?: number } = {}): Promise<string> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 25000)
-
-  let res: Response
-  try {
-    res = await fetch(OR_API, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${getApiKey()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: LLM_MODEL,
-        messages,
-        max_tokens: opts.maxTokens ?? 2000,
-        temperature: 0.3,
-      }),
-      signal: controller.signal,
-    })
-  } catch (e) {
-    clearTimeout(timeout)
-    if (e instanceof Error && e.name === 'AbortError') {
-      throw new Error('AI не ответил за 25 сек')
-    }
-    throw e
-  }
-  clearTimeout(timeout)
+async function hfChat(messages: ChatMessage[], opts: { maxTokens?: number } = {}): Promise<string> {
+  const res = await fetch(OR_API, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${getApiKey()}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: LLM_MODEL,
+      messages,
+      max_tokens: opts.maxTokens ?? 2000,
+    }),
+  })
 
   const data = (await res.json()) as ChatResponse
   if (!res.ok || data.error) {
     throw new Error(`OpenRouter: ${data.error?.message || res.status}`)
   }
 
-  return data.choices?.[0]?.message?.content ?? ''
+  const content = data.choices?.[0]?.message?.content ?? ''
+  if (!content && data.choices?.[0]?.message?.reasoning) {
+    return data.choices[0].message.reasoning
+  }
+  return content
 }
-
-// Экспортируем hfChat для использования в других модулях (например, AI-парсер PDF накладных)
-export { hfChat }
 
 // ───────────────────────────────────────────
 // Типы действий
@@ -723,49 +709,6 @@ export async function processMasterMessage(
     executedActions,
     transcribedText: options?.transcribedText,
     invoiceItems: options?.invoiceItems,
-  }
-}
-
-// ───────────────────────────────────────────
-// Распознавание накладной через HF Vision
-// ───────────────────────────────────────────
-export async function recognizeInvoice(imageBase64: string): Promise<Array<{ brand: string; line: string; flavor: string; grams: number }>> {
-  const prompt = `Ты распознаёшь накладную на кальянный табак. Найди ВСЕ позиции табака на изображении.
-Для каждой позиции верни: brand (бренд/производитель), line (линейка, если есть), flavor (вкус), grams (вес в граммах одной банки/упаковки).
-
-Верни СТРОГО JSON массив без markdown:
-[
-  { "brand": "Darkside", "line": "Supernova", "flavor": "Ice Grape", "grams": 250 }
-]`
-
-  const isDataUrl = imageBase64.startsWith('data:')
-  const base64Data = isDataUrl ? imageBase64.split(',')[1] : imageBase64
-  const mimeType = imageBase64.match(/data:(image\/[\w+]+);/)?.[1] || 'image/jpeg'
-
-  const content = await hfChat(
-    [
-      { role: 'user', content: [
-        { type: 'text', text: prompt },
-        { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Data}` } },
-      ] },
-    ],
-    { vision: true, maxTokens: 1000 },
-  )
-
-  let cleaned = content.trim()
-  const jsonMatch = cleaned.match(/\[[\s\S]*\]/)
-  if (jsonMatch) cleaned = jsonMatch[0]
-
-  try {
-    const parsed = JSON.parse(cleaned)
-    if (Array.isArray(parsed)) {
-      return parsed.filter(
-        (i: { brand?: string; flavor?: string; grams?: number }) => i.brand && i.flavor && i.grams,
-      )
-    }
-    return []
-  } catch {
-    return []
   }
 }
 

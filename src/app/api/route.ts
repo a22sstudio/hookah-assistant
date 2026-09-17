@@ -7,11 +7,11 @@ export async function GET() {
     description: 'AI-ассистент старшего кальянного мастера',
     endpoints: {
       chat: '/api/chat',
-      vlm: '/api/vlm',
       asr: '/api/asr',
       tobaccos: '/api/tobaccos',
       operations: '/api/operations',
       orders: '/api/orders',
+      supplies: '/api/supplies',
     },
   })
 }

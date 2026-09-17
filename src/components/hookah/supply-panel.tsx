@@ -1,16 +1,30 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
+  DialogTrigger,
 } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import {
   Select,
   SelectContent,
@@ -18,80 +32,46 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { timeAgo } from '@/lib/master-utils'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { toast } from 'sonner'
 import {
-  Loader2,
   Package,
   Plus,
-  X,
   Trash2,
-  Flame,
-  Layers,
+  Pencil,
+  Save,
+  ClipboardPaste,
+  Wand2,
+  Loader2,
   CheckCircle2,
-  ImageIcon,
-  FileText,
-  Sparkles,
-  Upload,
+  Inbox,
   RefreshCw,
+  AlertTriangle,
+  X,
 } from 'lucide-react'
-import { toast } from 'sonner'
 
 interface SupplyItem {
-  id: string
-  itemType: string
-  itemId: string | null
-  brand: string | null
-  line: string | null
-  flavor: string | null
+  id?: string
+  itemType: 'TOBACCO' | 'CONSUMABLE'
+  itemId?: string | null
+  brand?: string | null
+  line?: string | null
+  flavor?: string | null
   name: string
-  packGrams: number | null
+  packGrams?: number | null
   quantity: number
   unit: string
 }
 
 interface Supply {
   id: string
-  status: string
-  supplier: string | null
+  status: 'DRAFT' | 'RECEIVED'
   note: string | null
-  hasPhoto: boolean
-  hasPdf: boolean
-  fileName: string | null
   createdAt: string
-  updatedAt: string
+  receivedAt: string | null
+  itemsCount: number
+  totalQuantity: number
   items: SupplyItem[]
-}
-
-interface Tobacco {
-  id: string
-  brand: string
-  line: string
-  flavor: string
-  defaultJarGrams: number
-}
-
-interface Consumable {
-  id: string
-  name: string
-  unit: string
-}
-
-interface DraftItem {
-  key: string
-  itemType: 'TOBACCO' | 'CONSUMABLE'
-  brand?: string
-  line?: string
-  flavor?: string
-  name: string
-  packGrams?: number
-  quantity: number
-  unit: string
-  itemId?: string
-}
-
-let DRAFT_SEQ = 0
-function makeKey(prefix: string) {
-  return `${prefix}-${DRAFT_SEQ++}-${Date.now()}`
 }
 
 interface SupplyPanelProps {
@@ -99,900 +79,758 @@ interface SupplyPanelProps {
   onRefresh: () => void
 }
 
-type ListTab = 'pending' | 'accepted'
+const STATUS_LABELS: Record<Supply['status'], string> = {
+  DRAFT: 'Черновик',
+  RECEIVED: 'Принято',
+}
+
+const STATUS_CLASSES: Record<Supply['status'], string> = {
+  DRAFT: 'border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/10',
+  RECEIVED: 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10',
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function emptyItem(itemType: 'TOBACCO' | 'CONSUMABLE' = 'TOBACCO'): SupplyItem {
+  return {
+    itemType,
+    brand: '',
+    line: '',
+    flavor: '',
+    name: '',
+    packGrams: null,
+    quantity: 1,
+    unit: 'шт',
+  }
+}
 
 export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
   const [supplies, setSupplies] = useState<Supply[]>([])
-  const [tobaccos, setTobaccos] = useState<Tobacco[]>([])
-  const [consumables, setConsumables] = useState<Consumable[]>([])
   const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState<'ALL' | 'DRAFT' | 'RECEIVED'>('ALL')
 
-  // Форма создания поставки
-  const [draftItems, setDraftItems] = useState<DraftItem[]>([])
-  const [supplier, setSupplier] = useState('')
+  // ─── Модалка создания ───
+  const [createOpen, setCreateOpen] = useState(false)
+  const [mode, setMode] = useState<'MANUAL' | 'AI'>('MANUAL')
+  const [items, setItems] = useState<SupplyItem[]>([emptyItem()])
   const [note, setNote] = useState('')
-  const [photoBase64, setPhotoBase64] = useState<string | null>(null)
-  const [pdfBase64, setPdfBase64] = useState<string | null>(null)
-  const [pdfFileName, setPdfFileName] = useState<string | null>(null)
-  const [creating, setCreating] = useState(false)
-  const [parsingAI, setParsingAI] = useState(false)
+  const [saving, setSaving] = useState(false)
 
-  // Табак-инпуты
-  const [brandInput, setBrandInput] = useState<string>('__new__')
-  const [newBrand, setNewBrand] = useState('')
-  const [flavorId, setFlavorId] = useState<string>('')
-  const [tobQty, setTobQty] = useState('1')
-  const [tobUnit, setTobUnit] = useState<'банок' | 'грамм'>('банок')
+  // ─── Модалка AI-парсера ───
+  const [aiText, setAiText] = useState('')
+  const [parsing, setParsing] = useState(false)
+  const [warnings, setWarnings] = useState<string[]>([])
 
-  // Расходник-инпуты
-  const [conId, setConId] = useState<string>('__new__')
-  const [newConName, setNewConName] = useState('')
-  const [conQty, setConQty] = useState('1')
-  const [conUnit, setConUnit] = useState('шт')
+  // ─── Модалка редактирования ───
+  const [editSupply, setEditSupply] = useState<Supply | null>(null)
+  const [editItems, setEditItems] = useState<SupplyItem[]>([])
+  const [editSaving, setEditSaving] = useState(false)
 
-  // Список: переключатель "Ожидают" | "Принятые"
-  const [listTab, setListTab] = useState<ListTab>('pending')
-  const [updatingId, setUpdatingId] = useState<string | null>(null)
+  // ─── Принятие ───
+  const [receivingId, setReceivingId] = useState<string | null>(null)
+  const [receiveResult, setReceiveResult] = useState<
+    Array<{ name: string; ok: boolean; message: string; type: string }> | null
+  >(null)
 
-  // Просмотр фото
-  const [photoView, setPhotoView] = useState<string | null>(null)
-
-  const load = useCallback(async () => {
+  const fetchSupplies = useCallback(async () => {
     setLoading(true)
     try {
-      const [supRes, tobRes, conRes] = await Promise.all([
-        fetch('/api/supplies'),
-        fetch('/api/tobaccos'),
-        fetch('/api/consumables'),
-      ])
-      const supData = await supRes.json()
-      setSupplies(supData.supplies ?? [])
-      const tobData = await tobRes.json()
-      setTobaccos(tobData.tobaccos ?? [])
-      const conData = await conRes.json()
-      setConsumables(conData.consumables ?? [])
-    } catch {
-      toast.error('Не удалось загрузить поставки')
+      const res = await fetch(`/api/supplies?status=${filter !== 'ALL' ? filter : ''}`)
+      if (!res.ok) throw new Error('Не удалось получить поставки')
+      const data = await res.json()
+      setSupplies(data.supplies ?? [])
+    } catch (e) {
+      toast.error((e as Error).message)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [filter])
 
   useEffect(() => {
-    load()
-  }, [load, refreshKey])
-
-  // Список уникальных брендов
-  const brands = useMemo(() => {
-    const set = new Set<string>()
-    for (const t of tobaccos) set.add(t.brand)
-    return Array.from(set).sort()
-  }, [tobaccos])
-
-  const flavorOptions = useMemo(() => {
-    if (brandInput === '__new__') return []
-    return tobaccos.filter((t) => t.brand === brandInput)
-  }, [tobaccos, brandInput])
-
-  const pendingSupplies = useMemo(() => supplies.filter((s) => s.status === 'PENDING'), [supplies])
-  const acceptedSupplies = useMemo(() => supplies.filter((s) => s.status === 'ACCEPTED'), [supplies])
-  const visibleSupplies = listTab === 'pending' ? pendingSupplies : acceptedSupplies
-
-  // ─── Добавление табака ───
-  const addTobacco = () => {
-    const brand = brandInput === '__new__' ? newBrand.trim() : brandInput
-    if (!brand) {
-      toast.error('Выберите бренд или введите новый')
-      return
-    }
-    const qtyNum = parseInt(tobQty, 10) || 1
-    let draft: DraftItem
-    if (flavorId) {
-      const t = tobaccos.find((x) => x.id === flavorId)
-      if (t) {
-        draft = {
-          key: makeKey('t'),
-          itemType: 'TOBACCO',
-          itemId: t.id,
-          brand: t.brand,
-          line: t.line || undefined,
-          flavor: t.flavor,
-          name: `${t.brand} ${t.line ? t.line + ' ' : ''}${t.flavor}`.trim(),
-          packGrams: t.defaultJarGrams,
-          quantity: qtyNum,
-          unit: tobUnit,
-        }
-      } else {
-        draft = {
-          key: makeKey('t'),
-          itemType: 'TOBACCO',
-          brand,
-          flavor: '',
-          name: brand,
-          quantity: qtyNum,
-          unit: tobUnit,
-        }
-      }
-    } else {
-      draft = {
-        key: makeKey('t'),
-        itemType: 'TOBACCO',
-        brand,
-        flavor: '',
-        name: brand,
-        quantity: qtyNum,
-        unit: tobUnit,
-      }
-    }
-    setDraftItems((prev) => [...prev, draft])
-    setNewBrand('')
-    setFlavorId('')
-    setTobQty('1')
-    setBrandInput('__new__')
-  }
-
-  const addConsumable = () => {
-    const qtyNum = parseInt(conQty, 10) || 1
-    let draft: DraftItem
-    if (conId === '__new__') {
-      const name = newConName.trim()
-      if (!name) {
-        toast.error('Введите название расходника')
-        return
-      }
-      draft = {
-        key: makeKey('c'),
-        itemType: 'CONSUMABLE',
-        name,
-        quantity: qtyNum,
-        unit: conUnit.trim() || 'шт',
-      }
-    } else {
-      const c = consumables.find((x) => x.id === conId)
-      if (!c) return
-      draft = {
-        key: makeKey('c'),
-        itemType: 'CONSUMABLE',
-        itemId: c.id,
-        name: c.name,
-        quantity: qtyNum,
-        unit: c.unit,
-      }
-    }
-    setDraftItems((prev) => [...prev, draft])
-    setConId('__new__')
-    setNewConName('')
-    setConQty('1')
-    setConUnit('шт')
-  }
-
-  const removeDraftItem = (key: string) => {
-    setDraftItems((prev) => prev.filter((i) => i.key !== key))
-  }
-
-  const updateDraftQty = (key: string, qtyStr: string) => {
-    const n = parseInt(qtyStr, 10)
-    if (isNaN(n) || n < 1) return
-    setDraftItems((prev) => prev.map((i) => (i.key === key ? { ...i, quantity: n } : i)))
-  }
-
-  const updateDraftUnit = (key: string, unit: string) => {
-    setDraftItems((prev) => prev.map((i) => (i.key === key ? { ...i, unit } : i)))
-  }
-
-  // ─── Загрузка файла ───
-  const handleFile = (file: File | null, kind: 'photo' | 'pdf') => {
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = reader.result as string
-      if (kind === 'photo') {
-        setPhotoBase64(result)
-      } else {
-        setPdfBase64(result)
-        setPdfFileName(file.name)
-      }
-    }
-    reader.readAsDataURL(file)
-  }
-
-  // ─── AI парсинг PDF ───
-  const parseAI = async () => {
-    if (!pdfBase64) {
-      toast.error('Сначала загрузите PDF')
-      return
-    }
-    setParsingAI(true)
-    try {
-      const res = await fetch('/api/supplies/ai-parse', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pdfBase64 }),
-      })
-      const d = await res.json()
-      if (!res.ok) {
-        toast.error(d.error || 'Ошибка AI-парсинга')
-        return
-      }
-      const items: Array<{
-        itemType: string
-        brand?: string | null
-        line?: string | null
-        flavor?: string | null
-        name: string
-        packGrams?: number | null
-        quantity: number
-        unit: string
-      }> = d.items ?? []
-      if (items.length === 0) {
-        toast.info('AI не нашёл позиций в PDF')
-        return
-      }
-      const drafts: DraftItem[] = items.map((it) => ({
-        key: makeKey('ai'),
-        itemType: it.itemType === 'CONSUMABLE' ? 'CONSUMABLE' : 'TOBACCO',
-        brand: it.brand ?? undefined,
-        line: it.line ?? undefined,
-        flavor: it.flavor ?? undefined,
-        name: it.name,
-        packGrams: it.packGrams ?? undefined,
-        quantity: it.quantity,
-        unit: it.unit,
-      }))
-      setDraftItems((prev) => [...prev, ...drafts])
-      toast.success(`AI добавил ${drafts.length} позиций (проверьте список)`)
-    } catch {
-      toast.error('Ошибка сети')
-    } finally {
-      setParsingAI(false)
-    }
-  }
+    fetchSupplies()
+  }, [fetchSupplies, refreshKey])
 
   // ─── Создание поставки ───
-  const submitSupply = async () => {
-    if (draftItems.length === 0) {
+  const resetForm = () => {
+    setItems([emptyItem()])
+    setNote('')
+    setAiText('')
+    setWarnings([])
+    setMode('MANUAL')
+  }
+
+  const handleCreate = async () => {
+    if (items.length === 0) {
       toast.error('Добавьте хотя бы одну позицию')
       return
     }
-    setCreating(true)
+    setSaving(true)
     try {
       const res = await fetch('/api/supplies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          items: draftItems.map((i) => ({
-            itemType: i.itemType,
-            itemId: i.itemId,
-            brand: i.brand,
-            line: i.line,
-            flavor: i.flavor,
-            name: i.name,
-            packGrams: i.packGrams ?? null,
-            quantity: i.quantity,
-            unit: i.unit,
-          })),
-          supplier: supplier.trim() || null,
-          note: note.trim() || null,
-          photoBase64,
-          pdfBase64,
-          fileName: pdfFileName,
-        }),
+        body: JSON.stringify({ note, items }),
       })
-      const d = await res.json()
       if (!res.ok) {
-        toast.error(d.error || 'Ошибка создания поставки')
-        return
+        const err = await res.json()
+        throw new Error(err.error || 'Ошибка создания')
       }
-      toast.success(d.message || 'Поставка создана')
-      // Очистка формы
-      setDraftItems([])
-      setSupplier('')
-      setNote('')
-      setPhotoBase64(null)
-      setPdfBase64(null)
-      setPdfFileName(null)
-      await load()
+      toast.success('Поставка создана')
+      setCreateOpen(false)
+      resetForm()
+      fetchSupplies()
       onRefresh()
-    } catch {
-      toast.error('Ошибка сети')
+    } catch (e) {
+      toast.error((e as Error).message)
     } finally {
-      setCreating(false)
+      setSaving(false)
     }
   }
 
-  // ─── Принятие поставки ───
-  const acceptSupply = async (id: string) => {
-    if (!confirm('Принять поставку? Склад будет обновлён.')) return
-    setUpdatingId(id)
+  // ─── AI парсинг текста ───
+  const handleParseText = async () => {
+    if (!aiText.trim()) {
+      toast.error('Вставьте текст накладной')
+      return
+    }
+    setParsing(true)
+    setWarnings([])
+    try {
+      const res = await fetch('/api/supplies/parse-text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: aiText }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Ошибка парсинга')
+      }
+      const data = await res.json()
+      if (data.items && data.items.length > 0) {
+        setItems(data.items)
+        setWarnings(data.warnings ?? [])
+        toast.success(`Распознано ${data.items.length} позиций`)
+      } else {
+        toast.error('Не удалось распознать позиции. Попробуйте вручную.')
+      }
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setParsing(false)
+    }
+  }
+
+  // ─── Редактирование ───
+  const openEdit = (s: Supply) => {
+    setEditSupply(s)
+    setEditItems(s.items.map((it) => ({ ...it })))
+  }
+
+  const handleEditSave = async () => {
+    if (!editSupply) return
+    if (editItems.length === 0) {
+      toast.error('Должна быть хотя бы одна позиция')
+      return
+    }
+    setEditSaving(true)
     try {
       const res = await fetch('/api/supplies', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, status: 'ACCEPTED' }),
+        body: JSON.stringify({ id: editSupply.id, items: editItems }),
       })
-      const d = await res.json()
       if (!res.ok) {
-        toast.error(d.error || 'Ошибка принятия')
-        return
+        const err = await res.json()
+        throw new Error(err.error || 'Ошибка обновления')
       }
-      toast.success(d.message || 'Поставка принята')
-      await load()
+      toast.success('Поставка обновлена')
+      setEditSupply(null)
+      fetchSupplies()
       onRefresh()
-    } catch {
-      toast.error('Ошибка сети')
+    } catch (e) {
+      toast.error((e as Error).message)
     } finally {
-      setUpdatingId(null)
+      setEditSaving(false)
     }
   }
 
-  // ─── Удаление поставки ───
-  const deleteSupply = async (id: string) => {
-    if (!confirm('Удалить поставку?')) return
-    setUpdatingId(id)
+  // ─── Принятие поставки ───
+  const handleReceive = async (s: Supply) => {
+    setReceivingId(s.id)
+    setReceiveResult(null)
+    try {
+      const res = await fetch(`/api/supplies/receive?id=${s.id}`, { method: 'POST' })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Ошибка приёмки')
+      }
+      const data = await res.json()
+      setReceiveResult(data.results)
+      toast.success(data.message)
+      fetchSupplies()
+      onRefresh()
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setReceivingId(null)
+    }
+  }
+
+  const handleDelete = async (id: string) => {
     try {
       const res = await fetch(`/api/supplies?id=${id}`, { method: 'DELETE' })
-      const d = await res.json()
       if (!res.ok) {
-        toast.error(d.error || 'Ошибка удаления')
-        return
+        const err = await res.json()
+        throw new Error(err.error || 'Ошибка удаления')
       }
       toast.success('Поставка удалена')
-      await load()
+      fetchSupplies()
       onRefresh()
-    } catch {
-      toast.error('Ошибка сети')
-    } finally {
-      setUpdatingId(null)
+    } catch (e) {
+      toast.error((e as Error).message)
     }
   }
 
-  // ─── Получение фото/pdf для просмотра ───
-  const fetchAttachment = async (id: string, kind: 'photo' | 'pdf'): Promise<string | null> => {
-    try {
-      const res = await fetch(`/api/supplies/${id}/attachment?kind=${kind}`)
-      if (!res.ok) return null
-      const d = await res.json()
-      return d.base64 ?? null
-    } catch {
-      return null
-    }
-  }
-
-  const openPhoto = async (id: string) => {
-    const data = await fetchAttachment(id, 'photo')
-    if (data) setPhotoView(data)
-    else toast.error('Фото недоступно')
-  }
-
-  const openPdf = async (id: string) => {
-    const data = await fetchAttachment(id, 'pdf')
-    if (!data) {
-      toast.error('PDF недоступен')
-      return
-    }
-    // Открываем PDF в новой вкладке
-    const win = window.open()
-    if (win) {
-      win.document.write(
-        `<iframe src="${data}" style="width:100%;height:100%;border:none;" allowfullscreen></iframe>`,
-      )
-    }
-  }
+  const filtered = supplies
 
   return (
-    <div className="space-y-6">
-      {/* Заголовок */}
-      <div className="flex items-end justify-between gap-4 border-b border-border pb-3">
-        <div>
-          <span className="label-mono">Входящие накладные</span>
-          <h2
-            className="heading-mono text-foreground leading-none mt-1"
-            style={{ fontSize: 'clamp(24px, 4vw, 36px)' }}
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Package className="h-5 w-5 text-ember" />
+          <h2 className="label-mono text-base sm:text-lg">Поставки</h2>
+          <Badge variant="outline" className="label-mono-sm">
+            {supplies.length}
+          </Badge>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Select value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
+            <SelectTrigger className="h-8 w-[130px] text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Все</SelectItem>
+              <SelectItem value="DRAFT">Черновики</SelectItem>
+              <SelectItem value="RECEIVED">Принятые</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Button variant="outline" size="sm" onClick={fetchSupplies} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
+
+          <Dialog
+            open={createOpen}
+            onOpenChange={(o) => {
+              setCreateOpen(o)
+              if (!o) resetForm()
+            }}
           >
-            Поставки
-          </h2>
-        </div>
-        <Button
-          size="icon"
-          variant="outline"
-          onClick={() => { load(); onRefresh() }}
-          title="Обновить"
-          aria-label="Обновить"
-        >
-          <RefreshCw className="h-4 w-4" />
-        </Button>
-      </div>
-
-      {/* ─── Новая поставка ─── */}
-      <div className="frame p-5 space-y-4 rounded-md shadow-sm-soft">
-        <div className="flex items-center gap-2 label-mono">
-          <Package className="h-3.5 w-3.5" />
-          Новая поставка
-        </div>
-
-        {/* Секция: Табак */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 label-mono-sm">
-            <Flame className="h-3 w-3 text-ember" />
-            Табак
-          </div>
-          <div className="space-y-1.5">
-            <Label>Бренд</Label>
-            {brandInput === '__new__' && (
-              <Input
-                placeholder="Новый бренд"
-                value={newBrand}
-                onChange={(e) => setNewBrand(e.target.value)}
-              />
-            )}
-            <Select
-              value={brandInput}
-              onValueChange={(v) => { setBrandInput(v); setFlavorId('') }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Выберите бренд" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__new__">— новый бренд —</SelectItem>
-                {brands.map((b) => (
-                  <SelectItem key={b} value={b}>{b}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {brandInput !== '__new__' && flavorOptions.length > 0 && (
-            <div className="space-y-1.5">
-              <Label>Линейка / вкус</Label>
-              <Select value={flavorId} onValueChange={setFlavorId}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Выберите вкус (необязательно)" />
-                </SelectTrigger>
-                <SelectContent>
-                  {flavorOptions.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.line} / {t.flavor}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          <div className="grid grid-cols-[1fr_auto_auto] gap-2">
-            <div className="space-y-1.5">
-              <Label>Количество</Label>
-              <Input
-                type="number"
-                min={1}
-                value={tobQty}
-                onChange={(e) => setTobQty(e.target.value)}
-                className="font-mono tabular"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Единица</Label>
-              <Select value={tobUnit} onValueChange={(v: 'банок' | 'грамм') => setTobUnit(v)}>
-                <SelectTrigger className="w-[110px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="банок">банок</SelectItem>
-                  <SelectItem value="грамм">грамм</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-end">
-              <Button
-                variant="outline"
-                onClick={addTobacco}
-                className="w-full"
-                title="Добавить табак"
-              >
+            <DialogTrigger asChild>
+              <Button size="sm">
                 <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline">Новая поставка</span>
               </Button>
-            </div>
-          </div>
-        </div>
+            </DialogTrigger>
+            <DialogContent className="max-w-[1000px] w-[95vw] max-h-[92vh] flex flex-col">
+              <DialogHeader>
+                <DialogTitle className="label-mono">Новая поставка</DialogTitle>
+              </DialogHeader>
 
-        {/* Секция: Расходники */}
-        <div className="space-y-3 border-t border-border pt-4">
-          <div className="flex items-center gap-2 label-mono-sm">
-            <Layers className="h-3 w-3 text-muted-foreground" />
-            Расходники
-          </div>
-          <div className="space-y-1.5">
-            <Label>Расходник</Label>
-            {conId === '__new__' && (
-              <Input
-                placeholder="Новый расходник"
-                value={newConName}
-                onChange={(e) => setNewConName(e.target.value)}
-              />
-            )}
-            <Select
-              value={conId}
-              onValueChange={setConId}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Выберите расходник" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__new__">— новый расходник —</SelectItem>
-                {consumables.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid grid-cols-[1fr_auto_auto] gap-2">
-            <div className="space-y-1.5">
-              <Label>Количество</Label>
-              <Input
-                type="number"
-                min={1}
-                value={conQty}
-                onChange={(e) => setConQty(e.target.value)}
-                className="font-mono tabular"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Единица</Label>
-              <Input
-                value={conUnit}
-                onChange={(e) => setConUnit(e.target.value)}
-                placeholder="шт"
-                className="w-[110px] font-mono"
-              />
-            </div>
-            <div className="flex items-end">
-              <Button
-                variant="outline"
-                onClick={addConsumable}
-                className="w-full"
-                title="Добавить расходник"
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* Доп. поля */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-border pt-4">
-          <div className="space-y-1.5">
-            <Label>Поставщик</Label>
-            <Input
-              value={supplier}
-              onChange={(e) => setSupplier(e.target.value)}
-              placeholder="например, Tabakioff"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Заметка</Label>
-            <Input
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="необязательно"
-            />
-          </div>
-        </div>
-
-        {/* Файлы: фото + PDF */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-border pt-4">
-          <div className="space-y-1.5">
-            <Label>Фото накладной</Label>
-            <div className="flex gap-2">
-              <label className="flex-1">
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => handleFile(e.target.files?.[0] ?? null, 'photo')}
-                />
-                <span className="inline-flex items-center justify-center gap-2 h-9 px-3 w-full border border-border rounded-md cursor-pointer hover:bg-muted transition-base text-sm">
-                  <ImageIcon className="h-3.5 w-3.5" />
-                  {photoBase64 ? 'Заменить фото' : 'Загрузить фото'}
-                </span>
-              </label>
-              {photoBase64 && (
+              {/* Режим: Ручной / ИИ */}
+              <div className="flex gap-2 border-b border-border pb-3">
                 <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-9 w-9 text-muted-foreground hover:text-ember"
-                  onClick={() => setPhotoBase64(null)}
-                  title="Убрать фото"
+                  variant={mode === 'MANUAL' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setMode('MANUAL')}
                 >
-                  <X className="h-4 w-4" />
+                  <Pencil className="h-4 w-4" />
+                  Ручной ввод
                 </Button>
-              )}
-            </div>
-            {photoBase64 && (
-              <div className="mt-2">
-                <img
-                  src={photoBase64}
-                  alt="Фото накладной"
-                  className="h-20 w-auto object-cover rounded-md border border-border"
-                />
+                <Button
+                  variant={mode === 'AI' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setMode('AI')}
+                >
+                  <Wand2 className="h-4 w-4" />
+                  ИИ из текста
+                </Button>
               </div>
-            )}
-          </div>
 
-          <div className="space-y-1.5">
-            <Label>PDF накладной</Label>
-            <div className="flex gap-2">
-              <label className="flex-1">
-                <input
-                  type="file"
-                  accept="application/pdf"
-                  className="hidden"
-                  onChange={(e) => handleFile(e.target.files?.[0] ?? null, 'pdf')}
-                />
-                <span className="inline-flex items-center justify-center gap-2 h-9 px-3 w-full border border-border rounded-md cursor-pointer hover:bg-muted transition-base text-sm">
-                  <FileText className="h-3.5 w-3.5" />
-                  {pdfBase64 ? 'Заменить PDF' : 'Загрузить PDF'}
-                </span>
-              </label>
-              {pdfBase64 && (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-9 w-9 text-muted-foreground hover:text-ember"
-                  onClick={() => { setPdfBase64(null); setPdfFileName(null) }}
-                  title="Убрать PDF"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-            {pdfFileName && (
-              <p className="label-mono-sm mt-1 truncate">{pdfFileName}</p>
-            )}
-            {pdfBase64 && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={parseAI}
-                disabled={parsingAI}
-                className="h-8 text-[11px] w-full border-ember text-ember hover:bg-ember hover:text-ember-foreground"
-              >
-                {parsingAI ? (
-                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                ) : (
-                  <Sparkles className="h-3 w-3 mr-1" />
-                )}
-                AI из PDF
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {/* Список добавленных позиций */}
-        {draftItems.length > 0 && (
-          <div className="space-y-2 border-t border-border pt-4">
-            <span className="label-mono">Позиции ({draftItems.length})</span>
-            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-              {draftItems.map((it) => (
-                <div key={it.key} className="flex items-center gap-2 border border-border rounded-md p-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      {it.itemType === 'TOBACCO' ? (
-                        <Flame className="h-3 w-3 text-ember shrink-0" />
-                      ) : (
-                        <Layers className="h-3 w-3 text-muted-foreground shrink-0" />
-                      )}
-                      <span className="font-mono text-sm font-bold tracking-tight text-foreground truncate">
-                        {it.name}
-                      </span>
+              <ScrollArea className="flex-1 min-h-0 -mx-1 px-1">
+                {mode === 'AI' && (
+                  <div className="space-y-3 pb-4">
+                    <div>
+                      <Label className="text-xs">Текст накладной (Ctrl+V)</Label>
+                      <Textarea
+                        value={aiText}
+                        onChange={(e) => setAiText(e.target.value)}
+                        placeholder="Вставьте сюда текст накладной из PDF/Excel/почты..."
+                        className="font-mono text-xs min-h-[200px] max-h-[300px]"
+                      />
                     </div>
-                    {it.packGrams && (
-                      <span className="label-mono-sm text-muted-foreground">
-                        банка {it.packGrams}г
-                      </span>
+                    <div className="flex items-center gap-2">
+                      <Button onClick={handleParseText} disabled={parsing} size="sm">
+                        {parsing ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Wand2 className="h-4 w-4" />
+                        )}
+                        Распознать
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setAiText('')
+                          setWarnings([])
+                        }}
+                        size="sm"
+                      >
+                        <X className="h-4 w-4" />
+                        Очистить
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            const text = await navigator.clipboard.readText()
+                            if (text) {
+                              setAiText(text)
+                              toast.success('Вставлено из буфера')
+                            } else {
+                              toast.error('Буфер обмена пуст')
+                            }
+                          } catch {
+                            toast.error('Не удалось прочитать буфер обмена')
+                          }
+                        }}
+                      >
+                        <ClipboardPaste className="h-4 w-4" />
+                        Из буфера
+                      </Button>
+                    </div>
+                    {warnings.length > 0 && (
+                      <div className="space-y-1.5">
+                        {warnings.map((w, i) => (
+                          <div
+                            key={i}
+                            className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs"
+                          >
+                            <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                            <span>{w}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {items.length > 0 && (
+                      <div className="rounded-md border border-border p-2 bg-muted/30">
+                        <p className="text-xs text-muted-foreground px-1 pb-2">
+                          Распознано {items.length} позиций — проверьте и при необходимости
+                          поправьте ниже:
+                        </p>
+                        <ItemsEditor items={items} setItems={setItems} />
+                      </div>
                     )}
                   </div>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={it.quantity}
-                    onChange={(e) => updateDraftQty(it.key, e.target.value)}
-                    className="w-16 font-mono tabular text-center"
-                  />
-                  <Input
-                    value={it.unit}
-                    onChange={(e) => updateDraftUnit(it.key, e.target.value)}
-                    className="w-20 font-mono"
-                    placeholder="шт"
-                  />
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-8 w-8 text-muted-foreground hover:text-ember shrink-0"
-                    onClick={() => removeDraftItem(it.key)}
-                    aria-label="Убрать"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+                )}
 
-        {/* Submit */}
-        <Button
-          className="w-full"
-          disabled={creating || draftItems.length === 0}
-          onClick={submitSupply}
-        >
-          {creating ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <Plus className="h-4 w-4" />
-          )}
-          Создать поставку ({draftItems.length})
-        </Button>
-      </div>
+                {mode === 'MANUAL' && (
+                  <div className="pb-4">
+                    <ItemsEditor items={items} setItems={setItems} />
+                  </div>
+                )}
+              </ScrollArea>
 
-      {/* Переключатель списков */}
-      <div className="flex gap-0 border border-border rounded-md overflow-hidden w-fit">
-        <button
-          onClick={() => setListTab('pending')}
-          className={`px-4 py-2 text-[11px] font-mono uppercase tracking-tight transition-base transition-colors border-r border-border ${
-            listTab === 'pending' ? 'bg-ember text-ember-foreground' : 'text-muted-foreground hover:bg-muted'
-          }`}
-        >
-          Ожидают ({pendingSupplies.length})
-        </button>
-        <button
-          onClick={() => setListTab('accepted')}
-          className={`px-4 py-2 text-[11px] font-mono uppercase tracking-tight transition-base transition-colors ${
-            listTab === 'accepted' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
-          }`}
-        >
-          <CheckCircle2 className="h-3 w-3 inline mr-1" />
-          Принятые ({acceptedSupplies.length})
-        </button>
+              <DialogFooter className="border-t border-border pt-3">
+                <Input
+                  placeholder="Заметка к поставке (необязательно)"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  className="flex-1"
+                />
+                <Button onClick={handleCreate} disabled={saving || items.length === 0}>
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  Сохранить поставку
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {/* Список поставок */}
-      <div className="border border-border rounded-md shadow-sm-soft">
-        {loading ? (
-          <div className="p-8 text-center text-muted-foreground label-mono flex items-center justify-center gap-2">
-            <Loader2 className="h-3 w-3 animate-spin" /> Загрузка...
-          </div>
-        ) : visibleSupplies.length === 0 ? (
-          <div className="p-8 text-center text-muted-foreground text-sm body-sans">
-            {listTab === 'pending' ? 'Нет ожидающих поставок.' : 'Нет принятых поставок.'}
-          </div>
-        ) : (
-          <div className="max-h-[50vh] overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
-            <div className="stagger-children">
-              {visibleSupplies.map((s) => (
-                <div
-                  key={s.id}
-                  className="p-4 border-b border-border last:border-b-0 space-y-2"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5 flex items-center justify-center h-9 w-9 shrink-0 border border-border rounded-md text-muted-foreground">
-                      <Package className="h-3.5 w-3.5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant="outline" className={s.status === 'PENDING' ? 'border-ember text-ember bg-transparent' : 'border-border text-muted-foreground bg-transparent'}>
-                          {s.status === 'PENDING' ? 'Ожидает' : 'Принята'}
-                        </Badge>
-                        <span className="label-mono-sm">{timeAgo(s.createdAt)}</span>
-                        {s.supplier && (
-                          <span className="label-mono-sm text-foreground">· {s.supplier}</span>
-                        )}
-                      </div>
-                      {s.note && (
-                        <p className="body-sans text-sm text-muted-foreground mt-1 break-words">
-                          {s.note}
-                        </p>
-                      )}
-                      <ul className="mt-2 space-y-1">
-                        {s.items.map((it) => (
-                          <li key={it.id} className="flex items-center gap-2 text-sm">
-                            {it.itemType === 'TOBACCO' ? (
-                              <Flame className="h-3 w-3 text-ember shrink-0" />
-                            ) : (
-                              <Layers className="h-3 w-3 text-muted-foreground shrink-0" />
-                            )}
-                            <span className="font-sans text-foreground truncate flex-1">
-                              {it.itemType === 'TOBACCO'
-                                ? [it.brand, it.line, it.flavor].filter(Boolean).join(' ') || it.name
-                                : it.name}
-                            </span>
-                            <span className="label-mono-sm shrink-0">
-                              {it.quantity} {it.unit}
-                              {it.packGrams && ` · ${it.packGrams}г`}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                      <div className="flex items-center gap-2 mt-3 flex-wrap">
-                        {s.hasPhoto && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 text-[11px] px-2"
-                            onClick={() => openPhoto(s.id)}
-                            title="Фото"
-                          >
-                            <ImageIcon className="h-3 w-3 mr-1" />
-                            Фото
-                          </Button>
-                        )}
-                        {s.hasPdf && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 text-[11px] px-2"
-                            onClick={() => openPdf(s.id)}
-                            title="PDF"
-                          >
-                            <FileText className="h-3 w-3 mr-1" />
-                            PDF
-                          </Button>
-                        )}
-                        {s.status === 'PENDING' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-[11px] border-ember text-ember hover:bg-ember hover:text-ember-foreground"
-                            onClick={() => acceptSupply(s.id)}
-                            disabled={updatingId === s.id}
-                          >
-                            {updatingId === s.id ? (
-                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                            ) : (
-                              <CheckCircle2 className="h-3 w-3 mr-1" />
-                            )}
-                            Принять поставку
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 text-[11px] px-2 text-muted-foreground hover:text-ember"
-                          onClick={() => deleteSupply(s.id)}
-                          disabled={updatingId === s.id}
-                          title="Удалить"
-                        >
-                          <Trash2 className="h-3 w-3 mr-1" />
-                          Удалить
-                        </Button>
-                      </div>
-                    </div>
+      {loading ? (
+        <div className="flex items-center justify-center py-12 text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground border border-dashed border-border rounded-lg">
+          <Inbox className="h-8 w-8 mb-2" />
+          <p className="text-sm">Поставок пока нет</p>
+          <p className="text-xs mt-1">Нажмите «Новая поставка» чтобы создать</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((s) => (
+            <div
+              key={s.id}
+              className="rounded-lg border border-border bg-card overflow-hidden"
+            >
+              <div className="flex items-center gap-3 p-3 sm:p-4 flex-wrap">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <Badge className={`${STATUS_CLASSES[s.status]} label-mono-sm border`}>
+                    {STATUS_LABELS[s.status]}
+                  </Badge>
+                  <div className="text-sm">
+                    <span className="label-mono">{formatDate(s.createdAt)}</span>
+                    {s.note && (
+                      <span className="ml-2 text-muted-foreground text-xs">· {s.note}</span>
+                    )}
                   </div>
+                </div>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <span className="label-mono">{s.itemsCount} поз.</span>
+                  <span className="label-mono">{s.totalQuantity} шт</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  {s.status === 'DRAFT' && (
+                    <>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(s)} title="Редактировать">
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => handleReceive(s)}
+                        disabled={receivingId === s.id}
+                        className="bg-emerald-600 hover:bg-emerald-700"
+                      >
+                        {receivingId === s.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="h-4 w-4" />
+                        )}
+                        <span className="hidden sm:inline">Принять</span>
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" title="Удалить">
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Удалить поставку?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Поставка от {formatDate(s.createdAt)} с {s.itemsCount} позициями будет удалена.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Отмена</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => handleDelete(s.id)}
+                              className="bg-destructive hover:bg-destructive/90"
+                            >
+                              Удалить
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </>
+                  )}
+                  {s.status === 'RECEIVED' && s.receivedAt && (
+                    <span className="text-xs text-muted-foreground">
+                      принято: {formatDate(s.receivedAt)}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Раскрывающийся список позиций */}
+              <SupplyItemsList items={s.items} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Модалка редактирования */}
+      <Dialog open={!!editSupply} onOpenChange={(o) => !o && setEditSupply(null)}>
+        <DialogContent className="max-w-[1000px] w-[95vw] max-h-[92vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="label-mono">
+              Редактирование поставки
+              {editSupply && ` · ${formatDate(editSupply.createdAt)}`}
+            </DialogTitle>
+          </DialogHeader>
+          <ScrollArea className="flex-1 min-h-0 -mx-1 px-1">
+            <ItemsEditor items={editItems} setItems={setEditItems} />
+          </ScrollArea>
+          <DialogFooter className="border-t border-border pt-3">
+            <Button variant="outline" onClick={() => setEditSupply(null)}>
+              Отмена
+            </Button>
+            <Button onClick={handleEditSave} disabled={editSaving}>
+              {editSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Сохранить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Модалка с результатом приёмки */}
+      <Dialog open={!!receiveResult} onOpenChange={(o) => !o && setReceiveResult(null)}>
+        <DialogContent className="max-w-[600px] w-[95vw] max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="label-mono">Результат приёмки</DialogTitle>
+          </DialogHeader>
+          <ScrollArea className="flex-1 min-h-0">
+            <div className="space-y-2">
+              {receiveResult?.map((r, i) => (
+                <div
+                  key={i}
+                  className={`flex items-start gap-2 rounded-md border px-3 py-2 text-xs ${
+                    r.ok
+                      ? 'border-emerald-500/30 bg-emerald-500/5'
+                      : 'border-destructive/30 bg-destructive/5'
+                  }`}
+                >
+                  {r.ok ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">{r.name}</p>
+                    <p className="text-muted-foreground">{r.message}</p>
+                  </div>
+                  <Badge variant="outline" className="label-mono-sm shrink-0">
+                    {r.type === 'TOBACCO' ? 'Табак' : 'Расходник'}
+                  </Badge>
                 </div>
               ))}
             </div>
-          </div>
-        )}
-      </div>
-
-      {/* Просмотр фото */}
-      <Dialog
-        open={photoView !== null}
-        onOpenChange={(o) => { if (!o) setPhotoView(null) }}
-      >
-        <DialogContent className="sm:max-w-[640px]">
-          <DialogHeader>
-            <span className="label-mono">Фото накладной</span>
-            <DialogTitle>Просмотр</DialogTitle>
-          </DialogHeader>
-          {photoView && (
-            <img
-              src={photoView}
-              alt="Фото накладной"
-              className="w-full max-h-[70vh] object-contain rounded-md border border-border"
-            />
-          )}
+          </ScrollArea>
+          <DialogFooter>
+            <Button onClick={() => setReceiveResult(null)}>Закрыть</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+// ─── Список позиций поставки (read-only) ───
+function SupplyItemsList({ items }: { items: SupplyItem[] }) {
+  const [open, setOpen] = useState(false)
+  if (items.length === 0) return null
+
+  return (
+    <div className="border-t border-border bg-muted/20">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full px-3 sm:px-4 py-2 flex items-center justify-between text-xs hover:bg-muted/40 transition-colors"
+      >
+        <span className="label-mono-sm text-muted-foreground">
+          {open ? 'Скрыть позиции' : `Показать позиции (${items.length})`}
+        </span>
+        <span className="text-muted-foreground">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="px-3 sm:px-4 pb-3 max-h-72 overflow-y-auto">
+          <table className="w-full text-xs">
+            <thead className="text-muted-foreground label-mono-sm sticky top-0 bg-muted/80 backdrop-blur">
+              <tr>
+                <th className="text-left font-normal py-1.5 pr-2">Тип</th>
+                <th className="text-left font-normal py-1.5 pr-2">Бренд / Линейка</th>
+                <th className="text-left font-normal py-1.5 pr-2">Вкус / Название</th>
+                <th className="text-right font-normal py-1.5 pr-2">Вес</th>
+                <th className="text-right font-normal py-1.5">Кол-во</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((it, i) => (
+                <tr key={i} className="border-t border-border/50">
+                  <td className="py-1.5 pr-2">
+                    <Badge variant="outline" className="label-mono-sm text-[10px] py-0">
+                      {it.itemType === 'TOBACCO' ? 'Т' : 'Р'}
+                    </Badge>
+                  </td>
+                  <td className="py-1.5 pr-2 truncate max-w-[120px]">
+                    {it.brand || '—'}
+                    {it.line ? ` / ${it.line}` : ''}
+                  </td>
+                  <td className="py-1.5 pr-2 truncate max-w-[180px]">
+                    {it.itemType === 'TOBACCO' ? it.flavor || it.name : it.name}
+                  </td>
+                  <td className="py-1.5 pr-2 text-right label-mono-sm">
+                    {it.packGrams ? `${it.packGrams}г` : '—'}
+                  </td>
+                  <td className="py-1.5 pr-2 text-right label-mono-sm">
+                    {it.quantity} {it.unit}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Редактор позиций ───
+function ItemsEditor({
+  items,
+  setItems,
+}: {
+  items: SupplyItem[]
+  setItems: (updater: (prev: SupplyItem[]) => SupplyItem[]) => void
+}) {
+  const update = (idx: number, patch: Partial<SupplyItem>) => {
+    setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)))
+  }
+  const remove = (idx: number) => {
+    setItems((prev) => prev.filter((_, i) => i !== idx))
+  }
+  const add = (itemType: 'TOBACCO' | 'CONSUMABLE') => {
+    setItems((prev) => [...prev, emptyItem(itemType)])
+  }
+
+  if (items.length === 0) {
+    return (
+      <div className="text-center py-6 text-muted-foreground text-sm">
+        Нет позиций. Добавьте ниже.
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      {items.map((it, idx) => (
+        <div
+          key={idx}
+          className={`rounded-md border p-2 ${
+            it.itemType === 'TOBACCO'
+              ? 'border-border bg-card'
+              : 'border-border bg-muted/30'
+          }`}
+        >
+          <div className="flex items-start gap-2">
+            <Select
+              value={it.itemType}
+              onValueChange={(v) => update(idx, { itemType: v as 'TOBACCO' | 'CONSUMABLE' })}
+            >
+              <SelectTrigger className="h-8 w-[80px] text-[11px] shrink-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="TOBACCO">Табак</SelectItem>
+                <SelectItem value="CONSUMABLE">Расход.</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {it.itemType === 'TOBACCO' ? (
+              <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                <Input
+                  placeholder="Бренд"
+                  value={it.brand ?? ''}
+                  onChange={(e) => update(idx, { brand: e.target.value })}
+                  className="h-8 text-xs"
+                />
+                <Input
+                  placeholder="Линейка"
+                  value={it.line ?? ''}
+                  onChange={(e) => update(idx, { line: e.target.value })}
+                  className="h-8 text-xs"
+                />
+                <Input
+                  placeholder="Вкус"
+                  value={it.flavor ?? ''}
+                  onChange={(e) =>
+                    update(idx, {
+                      flavor: e.target.value,
+                      name: `${it.brand ?? ''} ${it.line ?? ''} ${e.target.value}`.trim(),
+                    })
+                  }
+                  className="h-8 text-xs"
+                />
+                <Input
+                  placeholder="Вес (г)"
+                  type="number"
+                  value={it.packGrams ?? ''}
+                  onChange={(e) =>
+                    update(idx, { packGrams: e.target.value ? parseInt(e.target.value, 10) : null })
+                  }
+                  className="h-8 text-xs"
+                />
+              </div>
+            ) : (
+              <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                <Input
+                  placeholder="Название расходника"
+                  value={it.name}
+                  onChange={(e) => update(idx, { name: e.target.value })}
+                  className="h-8 text-xs col-span-2 sm:col-span-1"
+                />
+                <Input
+                  placeholder="Ед. изм (шт/кг/л)"
+                  value={it.unit}
+                  onChange={(e) => update(idx, { unit: e.target.value })}
+                  className="h-8 text-xs"
+                />
+                <Input
+                  placeholder="Вес/объём (опц.)"
+                  type="number"
+                  value={it.packGrams ?? ''}
+                  onChange={(e) =>
+                    update(idx, { packGrams: e.target.value ? parseInt(e.target.value, 10) : null })
+                  }
+                  className="h-8 text-xs"
+                />
+              </div>
+            )}
+
+            <Input
+              placeholder="Кол-во"
+              type="number"
+              value={it.quantity}
+              onChange={(e) => update(idx, { quantity: parseInt(e.target.value, 10) || 0 })}
+              className="h-8 w-[70px] text-xs"
+            />
+
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0"
+              onClick={() => remove(idx)}
+            >
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
+          </div>
+        </div>
+      ))}
+
+      <div className="flex gap-2 pt-2">
+        <Button variant="outline" size="sm" onClick={() => add('TOBACCO')}>
+          <Plus className="h-4 w-4" />
+          Табак
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => add('CONSUMABLE')}>
+          <Plus className="h-4 w-4" />
+          Расходник
+        </Button>
+      </div>
     </div>
   )
 }
