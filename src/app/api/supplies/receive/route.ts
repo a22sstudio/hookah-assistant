@@ -25,18 +25,19 @@ async function requireSenior() {
 // POST /api/supplies/receive?id=xxx — принять поставку
 // Обновляет остатки табака/расходников, создаёт операции INCOMING
 export async function POST(req: NextRequest) {
-  const { error, me } = await requireSenior()
-  if (error) return error
+  try {
+    const { error, me } = await requireSenior()
+    if (error) return error
 
-  const { searchParams } = new URL(req.url)
-  const id = searchParams.get('id')
-  if (!id) {
-    return NextResponse.json({ error: 'id обязателен' }, { status: 400 })
-  }
+    const { searchParams } = new URL(req.url)
+    const id = searchParams.get('id')
+    if (!id) {
+      return NextResponse.json({ error: 'id обязателен' }, { status: 400 })
+    }
 
-  const supply = await db.supply.findUnique({
-    where: { id },
-    include: { items: true },
+    const supply = await db.supply.findUnique({
+      where: { id },
+      include: { items: true },
   })
 
   if (!supply) {
@@ -263,4 +264,11 @@ export async function POST(req: NextRequest) {
     results,
     supplyId: id,
   })
+  } catch (e) {
+    console.error('POST /api/supplies/receive error:', e)
+    return NextResponse.json(
+      { error: 'Не удалось принять поставку', detail: (e as Error).message },
+      { status: 500 },
+    )
+  }
 }

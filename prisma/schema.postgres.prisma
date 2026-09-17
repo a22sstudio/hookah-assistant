@@ -299,7 +299,6 @@ model SupplyItem {
   packGrams  Int?    // вес одной банки/упаковки в граммах (для табака)
   quantity   Int
   unit       String  @default("шт")
-  price      Float?  // цена за единицу
   supply     Supply  @relation(fields: [supplyId], references: [id], onDelete: Cascade)
 
   @@index([supplyId])

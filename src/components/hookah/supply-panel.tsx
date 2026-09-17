@@ -168,12 +168,23 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
   const fetchSupplies = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/supplies?status=${filter !== 'ALL' ? filter : ''}`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
+      const res = await fetch(`/api/supplies?status=${filter !== 'ALL' ? filter : ''}`).catch(() => null)
+      if (!res) {
+        toast.error('Сервер недоступен — проверьте подключение')
+        setSupplies([])
+        return
+      }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        toast.error('Не удалось получить поставки: ' + (err.error || `HTTP ${res.status}`))
+        setSupplies([])
+        return
+      }
+      const data = await res.json().catch(() => ({ supplies: [] }))
       setSupplies(data.supplies ?? [])
     } catch (e) {
       toast.error('Не удалось получить поставки: ' + (e as Error).message)
+      setSupplies([])
     } finally {
       setLoading(false)
     }
@@ -182,15 +193,15 @@ export function SupplyPanel({ refreshKey, onRefresh }: SupplyPanelProps) {
   const fetchCatalogs = useCallback(async () => {
     try {
       const [tobRes, conRes] = await Promise.all([
-        fetch('/api/tobaccos'),
-        fetch('/api/consumables'),
+        fetch('/api/tobaccos').catch(() => null),
+        fetch('/api/consumables').catch(() => null),
       ])
-      if (tobRes.ok) {
-        const d = await tobRes.json()
+      if (tobRes && tobRes.ok) {
+        const d = await tobRes.json().catch(() => ({}))
         setTobaccos(d.tobaccos ?? [])
       }
-      if (conRes.ok) {
-        const d = await conRes.json()
+      if (conRes && conRes.ok) {
+        const d = await conRes.json().catch(() => ({}))
         setConsumables(d.consumables ?? [])
       }
     } catch {

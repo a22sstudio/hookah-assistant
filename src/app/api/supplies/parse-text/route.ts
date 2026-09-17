@@ -12,16 +12,17 @@ import { db } from '@/lib/db'
 // 2) LLM-дошлифовка (опционально, через OpenRouter) — для позиций,
 //    где regex не нашёл brand+flavor.
 export async function POST(req: NextRequest) {
-  const me = await getCurrentMaster()
-  if (!me) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
+  try {
+    const me = await getCurrentMaster()
+    if (!me) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
 
-  const body = await req.json()
-  const text = typeof body.text === 'string' ? body.text : ''
-  const useLLM = body.useLLM !== false // по умолчанию включён
+    const body = await req.json()
+    const text = typeof body.text === 'string' ? body.text : ''
+    const useLLM = body.useLLM !== false // по умолчанию включён
 
-  if (!text.trim()) {
-    return NextResponse.json({ error: 'Пустой текст' }, { status: 400 })
-  }
+    if (!text.trim()) {
+      return NextResponse.json({ error: 'Пустой текст' }, { status: 400 })
+    }
 
   // ─── Слой 1: regex-парсер ───
   const parsed = parseInvoiceText(text)
@@ -230,4 +231,11 @@ export async function POST(req: NextRequest) {
     llmUsed: useLLM && problemItems.length > 0,
     warnings,
   })
+  } catch (e) {
+    console.error('POST /api/supplies/parse-text error:', e)
+    return NextResponse.json(
+      { error: 'Не удалось распознать текст', detail: (e as Error).message },
+      { status: 500 },
+    )
+  }
 }
