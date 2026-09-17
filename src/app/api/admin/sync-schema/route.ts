@@ -34,9 +34,27 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Запускаем prisma db push через локальный бинарь (без npx — иначе ставит RC версии)
-    const prismaBin = path.join(process.cwd(), 'node_modules', '.bin', 'prisma')
-    const cmd = `"${prismaBin}" db push --accept-data-loss --schema=${schemaPath} 2>&1`
+    // Запускаем prisma db push через node + локальный prisma CLI.
+    // В standalone build нет node_modules/.bin/prisma, но есть prisma/build/index.js
+    const prismaEntry = path.join(process.cwd(), 'node_modules', 'prisma', 'build', 'index.js')
+
+    if (!existsSync(prismaEntry)) {
+      // Fallback на @prisma/client generator-build (если prisma пакет недоступен)
+      const altEntry = path.join(process.cwd(), 'node_modules', '@prisma', 'client', 'generator-build', 'index.js')
+      if (!existsSync(altEntry)) {
+        return NextResponse.json(
+          {
+            error: 'prisma CLI не найден в node_modules',
+            searched: [prismaEntry, altEntry],
+            cwd: process.cwd(),
+          },
+          { status: 500 },
+        )
+      }
+    }
+
+    // Запуск через node напрямую (не через .bin/prisma, которого может не быть в standalone)
+    const cmd = `node "${prismaEntry}" db push --accept-data-loss --schema=${schemaPath} 2>&1`
     let output = ''
     let exitCode = 0
     try {
@@ -54,10 +72,10 @@ export async function POST(req: NextRequest) {
       exitCode = 1
     }
 
-    // Дополнительно — сгенерировать клиента (тоже через локальный бинарь)
+    // Дополнительно — сгенерировать клиента (тоже через node entry)
     try {
       const genOutput = execSync(
-        `"${prismaBin}" generate --schema=${schemaPath} 2>&1`,
+        `node "${prismaEntry}" generate --schema=${schemaPath} 2>&1`,
         {
           encoding: 'utf-8',
           timeout: 60_000,
