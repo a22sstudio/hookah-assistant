@@ -11,6 +11,11 @@ export interface Tobacco {
   currentGrams: number
   updatedAt: string
   isLow: boolean
+  // Расширенные характеристики (из Excel-справочника)
+  strength?: string | null
+  flavorProfile?: string | null
+  pairings?: string | null
+  mixRecipes?: string | null
 }
 
 export interface Operation {

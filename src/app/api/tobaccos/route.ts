@@ -39,6 +39,11 @@ export async function GET() {
     defaultJarGrams: t.defaultJarGrams,
     thresholdGrams: t.thresholdGrams,
     notes: t.notes,
+    // Расширенные характеристики
+    strength: t.strength ?? null,
+    flavorProfile: t.flavorProfile ?? null,
+    pairings: t.pairings ?? null,
+    mixRecipes: t.mixRecipes ?? null,
     currentGrams: t.stock?.currentGrams ?? 0,
     updatedAt: t.stock?.updatedAt ?? t.updatedAt,
     isLow: (t.stock?.currentGrams ?? 0) < t.thresholdGrams,
@@ -120,6 +125,11 @@ export async function PATCH(req: NextRequest) {
       thresholdGrams,
       currentGrams,
       notes,
+      // Расширенные характеристики
+      strength,
+      flavorProfile,
+      pairings,
+      mixRecipes,
     } = body as {
       id?: string
       brand?: string
@@ -129,6 +139,10 @@ export async function PATCH(req: NextRequest) {
       thresholdGrams?: number
       currentGrams?: number
       notes?: string | null
+      strength?: string | null
+      flavorProfile?: string | null
+      pairings?: string | null
+      mixRecipes?: string | null
     }
 
     if (!id || typeof id !== 'string') {
@@ -156,6 +170,11 @@ export async function PATCH(req: NextRequest) {
       updateData.thresholdGrams = Math.floor(thresholdGrams)
     }
     if (notes !== undefined) updateData.notes = notes ?? null
+    // Расширенные характеристики — все опциональные строки, могут быть null
+    if (strength !== undefined) updateData.strength = strength ?? null
+    if (flavorProfile !== undefined) updateData.flavorProfile = flavorProfile ?? null
+    if (pairings !== undefined) updateData.pairings = pairings ?? null
+    if (mixRecipes !== undefined) updateData.mixRecipes = mixRecipes ?? null
 
     if (Object.keys(updateData).length > 0) {
       await db.tobacco.update({ where: { id }, data: updateData })

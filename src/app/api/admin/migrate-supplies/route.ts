@@ -146,6 +146,24 @@ export async function POST(req: NextRequest) {
       results.push({ step: 'SupplyItem.updatedAt', ok: false, message: (e as Error).message })
     }
 
+    // ─── Шаг 5.6: Расширенные характеристики табака (из Excel-справочника) ───
+    const tobaccoExtraCols = [
+      { name: 'strength', type: 'TEXT' },
+      { name: 'flavorProfile', type: 'TEXT' },
+      { name: 'pairings', type: 'TEXT' },
+      { name: 'mixRecipes', type: 'TEXT' },
+    ]
+    for (const col of tobaccoExtraCols) {
+      try {
+        await db.$executeRawUnsafe(
+          `ALTER TABLE "Tobacco" ADD COLUMN IF NOT EXISTS "${col.name}" ${col.type}`,
+        )
+        results.push({ step: `Tobacco.${col.name}`, ok: true, message: 'column ready' })
+      } catch (e) {
+        results.push({ step: `Tobacco.${col.name}`, ok: false, message: (e as Error).message })
+      }
+    }
+
     // ─── Шаг 6: foreign key SupplyItem.supplyId → Supply.id (опционально) ───
     try {
       await db.$executeRaw`

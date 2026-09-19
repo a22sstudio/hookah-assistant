@@ -30,11 +30,16 @@ model Tobacco {
   id              String      @id @default(cuid())
   brand           String      // Darkside, Tangiers, Musthave, etc.
   line            String      @default("") // Supernova, Core, Medium, etc. (может быть пустой)
-  flavor          String      // вкус: Cola, Ice Grape, etc.
+  flavor          String      // вкус: Cola, Ice Grape, etc. (может содержать "RU / EN")
   defaultJarGrams Int         @default(250) // вес полной банки по умолчанию
   thresholdGrams  Int         @default(70)  // порог "мало" — ниже этого идёт в заявку
   notes           String?
   active          Boolean     @default(true)
+  // ─── Расширенные характеристики (из Excel-справочника) ───
+  strength        String?     // Крепость: Лёгкая / Средне-лёгкая / Средняя / Высокая / Очень высокая
+  flavorProfile   String?     // Категории вкуса + ноты + сладость/кислотность (многострочный текст)
+  pairings        String?     // Сочетания с этим вкусом (текст, как из Excel)
+  mixRecipes      String?     // Конкретные миксы (текст, как из Excel)
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 

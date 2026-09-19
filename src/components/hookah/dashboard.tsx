@@ -53,6 +53,7 @@ import {
   X,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { TobaccoDetailsModal } from '@/components/hookah/tobacco-details-modal'
 
 interface DashboardProps {
   refreshKey: number
@@ -157,6 +158,9 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false, onOrderItem
   const [expandedBrands, setExpandedBrands] = useState<string[]>([])
   const [brandEdit, setBrandEdit] = useState<BrandEditState | null>(null)
   const [brandEditSaving, setBrandEditSaving] = useState(false)
+  // ─── Карточка информации о табаке (по тапу) ───
+  const [detailsTobacco, setDetailsTobacco] = useState<Tobacco | null>(null)
+  const [detailsOpen, setDetailsOpen] = useState(false)
 
   // orderingId больше не нужен (нет автоматического создания заявки)
 
@@ -793,14 +797,17 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false, onOrderItem
                         return (
                           <div
                             key={t.id}
-                            role={readOnly ? undefined : 'button'}
-                            tabIndex={readOnly ? undefined : 0}
-                            onClick={() => openEdit(t)}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => {
+                              setDetailsTobacco(t)
+                              setDetailsOpen(true)
+                            }}
                             onKeyDown={(e) => {
-                              if (readOnly) return
                               if (e.key === 'Enter' || e.key === ' ') {
                                 e.preventDefault()
-                                openEdit(t)
+                                setDetailsTobacco(t)
+                                setDetailsOpen(true)
                               }
                             }}
                             className="group w-full text-left flex items-center gap-4 px-4 py-3 pr-4 border-t border-border first:border-t-0 hover:bg-muted/50 transition-base transition-colors cursor-pointer"
@@ -854,7 +861,17 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false, onOrderItem
                               </span>
                               <span className="label-mono-sm">г</span>
                               {!readOnly && (
-                                <Pencil className="h-3.5 w-3.5 text-muted-foreground/70 opacity-0 group-hover:opacity-100 transition-base" />
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    openEdit(t)
+                                  }}
+                                  className="p-1 -m-1 rounded hover:bg-muted transition-base opacity-0 group-hover:opacity-100"
+                                  title="Редактировать остаток"
+                                >
+                                  <Pencil className="h-3.5 w-3.5 text-muted-foreground/70" />
+                                </button>
                               )}
                             </div>
                           </div>
@@ -872,15 +889,29 @@ export function Dashboard({ refreshKey, onRefresh, readOnly = false, onOrderItem
       {/* Подсказка */}
       {!readOnly && (
         <p className="label-mono-sm">
-          Клик по позиции — редактирование · «Заказ» — оформить заявку ·{' '}
+          Тап по позиции — карточка табака ·{' '}
+          <Pencil className="inline h-3 w-3" /> — изменить остаток ·{' '}
+          «Заказ» — оформить заявку ·{' '}
           <span aria-hidden="true">⚙</span> на бренде — переименование и линейки
         </p>
       )}
       {readOnly && (
         <p className="label-mono-sm">
-          Режим просмотра · «Заказ» откроет форму заявки
+          Тап по позиции — карточка табака · «Заказ» откроет форму заявки
         </p>
       )}
+
+      {/* Карточка информации о табаке */}
+      <TobaccoDetailsModal
+        tobacco={detailsTobacco}
+        open={detailsOpen}
+        onOpenChange={(o) => {
+          setDetailsOpen(o)
+          if (!o) setDetailsTobacco(null)
+        }}
+        canEdit={!readOnly}
+        onSaved={load}
+      />
 
       {/* Свёрнут/развёрнут управления */}
       {grouped.length > 0 && (
