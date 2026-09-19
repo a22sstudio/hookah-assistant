@@ -77,6 +77,9 @@ export async function POST(req: NextRequest) {
     const parsed: ParsedRow[] = []
     for (const row of rows) {
       const r = row as Record<string, unknown>
+      // Колонки: "Название табака", "Название линейки", "Название вкуса (RU / EN)",
+      // "Крепость вкуса", "Какой это вкус", "Сочетания с этим вкусом",
+      // "Конкретные миксы: состав, описание и проценты"
       const brand = cleanField(r['Название табака'])
       const line = cleanField(r['Название линейки']) || ''
       const flavor = cleanField(r['Название вкуса (RU / EN)'])
@@ -98,88 +101,72 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Не удалось распознать ни одной позиции' }, { status: 400 })
     }
 
-    // Дедупликация по brand+line+flavor (берём первый)
-    const seen = new Set<string>()
-    const unique: ParsedRow[] = []
-    let skipped = 0
-    for (const p of parsed) {
-      const key = `${p.brand}|||${p.line}|||${p.flavor}`.toLowerCase()
-      if (seen.has(key)) {
-        skipped++
-        continue
+    // ─── Очищаем существующие табаки ───
+    // Сначала удалим операции и orderRequests (cascade не сработает если есть записи)
+    // Используем транзакцию
+    const result = await db.$transaction(async (tx) => {
+      // Удаляем всё что есть (cascade должен сработать)
+      const deletedOperations = await tx.operation.deleteMany({})
+      const deletedOrders = await tx.orderRequest.deleteMany({})
+      const deletedStock = await tx.stockItem.deleteMany({})
+      const deletedTobaccos = await tx.tobacco.deleteMany({})
+
+      // Создаём новые табаки
+      let created = 0
+      let skipped = 0
+
+      // Группируем по brand+line+flavor для дедупликации (берём первый)
+      const seen = new Set<string>()
+      const unique: ParsedRow[] = []
+      for (const p of parsed) {
+        const key = `${p.brand}|||${p.line}|||${p.flavor}`.toLowerCase()
+        if (seen.has(key)) {
+          skipped++
+          continue
+        }
+        seen.add(key)
+        unique.push(p)
       }
-      seen.add(key)
-      unique.push(p)
-    }
 
-    // ─── Удаляем существующие табаки (без транзакции, по одной таблице) ───
-    const deletedOperations = await db.operation.deleteMany({})
-    const deletedOrders = await db.orderRequest.deleteMany({})
-    const deletedStock = await db.stockItem.deleteMany({})
-    const deletedTobaccos = await db.tobacco.deleteMany({})
-
-    // ─── Создаём новые табаки БАТЧАМИ через createMany (быстро) ───
-    // createMany не поддерживает unique constraint conflicts через SQLite, но мы
-    // уже дедуплицировали данные выше.
-    const BATCH_SIZE = 50
-    let created = 0
-    for (let i = 0; i < unique.length; i += BATCH_SIZE) {
-      const batch = unique.slice(i, i + BATCH_SIZE)
-      try {
-        const result = await db.tobacco.createMany({
-          data: batch.map((p) => ({
-            brand: p.brand,
-            line: p.line,
-            flavor: p.flavor,
-            defaultJarGrams: 250,
-            thresholdGrams: 70,
-            active: true,
-            strength: p.strength,
-            flavorProfile: p.flavorProfile,
-            pairings: p.pairings,
-            mixRecipes: p.mixRecipes,
-          })),
-          skipDuplicates: true,
-        })
-        created += result.count
-      } catch (e) {
-        console.error(`Batch ${i}-${i + BATCH_SIZE} error:`, (e as Error).message)
-        // Пробуем по одной, если батч упал
-        for (const p of batch) {
-          try {
-            await db.tobacco.create({
-              data: {
-                brand: p.brand,
-                line: p.line,
-                flavor: p.flavor,
-                defaultJarGrams: 250,
-                thresholdGrams: 70,
-                active: true,
-                strength: p.strength,
-                flavorProfile: p.flavorProfile,
-                pairings: p.pairings,
-                mixRecipes: p.mixRecipes,
-              },
-            })
-            created++
-          } catch {
-            skipped++
-          }
+      // Создаём пачками (createMany не поддерживает unique constraint conflicts через SQLite)
+      for (const p of unique) {
+        try {
+          await tx.tobacco.create({
+            data: {
+              brand: p.brand,
+              line: p.line,
+              flavor: p.flavor,
+              defaultJarGrams: 250,
+              thresholdGrams: 70,
+              active: true,
+              strength: p.strength,
+              flavorProfile: p.flavorProfile,
+              pairings: p.pairings,
+              mixRecipes: p.mixRecipes,
+            },
+          })
+          created++
+        } catch {
+          skipped++
         }
       }
-    }
+
+      return {
+        deleted: {
+          operations: deletedOperations.count,
+          orders: deletedOrders.count,
+          stockItems: deletedStock.count,
+          tobaccos: deletedTobaccos.count,
+        },
+        created,
+        skipped,
+        total: unique.length,
+      }
+    })
 
     return NextResponse.json({
       ok: true,
-      deleted: {
-        operations: deletedOperations.count,
-        orders: deletedOrders.count,
-        stockItems: deletedStock.count,
-        tobaccos: deletedTobaccos.count,
-      },
-      created,
-      skipped,
-      total: unique.length,
+      ...result,
       timestamp: new Date().toISOString(),
     })
   } catch (e) {
