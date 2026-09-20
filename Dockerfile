@@ -13,7 +13,8 @@ RUN bun install
 # Copy + Build
 COPY . .
 RUN if [ -f prisma/schema.postgres.prisma ]; then cp prisma/schema.postgres.prisma prisma/schema.prisma; fi
-RUN bunx prisma generate
+# generate через локальный бинарь (не bunx — он может поставить prisma@8.0.0-rc с другой семантикой)
+RUN ./node_modules/.bin/prisma generate
 RUN bun run build
 
 # Copy standalone artifacts
