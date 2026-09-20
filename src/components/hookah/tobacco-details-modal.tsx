@@ -7,12 +7,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -504,39 +498,23 @@ export function TobaccoDetailsModal({
     </div>
   )
 
-  // На мобильных — Sheet снизу, на десктопе — Dialog по центру
+  // Один Dialog для всех размеров экрана — избегаем двойного overlay
+  // (если рендерить и Dialog, и Sheet одновременно, оба рисуют тёмный фон,
+  // но контент скрыт через CSS — экран затемнён без видимой карточки)
   return (
-    <>
-      {/* Десктоп */}
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-[560px] w-[95vw] max-h-[90vh] flex flex-col p-4 sm:p-6 gap-3 overflow-hidden hidden sm:flex">
-          <DialogHeader className="shrink-0">
-            <DialogTitle className="label-mono flex items-center gap-2">
-              <Flame className="h-4 w-4 text-ember" />
-              Карточка табака
-            </DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto pr-1 -mr-1">
-            {content}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Мобильный — Sheet снизу */}
-      <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="bottom" className="sm:hidden h-[90vh] p-4 flex flex-col gap-3 overflow-hidden rounded-t-lg">
-          <SheetHeader className="shrink-0">
-            <SheetTitle className="label-mono flex items-center gap-2">
-              <Flame className="h-4 w-4 text-ember" />
-              Карточка табака
-            </SheetTitle>
-          </SheetHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto pr-1 -mr-1">
-            {content}
-          </div>
-        </SheetContent>
-      </Sheet>
-    </>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[560px] w-[95vw] max-h-[90vh] flex flex-col p-4 sm:p-6 gap-3 overflow-hidden">
+        <DialogHeader className="shrink-0">
+          <DialogTitle className="label-mono flex items-center gap-2">
+            <Flame className="h-4 w-4 text-ember" />
+            Карточка табака
+          </DialogTitle>
+        </DialogHeader>
+        <div className="flex-1 min-h-0 overflow-y-auto pr-1 -mr-1">
+          {content}
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
