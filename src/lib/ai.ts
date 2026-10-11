@@ -2,21 +2,24 @@ import { db } from '@/lib/db'
 import type { SessionMaster } from '@/lib/auth'
 import { pushToSeniors } from '@/lib/notify'
 import { parseDateFromText, startOfDay, formatDateRu, addDays } from '@/lib/datetime-utils'
-import ZAI from 'z-ai-web-dev-sdk'
 
 // ───────────────────────────────────────────
 // AI провайдеры:
-// LLM: Z.ai (z-ai-web-dev-sdk, glm-4-plus)
-// ASR: Groq whisper-large-v3
+// LLM: OpenRouter (nvidia/nemotron-3.5-lightning:free) — 1M контекст, бесплатно
+// ASR: Groq whisper-large-v3 (если задан GROQ_API_KEY)
 // ───────────────────────────────────────────
 
-// ZAI singleton — инициализируем один раз (читает .z-ai-config)
-let zaiInstance: ZAI | null = null
-async function getZAI(): Promise<ZAI> {
-  if (!zaiInstance) {
-    zaiInstance = await ZAI.create()
-  }
-  return zaiInstance
+const OR_API = 'https://openrouter.ai/api/v1/chat/completions'
+// Бесплатные модели на OpenRouter (можно переключать через env LLM_MODEL):
+//   nvidia/nemotron-3.5-lightning:free  — 1M контекст, быстрая, хороший русский
+//   google/gemma-4-31b-it:free          — 262K контекст, Gemma 4
+//   thinkingmachines/inkling:free       — 1M контекст
+const LLM_MODEL = process.env.LLM_MODEL || 'nvidia/nemotron-3.5-lightning:free'
+
+function getApiKey(): string {
+  const t = process.env.OPENROUTER_API_KEY
+  if (!t) throw new Error('OPENROUTER_API_KEY не задан в переменных окружения')
+  return t
 }
 
 function getGroqKey(): string | null {
@@ -28,19 +31,54 @@ interface ChatMessage {
   content: string
 }
 
+interface ChatResponse {
+  choices?: Array<{
+    message?: { content?: string; reasoning?: string }
+    finish_reason?: string
+  }>
+  error?: { message: string }
+}
+
 async function hfChat(messages: ChatMessage[], opts: { maxTokens?: number } = {}): Promise<string> {
+  // 25-секундный таймаут — на бесплатном tier OpenRouter иногда виснет
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 25_000)
+
   try {
-    const zai = await getZAI()
-    const completion = await zai.chat.completions.create({
-      messages,
-      stream: false,
-      thinking: { type: 'disabled' },
-      // max_tokens пока не поддерживается SDK — обрезаем через prompt
+    const res = await fetch(OR_API, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${getApiKey()}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://hookah-assistant-production.up.railway.app',
+        'X-Title': 'Hookah Assistant CRM',
+      },
+      body: JSON.stringify({
+        model: LLM_MODEL,
+        messages,
+        max_tokens: opts.maxTokens ?? 2000,
+        temperature: 0.3,  // меньше креативности — точнее structured output
+      }),
+      signal: controller.signal,
     })
-    const content = completion.choices?.[0]?.message?.content ?? ''
+
+    const data = (await res.json()) as ChatResponse
+    if (!res.ok || data.error) {
+      throw new Error(`OpenRouter: ${data.error?.message || res.status}`)
+    }
+
+    const content = data.choices?.[0]?.message?.content ?? ''
+    if (!content && data.choices?.[0]?.message?.reasoning) {
+      return data.choices[0].message.reasoning
+    }
     return content
   } catch (e) {
-    throw new Error(`Z.ai: ${(e as Error).message}`)
+    if ((e as Error).name === 'AbortError') {
+      throw new Error('OpenRouter: таймаут 25с (модель не ответила)')
+    }
+    throw new Error(`OpenRouter: ${(e as Error).message}`)
+  } finally {
+    clearTimeout(timeout)
   }
 }
 
