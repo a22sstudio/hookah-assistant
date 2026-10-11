@@ -2,20 +2,21 @@ import { db } from '@/lib/db'
 import type { SessionMaster } from '@/lib/auth'
 import { pushToSeniors } from '@/lib/notify'
 import { parseDateFromText, startOfDay, formatDateRu, addDays } from '@/lib/datetime-utils'
+import ZAI from 'z-ai-web-dev-sdk'
 
 // ───────────────────────────────────────────
-// AI провайдеры (бесплатные):
-// LLM: OpenRouter nex-agi/nex-n2.5-pro:free
+// AI провайдеры:
+// LLM: Z.ai (z-ai-web-dev-sdk, glm-4-plus)
 // ASR: Groq whisper-large-v3
 // ───────────────────────────────────────────
 
-const OR_API = 'https://openrouter.ai/api/v1/chat/completions'
-const LLM_MODEL = process.env.LLM_MODEL || 'nex-agi/nex-n2.5-mini:free'
-
-function getApiKey(): string {
-  const t = process.env.OPENROUTER_API_KEY
-  if (!t) throw new Error('OPENROUTER_API_KEY не задан в переменных окружения')
-  return t
+// ZAI singleton — инициализируем один раз (читает .z-ai-config)
+let zaiInstance: ZAI | null = null
+async function getZAI(): Promise<ZAI> {
+  if (!zaiInstance) {
+    zaiInstance = await ZAI.create()
+  }
+  return zaiInstance
 }
 
 function getGroqKey(): string | null {
@@ -24,44 +25,23 @@ function getGroqKey(): string | null {
 
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
-  content: string | Array<
-    | { type: 'text'; text: string }
-    | { type: 'image_url'; image_url: { url: string } }
-  >
-}
-
-interface ChatResponse {
-  choices?: Array<{
-    message?: { content?: string; reasoning?: string }
-    finish_reason?: string
-  }>
-  error?: { message: string }
+  content: string
 }
 
 async function hfChat(messages: ChatMessage[], opts: { maxTokens?: number } = {}): Promise<string> {
-  const res = await fetch(OR_API, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${getApiKey()}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: LLM_MODEL,
+  try {
+    const zai = await getZAI()
+    const completion = await zai.chat.completions.create({
       messages,
-      max_tokens: opts.maxTokens ?? 2000,
-    }),
-  })
-
-  const data = (await res.json()) as ChatResponse
-  if (!res.ok || data.error) {
-    throw new Error(`OpenRouter: ${data.error?.message || res.status}`)
+      stream: false,
+      thinking: { type: 'disabled' },
+      // max_tokens пока не поддерживается SDK — обрезаем через prompt
+    })
+    const content = completion.choices?.[0]?.message?.content ?? ''
+    return content
+  } catch (e) {
+    throw new Error(`Z.ai: ${(e as Error).message}`)
   }
-
-  const content = data.choices?.[0]?.message?.content ?? ''
-  if (!content && data.choices?.[0]?.message?.reasoning) {
-    return data.choices[0].message.reasoning
-  }
-  return content
 }
 
 // ───────────────────────────────────────────
