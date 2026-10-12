@@ -188,8 +188,7 @@ export function TobaccoDetailsModal({
   // Форма редактирования
   const [editStrength, setEditStrength] = useState('')
   const [editFlavorProfile, setEditFlavorProfile] = useState('')
-  const [editPairings, setEditPairings] = useState('')
-  const [editMixRecipes, setEditMixRecipes] = useState('')
+  const [editNotes, setEditNotes] = useState('')
   const [editDefaultJarGrams, setEditDefaultJarGrams] = useState(250)
   const [editThresholdGrams, setEditThresholdGrams] = useState(70)
 
@@ -197,8 +196,7 @@ export function TobaccoDetailsModal({
     if (!tobacco) return
     setEditStrength(tobacco.strength ?? '')
     setEditFlavorProfile(tobacco.flavorProfile ?? '')
-    setEditPairings(tobacco.pairings ?? '')
-    setEditMixRecipes(tobacco.mixRecipes ?? '')
+    setEditNotes(tobacco.notes ?? '')
     setEditDefaultJarGrams(tobacco.defaultJarGrams)
     setEditThresholdGrams(tobacco.thresholdGrams)
     setEditing(true)
@@ -215,8 +213,7 @@ export function TobaccoDetailsModal({
           id: tobacco.id,
           strength: editStrength.trim() || null,
           flavorProfile: editFlavorProfile.trim() || null,
-          pairings: editPairings.trim() || null,
-          mixRecipes: editMixRecipes.trim() || null,
+          notes: editNotes.trim() || null,
           defaultJarGrams: editDefaultJarGrams,
           thresholdGrams: editThresholdGrams,
         }),
@@ -326,21 +323,12 @@ export function TobaccoDetailsModal({
             />
           </div>
           <div>
-            <Label className="text-xs">Сочетания</Label>
+            <Label className="text-xs">Заметки (видны всем)</Label>
             <Textarea
-              value={editPairings}
-              onChange={(e) => setEditPairings(e.target.value)}
-              placeholder="1. Киви — Element (Земля)&#10;2. ..."
-              className="min-h-[100px] text-xs font-mono"
-            />
-          </div>
-          <div>
-            <Label className="text-xs">Миксы</Label>
-            <Textarea
-              value={editMixRecipes}
-              onChange={(e) => setEditMixRecipes(e.target.value)}
-              placeholder="1. описание · состав&#10;..."
-              className="min-h-[100px] text-xs font-mono"
+              value={editNotes}
+              onChange={(e) => setEditNotes(e.target.value)}
+              placeholder="Любые заметки по этому табаку..."
+              className="min-h-[80px] text-xs font-mono"
             />
           </div>
         </div>
@@ -409,56 +397,19 @@ export function TobaccoDetailsModal({
             </div>
           )}
 
-          {/* Сочетания */}
-          {pairings.length > 0 && (
-            <CollapsibleSection
-              title="Сочетается с"
-              icon={<BookOpen className="h-3.5 w-3.5" />}
-              count={pairings.length}
-              defaultOpen={false}
-            >
-              <ol className="space-y-1.5 text-xs">
-                {pairings.map((p, i) => (
-                  <li key={i} className="flex gap-2">
-                    <span className="label-mono-sm text-muted-foreground shrink-0">{p.num}.</span>
-                    <span className="font-sans">{p.text}</span>
-                  </li>
-                ))}
-              </ol>
-            </CollapsibleSection>
-          )}
-
-          {/* Миксы */}
-          {mixes.length > 0 && (
-            <CollapsibleSection
-              title="Готовые миксы"
-              icon={<Beaker className="h-3.5 w-3.5" />}
-              count={mixes.length}
-              defaultOpen={false}
-            >
-              <ol className="space-y-2 text-xs">
-                {mixes.map((m, i) => (
-                  <li key={i} className="rounded-md border border-border p-2 bg-card">
-                    <div className="flex gap-2">
-                      <span className="label-mono-sm text-muted-foreground shrink-0">{m.num}.</span>
-                      <div className="flex-1 min-w-0 space-y-0.5">
-                        {m.description && (
-                          <p className="label-mono-sm text-muted-foreground">{m.description}</p>
-                        )}
-                        <p className="font-sans">{m.composition}</p>
-                        {m.note && (
-                          <p className="text-[10px] text-muted-foreground italic">{m.note}</p>
-                        )}
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            </CollapsibleSection>
+          {/* Заметки (видны всем, пишет только старший) */}
+          {tobacco.notes && tobacco.notes.trim() && (
+            <div className="rounded-md border border-border bg-muted/30 p-3 space-y-1">
+              <div className="flex items-center gap-2 label-mono-sm text-muted-foreground">
+                <BookOpen className="h-3.5 w-3.5" />
+                Заметки
+              </div>
+              <p className="text-xs font-sans whitespace-pre-wrap">{tobacco.notes}</p>
+            </div>
           )}
 
           {/* Если нет расширенных данных */}
-          {!profile && pairings.length === 0 && mixes.length === 0 && (
+          {!profile && !tobacco.notes && (
             <div className="rounded-md border border-dashed border-border p-4 text-center">
               <p className="text-xs text-muted-foreground">
                 Расширенные характеристики не заполнены

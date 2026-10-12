@@ -97,12 +97,6 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
 
   const filled = pin.every((d) => d !== '')
 
-  const demoPins = [
-    { label: 'Старший', pin: '1111', hint: 'тимур' },
-    { label: 'Мастер', pin: '2222', hint: 'айрат' },
-    { label: 'Мастер', pin: '3333', hint: 'марат' },
-  ]
-
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background px-4 py-8 relative">
       {/* Тонкая разметка-сетка на фоне — адаптивная к тёмной теме через rgba foreground */}
@@ -204,38 +198,13 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
           </Button>
         </div>
 
-        {/* Демо-пины */}
-        <div className="mt-10 border-t border-border pt-6">
-          <div className="label-mono mb-3 text-center">Demo Access</div>
-          <div className="flex flex-col gap-2">
-            {demoPins.map((d) => (
-              <button
-                key={d.pin}
-                onClick={() => {
-                  setPin(d.pin.split(''))
-                  void submit(d.pin)
-                }}
-                disabled={loading}
-                className="group flex items-center justify-between border border-border rounded-md px-3 py-2.5 hover:border-foreground transition-base transition-colors disabled:opacity-50"
-              >
-                <span className="label-mono group-hover:text-foreground">
-                  {d.label} · {d.hint}
-                </span>
-                <span className="font-mono text-sm font-bold tracking-widest text-foreground">
-                  [{d.pin}]
-                </span>
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-5 flex items-center justify-center gap-1.5 label-mono-sm">
-            <Send className="h-3 w-3" />
-            <span>
-              Или через{' '}
-              <span className="text-foreground font-bold">@Defowork_bot</span>{' '}
-              → <span className="font-mono">/claim PIN</span>
-            </span>
-          </div>
+        <div className="mt-8 flex items-center justify-center gap-1.5 label-mono-sm">
+          <Send className="h-3 w-3" />
+          <span>
+            Или через{' '}
+            <span className="text-foreground font-bold">@Defowork_bot</span>{' '}
+            → <span className="font-mono">/claim PIN</span>
+          </span>
         </div>
       </div>
 

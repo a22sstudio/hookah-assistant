@@ -46,6 +46,7 @@ model Tobacco {
   stock           StockItem?
   operations      Operation[]
   orderRequests   OrderRequest[]
+  mixItems        MixItem[]
 
   @@unique([brand, line, flavor])
 }
@@ -130,6 +131,7 @@ model Master {
   chatMessages  ChatMessage[]
   scheduleEntries ScheduleEntry[]
   dailySummaries DailySummary[]
+  mixes         Mix[]
 }
 
 // Смена мастера
@@ -323,4 +325,33 @@ model BotSession {
   lastAction   String?   // последний тип действия (add/spend/set)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+// ============================================
+// Миксы (пользовательские рецепты)
+// ============================================
+
+model Mix {
+  id          String   @id @default(cuid())
+  name        String   // название микса
+  description String?  // заметка/описание
+  authorId    String   // кто создал
+  author      Master   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  items       MixItem[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([authorId])
+}
+
+model MixItem {
+  id        String @id @default(cuid())
+  mixId     String
+  tobaccoId String  // ссылка на Tobacco
+  tobacco   Tobacco @relation(fields: [tobaccoId], references: [id], onDelete: Cascade)
+  percent   Int     // процент в миксе (1-100)
+  mix       Mix    @relation(fields: [mixId], references: [id], onDelete: Cascade)
+
+  @@index([mixId])
+  @@index([tobaccoId])
 }
