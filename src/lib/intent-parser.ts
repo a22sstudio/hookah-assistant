@@ -119,6 +119,8 @@ export async function parseIntent(text: string): Promise<ParsedAction[]> {
       return [{
         type: 'clarify',
         clarifyType: 'ambiguous_tobacco',
+        actionType: type !== 'unknown' ? type : undefined,  // сохраняем глагол
+        grams: quantity?.grams ?? (quantity?.banks ? quantity.banks * search.matches[0].tobacco.defaultJarGrams : undefined),
         options: search.matches.map(m => ({
           id: m.tobacco.id,
           brand: m.tobacco.brand,
@@ -262,39 +264,59 @@ export async function parseIntent(text: string): Promise<ParsedAction[]> {
 
 // Парсинг многострочного сообщения (поставка с несколькими позициями)
 export async function parseMultiLine(text: string): Promise<ParsedAction[]> {
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
+  const safeText = (text || '').toString()
+  const lines = safeText.split('\n').map(l => l.trim()).filter(Boolean)
   
-  // Если одна строка — обычный парсинг
   if (lines.length <= 1) {
-    return parseIntent(text)
+    return parseIntent(safeText)
   }
   
-  // Первая строка может содержать контекст (бренд, глагол)
   const firstLine = lines[0]
   const { brand } = findBrandInText(firstLine)
   const { type } = detectOperation(firstLine)
   
   const actions: ParsedAction[] = []
-  
-  // Если первая строка — «поставка blackburn» или «принял blackburn»
-  // остальные строки — «вкус число»
-  const isSupplyHeader = /^(поставка|принял|приход|приехало|проверка|инвентаризация)/.test(normalize(firstLine))
+  const isSupplyHeader = /^(поставка|поставку|принял|приход|приехало|проверка|инвентаризация|завоз)/.test(normalize(firstLine))
   
   if (isSupplyHeader) {
-    // Первая строка — заголовок поставки
+    // Если в первой строке ЕСТЬ табак+число — парсим её тоже
+    const hasQuantity = /\d/.test(firstLine)
+    if (hasQuantity) {
+      const action = await parseIntent(firstLine)
+      for (const a of action) {
+        // Принудительно add_incoming для поставки
+        if (a.type === 'clarify' && a.clarifyType === 'no_verb') {
+          a.type = 'add_incoming'
+          a.actionType = 'add_incoming'
+          a.message = undefined
+        }
+        if (a.type === 'unknown') a.type = 'add_incoming'
+        if (a.type === 'clarify' && !a.actionType) a.actionType = 'add_incoming'
+        // Сохраняем grams в clarify
+        if (a.type === 'clarify' && a.grams === undefined) {
+          // grams уже должен быть установлен парсером
+        }
+      }
+      actions.push(...action)
+    }
+    
+    // Остальные строки — позиции поставки
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i]
-      // Если бренд не указан в строке — берём из заголовка
       const lineWithBrand = brand && !findBrandInText(line).brand ? `${brand} ${line}` : line
       const action = await parseIntent(lineWithBrand)
-      // Принудительно устанавливаем тип из заголовка (если не указан в строке)
-      if (action[0].type === 'unknown' && type !== 'unknown') {
-        action[0].type = type
+      for (const a of action) {
+        if (a.type === 'unknown') a.type = 'add_incoming'
+        if (a.type === 'clarify' && a.clarifyType === 'no_verb') {
+          a.type = 'add_incoming'
+          a.actionType = 'add_incoming'
+          a.message = undefined
+        }
+        if (a.type === 'clarify' && !a.actionType) a.actionType = 'add_incoming'
       }
       actions.push(...action)
     }
   } else {
-    // Каждая строка — отдельная команда
     for (const line of lines) {
       const action = await parseIntent(line)
       actions.push(...action)

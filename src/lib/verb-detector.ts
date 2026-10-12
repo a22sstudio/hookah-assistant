@@ -147,11 +147,14 @@ export function isConfirmation(text: string): 'yes' | 'no' | 'cancel' | number |
     return 'cancel'
   }
   
-  // Число 1-99 — выбор варианта
-  const numMatch = normalized.match(/^(\d{1,2})$/)
+  // Число 1-9999 — может быть выбор варианта ИЛИ количество грамм
+  // Если есть сессия no_quantity → это граммы
+  // Если есть сессия ambiguous → это выбор варианта (1-9)
+  // Контекст определяет вызывающий код
+  const numMatch = normalized.match(/^(\d{1,4})$/)
   if (numMatch) {
     const num = parseInt(numMatch[1], 10)
-    if (num >= 1 && num <= 99) return num
+    if (num >= 1 && num <= 9999) return num
   }
   
   return null

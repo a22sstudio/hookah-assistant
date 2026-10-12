@@ -178,7 +178,22 @@ export async function tryHandleWithParser(
     
     setSession(masterId, pendingAction)
     
-    return { handled: true, reply: first.message || 'Уточни.', executedCount: 0 }
+    // Если есть ещё действия (multi-line) — исполняем те, что готовы
+    const readyActions = actions.slice(1).filter(a => 
+      (a.type === 'add_incoming' || a.type === 'spend' || a.type === 'set_stock') 
+      && a.tobacco && typeof a.grams === 'number'
+    )
+    const extraReplies: string[] = []
+    for (const a of readyActions) {
+      const r = await executeAction(a, masterId)
+      extraReplies.push(r)
+    }
+    
+    const reply = first.message || 'Уточни.'
+    if (extraReplies.length > 0) {
+      return { handled: true, reply: reply + '\n' + extraReplies.join('\n'), executedCount: extraReplies.length }
+    }
+    return { handled: true, reply, executedCount: 0 }
   }
   
   // Исполняем действия
@@ -371,6 +386,15 @@ async function pickAndExecute(
         line: full.line,
         flavor: full.flavor,
         defaultJarGrams: full.defaultJarGrams,
+      }
+    } else {
+      // Табак не найден в БД — используем данные из options
+      tobacco = {
+        id: chosen.id,
+        brand: chosen.brand,
+        line: chosen.line,
+        flavor: chosen.flavor,
+        defaultJarGrams: 250,
       }
     }
   } catch {
