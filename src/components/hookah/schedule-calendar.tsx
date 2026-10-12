@@ -233,7 +233,8 @@ export function ScheduleCalendar({
               const dayEntries = entriesByDate[cell.iso] ?? []
               const isToday = cell.iso === todayIso
               const dow = cell.date.getDay()
-              const isWeekend = dow === 0 || dow === 6
+              // Пятница (5) и Суббота (6) — выходные дни кальянной
+              const isWeekend = dow === 5 || dow === 6
               const visible = dayEntries.slice(0, 4)
               const more = dayEntries.length - visible.length
               return (
