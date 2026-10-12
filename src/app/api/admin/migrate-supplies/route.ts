@@ -164,6 +164,26 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ─── Шаг 5.7: Таблица BotSession (для pending clarifications) ───
+    try {
+      await db.$executeRaw`
+        CREATE TABLE IF NOT EXISTS "BotSession" (
+          "id" TEXT NOT NULL,
+          "masterId" TEXT NOT NULL,
+          "pendingAction" TEXT,
+          "lastTobaccoId" TEXT,
+          "lastAction" TEXT,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP(3) NOT NULL,
+          CONSTRAINT "BotSession_pkey" PRIMARY KEY ("id")
+        )
+      `
+      await db.$executeRaw`CREATE UNIQUE INDEX IF NOT EXISTS "BotSession_masterId_key" ON "BotSession"("masterId")`
+      results.push({ step: 'create BotSession table', ok: true, message: 'OK' })
+    } catch (e) {
+      results.push({ step: 'create BotSession table', ok: false, message: (e as Error).message })
+    }
+
     // ─── Шаг 6: foreign key SupplyItem.supplyId → Supply.id (опционально) ───
     try {
       await db.$executeRaw`

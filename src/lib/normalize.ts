@@ -40,6 +40,11 @@ const BRAND_ALIASES: Record<string, string> = {
   // Black Burn (варианты)
   'берн': 'Black Burn',
   'бёрн': 'Black Burn',
+  'берна': 'Black Burn',
+  'бёрна': 'Black Burn',
+  'берном': 'Black Burn',
+  'бёрном': 'Black Burn',
+  'берну': 'Black Burn',
   // Sebero
   'себеро': 'Sebero',
   'sebero': 'Sebero',

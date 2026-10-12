@@ -310,3 +310,17 @@ model SupplyItem {
 
   @@index([supplyId])
 }
+
+// ============================================
+// Сессии бота (pending clarifications)
+// ============================================
+
+model BotSession {
+  id           String   @id @default(cuid())
+  masterId     String   @unique
+  pendingAction String?  // JSON: { type, tobacco, grams, options, ... }
+  lastTobaccoId String?  // последний табак (для «ещё 20»)
+  lastAction   String?   // последний тип действия (add/spend/set)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}

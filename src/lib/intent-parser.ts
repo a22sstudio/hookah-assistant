@@ -24,6 +24,8 @@ export interface ParsedAction {
   // Для clarify (уточнение)
   clarifyType?: 'ambiguous_tobacco' | 'no_verb' | 'no_quantity' | 'not_found' | 'suggest'
   options?: Array<{ id: string; brand: string; line: string; flavor: string }>
+  // Желаемое действие (если clarify — что сделать после подтверждения)
+  actionType?: 'add_incoming' | 'spend' | 'set_stock'
   // Оригинальный текст
   raw: string
   // Сообщение для пользователя
@@ -176,6 +178,7 @@ export async function parseIntent(text: string): Promise<ParsedAction[]> {
       return [{
         type: 'clarify',
         clarifyType: 'ambiguous_tobacco',
+        actionType: type,  // сохраняем желаемое действие
         options: search.matches.map(m => ({
           id: m.tobacco.id,
           brand: m.tobacco.brand,
@@ -192,6 +195,7 @@ export async function parseIntent(text: string): Promise<ParsedAction[]> {
       return [{
         type: 'clarify',
         clarifyType: 'suggest',
+        actionType: type,  // сохраняем желаемое действие
         tobacco: {
           id: match.tobacco.id,
           brand: match.tobacco.brand,
