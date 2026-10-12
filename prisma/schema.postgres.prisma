@@ -132,6 +132,7 @@ model Master {
   scheduleEntries ScheduleEntry[]
   dailySummaries DailySummary[]
   mixes         Mix[]
+  vacations     Vacation[]
 }
 
 // Смена мастера
@@ -355,4 +356,21 @@ model MixItem {
 
   @@index([mixId])
   @@index([tobaccoId])
+}
+
+// ============================================
+// Отпуска мастеров
+// ============================================
+
+model Vacation {
+  id          String   @id @default(cuid())
+  masterId    String
+  date        DateTime  // конкретная дата отпуска (00:00)
+  note        String?
+  createdAt   DateTime @default(now())
+  master      Master   @relation(fields: [masterId], references: [id], onDelete: Cascade)
+
+  @@unique([masterId, date])
+  @@index([masterId])
+  @@index([date])
 }

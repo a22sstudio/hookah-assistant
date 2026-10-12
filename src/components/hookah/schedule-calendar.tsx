@@ -8,6 +8,8 @@ import {
   X,
   Loader2,
   CalendarDays,
+  Plane,
+  Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -88,6 +90,8 @@ export function ScheduleCalendar({
   const [cursor, setCursor] = useState<Date>(startOfMonth(new Date()))
   const [entries, setEntries] = useState<ScheduleEntry[]>([])
   const [masters, setMasters] = useState<Master[]>([])
+  const [vacations, setVacations] = useState<Array<{ id: string; masterId: string; masterName: string; date: string; note: string | null }>>([])
+  const [vacationDialogOpen, setVacationDialogOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [selectedEntries, setSelectedEntries] = useState<ScheduleEntry[]>([])
@@ -97,12 +101,19 @@ export function ScheduleCalendar({
     try {
       const from = toISODate(startOfMonth(cursor))
       const to = toISODate(endOfMonth(cursor))
-      const res = await fetch(`/api/schedule?from=${from}&to=${to}`)
-      if (res.ok) {
-        const data = await res.json()
+      const [schedRes, vacRes] = await Promise.all([
+        fetch(`/api/schedule?from=${from}&to=${to}`),
+        fetch(`/api/vacations?from=${from}&to=${to}`),
+      ])
+      if (schedRes.ok) {
+        const data = await schedRes.json()
         setEntries(data.entries ?? [])
       } else {
         toast.error('Не удалось загрузить график')
+      }
+      if (vacRes.ok) {
+        const vacData = await vacRes.json()
+        setVacations(vacData.vacations ?? [])
       }
       if (canEdit) {
         const mres = await fetch('/api/masters')
@@ -150,6 +161,17 @@ export function ScheduleCalendar({
     return map
   }, [entries])
 
+  // Отпуска по дате (iso → массив masterId)
+  const vacationsByDate = useMemo(() => {
+    const map: Record<string, string[]> = {}
+    for (const v of vacations) {
+      const key = toISODate(new Date(v.date))
+      if (!map[key]) map[key] = []
+      map[key].push(v.masterId)
+    }
+    return map
+  }, [vacations])
+
   const todayIso = toISODate(new Date())
 
   const prevMonth = () => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))
@@ -185,12 +207,18 @@ export function ScheduleCalendar({
           </h2>
         </div>
         <div className="flex items-center gap-1">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={goToday}
-            className="hidden sm:flex"
-          >
+          {canEdit && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setVacationDialogOpen(true)}
+              className="hidden sm:flex"
+            >
+              <Plane className="h-4 w-4" />
+              Отпуск
+            </Button>
+          )}
+          <Button size="sm" variant="outline" onClick={goToday} className="hidden sm:flex">
             Сегодня
           </Button>
           <Button size="icon" variant="outline" onClick={prevMonth} title="Предыдущий месяц">
@@ -317,10 +345,27 @@ export function ScheduleCalendar({
         iso={selectedDate}
         entries={selectedEntries}
         masters={masters}
+        vacationMasterIds={selectedDate ? (vacationsByDate[selectedDate] ?? []) : []}
+        dayVacations={vacations.filter((v) => {
+          if (!selectedDate) return false
+          return toISODate(new Date(v.date)) === selectedDate
+        }).map((v) => ({ id: v.id, masterId: v.masterId, masterName: v.masterName, note: v.note }))}
         canEdit={canEdit}
         onClose={closeDay}
         onChanged={refreshAll}
       />
+
+      {/* Диалог отпусков */}
+      {canEdit && vacationDialogOpen && (
+        <VacationDialog
+          open={vacationDialogOpen}
+          onOpenChange={setVacationDialogOpen}
+          masters={masters}
+          vacations={vacations}
+          cursor={cursor}
+          onChanged={refreshAll}
+        />
+      )}
     </div>
   )
 }
@@ -329,6 +374,8 @@ function DayDialog({
   iso,
   entries,
   masters,
+  vacationMasterIds,
+  dayVacations,
   canEdit,
   onClose,
   onChanged,
@@ -336,6 +383,8 @@ function DayDialog({
   iso: string | null
   entries: ScheduleEntry[]
   masters: Master[]
+  vacationMasterIds: string[]
+  dayVacations: Array<{ id: string; masterId: string; masterName: string; note: string | null }>
   canEdit: boolean
   onClose: () => void
   onChanged: () => void
@@ -477,6 +526,41 @@ function DayDialog({
           )}
         </div>
 
+        {/* Отпуска в этот день */}
+        {dayVacations.length > 0 && (
+          <div className="border-t border-border pt-3 space-y-2">
+            <span className="label-mono flex items-center gap-1.5">
+              <Plane className="h-3 w-3" /> В отпуске
+            </span>
+            {dayVacations.map((v) => (
+              <div key={v.id} className="flex items-center gap-2 rounded-md border border-border p-2 bg-muted/20">
+                <span className="text-xs">✈</span>
+                <span className="font-mono text-sm font-bold">{v.masterName}</span>
+                {v.note && <span className="label-mono-sm text-muted-foreground">{v.note}</span>}
+                {canEdit && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6 ml-auto"
+                    onClick={async () => {
+                      try {
+                        await fetch(`/api/vacations?id=${v.id}`, { method: 'DELETE' })
+                        toast.success('Отпуск удалён')
+                        onChanged()
+                      } catch {
+                        toast.error('Ошибка')
+                      }
+                    }}
+                    title="Удалить отпуск"
+                  >
+                    <X className="h-3 w-3 text-destructive" />
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
         {canEdit && (
           <div className="border-t border-border pt-4 space-y-3">
             <span className="label-mono block">Добавить мастера</span>
@@ -488,11 +572,14 @@ function DayDialog({
                     <SelectValue placeholder="Выберите мастера" />
                   </SelectTrigger>
                   <SelectContent>
-                    {masters.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>
-                        {m.name} {m.role === 'SENIOR' ? '⭐' : ''}
+                    {masters.map((m) => {
+                      const onVacation = vacationMasterIds.includes(m.id)
+                      return (
+                      <SelectItem key={m.id} value={m.id} disabled={onVacation}>
+                        {m.name} {m.role === 'SENIOR' ? '⭐' : ''} {onVacation ? '✈ отпуск' : ''}
                       </SelectItem>
-                    ))}
+                      )
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -531,6 +618,228 @@ function DayDialog({
               Добавить смену
             </Button>
           )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── Vacation Dialog ───
+function VacationDialog({
+  open,
+  onOpenChange,
+  masters,
+  vacations,
+  cursor,
+  onChanged,
+}: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  masters: Master[]
+  vacations: Array<{ id: string; masterId: string; masterName: string; date: string; note: string | null }>
+  cursor: Date
+  onChanged: () => void
+}) {
+  const [selectedMaster, setSelectedMaster] = useState('')
+  const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set())
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  // Сетка месяца для выбора дат
+  const grid = useMemo(() => {
+    const first = startOfMonth(cursor)
+    const last = endOfMonth(cursor)
+    const firstDow = (first.getDay() + 6) % 7
+    const totalDays = last.getDate()
+    const cells: Array<{ date: Date | null; iso: string | null }> = []
+    for (let i = 0; i < firstDow; i++) cells.push({ date: null, iso: null })
+    for (let d = 1; d <= totalDays; d++) {
+      const date = new Date(cursor.getFullYear(), cursor.getMonth(), d)
+      cells.push({ date, iso: toISODate(date) })
+    }
+    while (cells.length % 7 !== 0) cells.push({ date: null, iso: null })
+    return cells
+  }, [cursor])
+
+  const toggleDate = (iso: string) => {
+    const next = new Set(selectedDates)
+    if (next.has(iso)) next.delete(iso)
+    else next.add(iso)
+    setSelectedDates(next)
+  }
+
+  const handleSave = async () => {
+    if (!selectedMaster) {
+      toast.error('Выберите мастера')
+      return
+    }
+    if (selectedDates.size === 0) {
+      toast.error('Выберите хотя бы одну дату')
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await fetch('/api/vacations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          masterId: selectedMaster,
+          dates: Array.from(selectedDates),
+          note: note.trim() || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || 'Ошибка')
+        return
+      }
+      toast.success(data.message || 'Отпуск сохранён')
+      setSelectedMaster('')
+      setSelectedDates(new Set())
+      setNote('')
+      onChanged()
+    } catch {
+      toast.error('Ошибка сети')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeleteVacation = async (id: string) => {
+    try {
+      await fetch(`/api/vacations?id=${id}`, { method: 'DELETE' })
+      toast.success('Дата отпуска удалена')
+      onChanged()
+    } catch {
+      toast.error('Ошибка')
+    }
+  }
+
+  // Группировка отпусков по мастеру
+  const vacationsByMaster = useMemo(() => {
+    const map: Record<string, Array<{ id: string; date: string; note: string | null }>> = {}
+    for (const v of vacations) {
+      if (!map[v.masterId]) map[v.masterId] = []
+      map[v.masterId].push({ id: v.id, date: v.date, note: v.note })
+    }
+    return map
+  }, [vacations])
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[600px] w-[95vw] max-h-[90vh] flex flex-col p-4 sm:p-6 gap-3 overflow-hidden">
+        <DialogHeader className="shrink-0">
+          <DialogTitle className="label-mono flex items-center gap-2">
+            <Plane className="h-4 w-4" /> Отпуска
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="flex-1 min-h-0 overflow-y-auto pr-1 -mr-1 space-y-4">
+          {/* Текущие отпуска */}
+          {Object.keys(vacationsByMaster).length > 0 && (
+            <div className="space-y-2">
+              <span className="label-mono text-muted-foreground">Актуальные отпуска</span>
+              {Object.entries(vacationsByMaster).map(([mId, dates]) => {
+                const master = masters.find((m) => m.id === mId)
+                return (
+                  <div key={mId} className="rounded-md border border-border p-2 bg-muted/20">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-mono text-sm font-bold">{master?.name || 'Неизвестный'}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {dates.map((d) => (
+                        <span key={d.id} className="flex items-center gap-1 label-mono-sm px-2 py-0.5 rounded bg-muted">
+                          {new Date(d.date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}
+                          {d.note && <span className="text-muted-foreground">· {d.note}</span>}
+                          <button
+                            onClick={() => handleDeleteVacation(d.id)}
+                            className="text-destructive hover:text-destructive/80 ml-1"
+                            title="Удалить"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Форма создания */}
+          <div className="border-t border-border pt-3 space-y-3">
+            <span className="label-mono">Создать отпуск</span>
+            <div className="space-y-1.5">
+              <Label>Мастер</Label>
+              <Select value={selectedMaster} onValueChange={setSelectedMaster}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Выберите мастера" />
+                </SelectTrigger>
+                <SelectContent>
+                  {masters.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.name} {m.role === 'SENIOR' ? '⭐' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Даты отпуска (нажмите чтобы выбрать)</Label>
+              {/* Мини-календарь */}
+              <div className="grid grid-cols-7 gap-0.5 text-center">
+                {WEEKDAYS_SHORT.map((d) => (
+                  <div key={d} className="label-mono-sm text-muted-foreground py-1">{d}</div>
+                ))}
+                {grid.map((cell, i) => {
+                  if (!cell.date || !cell.iso) {
+                    return <div key={`empty-${i}`} className="min-h-[32px]" />
+                  }
+                  const selected = selectedDates.has(cell.iso)
+                  const hasVacation = vacations.some((v) => toISODate(new Date(v.date)) === cell.iso)
+                  return (
+                    <button
+                      key={cell.iso}
+                      onClick={() => toggleDate(cell.iso)}
+                      className={`min-h-[32px] rounded text-xs font-mono tabular transition-base ${
+                        selected
+                          ? 'bg-ember text-ember-foreground font-bold'
+                          : hasVacation
+                            ? 'bg-muted/50 text-muted-foreground'
+                            : 'border border-border hover:bg-muted/50'
+                      }`}
+                    >
+                      {cell.date.getDate()}
+                    </button>
+                  )
+                })}
+              </div>
+              {selectedDates.size > 0 && (
+                <p className="label-mono-sm text-muted-foreground">
+                  Выбрано: {selectedDates.size} дат
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Заметка (необязательно)</Label>
+              <Input
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="например, плановый отпуск"
+              />
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="border-t border-border pt-3 shrink-0">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Закрыть</Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            Сохранить отпуск
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

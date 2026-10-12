@@ -231,6 +231,26 @@ export async function POST(req: NextRequest) {
       results.push({ step: 'create MixItem table', ok: false, message: (e as Error).message })
     }
 
+    // ─── Шаг 5.9: Таблица Vacation (отпуска мастеров) ───
+    try {
+      await db.$executeRaw`
+        CREATE TABLE IF NOT EXISTS "Vacation" (
+          "id" TEXT NOT NULL,
+          "masterId" TEXT NOT NULL,
+          "date" TIMESTAMP(3) NOT NULL,
+          "note" TEXT,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "Vacation_pkey" PRIMARY KEY ("id")
+        )
+      `
+      await db.$executeRaw`CREATE UNIQUE INDEX IF NOT EXISTS "Vacation_masterId_date_key" ON "Vacation"("masterId", "date")`
+      await db.$executeRaw`CREATE INDEX IF NOT EXISTS "Vacation_masterId_idx" ON "Vacation"("masterId")`
+      await db.$executeRaw`CREATE INDEX IF NOT EXISTS "Vacation_date_idx" ON "Vacation"("date")`
+      results.push({ step: 'create Vacation table', ok: true, message: 'OK' })
+    } catch (e) {
+      results.push({ step: 'create Vacation table', ok: false, message: (e as Error).message })
+    }
+
     // ─── Шаг 6: foreign key SupplyItem.supplyId → Supply.id (опционально) ───
     try {
       await db.$executeRaw`
