@@ -184,6 +184,42 @@ export async function POST(req: NextRequest) {
       results.push({ step: 'create BotSession table', ok: false, message: (e as Error).message })
     }
 
+    // ─── Шаг 5.8: Таблицы Mix и MixItem (пользовательские миксы) ───
+    try {
+      await db.$executeRaw`
+        CREATE TABLE IF NOT EXISTS "Mix" (
+          "id" TEXT NOT NULL,
+          "name" TEXT NOT NULL,
+          "description" TEXT,
+          "authorId" TEXT NOT NULL,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP(3) NOT NULL,
+          CONSTRAINT "Mix_pkey" PRIMARY KEY ("id")
+        )
+      `
+      await db.$executeRaw`CREATE INDEX IF NOT EXISTS "Mix_authorId_idx" ON "Mix"("authorId")`
+      results.push({ step: 'create Mix table', ok: true, message: 'OK' })
+    } catch (e) {
+      results.push({ step: 'create Mix table', ok: false, message: (e as Error).message })
+    }
+
+    try {
+      await db.$executeRaw`
+        CREATE TABLE IF NOT EXISTS "MixItem" (
+          "id" TEXT NOT NULL,
+          "mixId" TEXT NOT NULL,
+          "tobaccoId" TEXT NOT NULL,
+          "percent" INTEGER NOT NULL,
+          CONSTRAINT "MixItem_pkey" PRIMARY KEY ("id")
+        )
+      `
+      await db.$executeRaw`CREATE INDEX IF NOT EXISTS "MixItem_mixId_idx" ON "MixItem"("mixId")`
+      await db.$executeRaw`CREATE INDEX IF NOT EXISTS "MixItem_tobaccoId_idx" ON "MixItem"("tobaccoId")`
+      results.push({ step: 'create MixItem table', ok: true, message: 'OK' })
+    } catch (e) {
+      results.push({ step: 'create MixItem table', ok: false, message: (e as Error).message })
+    }
+
     // ─── Шаг 6: foreign key SupplyItem.supplyId → Supply.id (опционально) ───
     try {
       await db.$executeRaw`

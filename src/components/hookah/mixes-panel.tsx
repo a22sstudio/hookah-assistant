@@ -1,12 +1,11 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Dialog,
   DialogContent,
@@ -81,12 +80,13 @@ interface MixesPanelProps {
   onRefresh: () => void
 }
 
+const norm = (s: string): string => (s || '').toUpperCase().replace(/\s+/g, ' ').trim()
+
 export function MixesPanel({ role, masterId, refreshKey, onRefresh }: MixesPanelProps) {
   const [mixes, setMixes] = useState<Mix[]>([])
   const [tobaccos, setTobaccos] = useState<TobaccoOption[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Создание/редактирование
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingMix, setEditingMix] = useState<Mix | null>(null)
   const [saving, setSaving] = useState(false)
@@ -95,6 +95,9 @@ export function MixesPanel({ role, masterId, refreshKey, onRefresh }: MixesPanel
     description: '',
     items: [] as Array<{ tobaccoId: string; percent: number }>,
   })
+
+  // Выбор бренда → табака
+  const [selectedBrand, setSelectedBrand] = useState<string>('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -129,9 +132,22 @@ export function MixesPanel({ role, masterId, refreshKey, onRefresh }: MixesPanel
     load()
   }, [load, refreshKey])
 
+  // Список брендов
+  const brands = useMemo(() => {
+    const set = new Set(tobaccos.map((t) => t.brand))
+    return Array.from(set).sort()
+  }, [tobaccos])
+
+  // Табаки выбранного бренда
+  const tobaccosForBrand = useMemo(() => {
+    if (!selectedBrand) return []
+    return tobaccos.filter((t) => norm(t.brand) === norm(selectedBrand))
+  }, [tobaccos, selectedBrand])
+
   const openCreate = () => {
     setEditingMix(null)
     setForm({ name: '', description: '', items: [] })
+    setSelectedBrand('')
     setDialogOpen(true)
   }
 
@@ -142,16 +158,23 @@ export function MixesPanel({ role, masterId, refreshKey, onRefresh }: MixesPanel
       description: m.description ?? '',
       items: m.items.map((it) => ({ tobaccoId: it.tobaccoId, percent: it.percent })),
     })
+    setSelectedBrand('')
     setDialogOpen(true)
   }
 
   const addItem = (tobaccoId: string) => {
-    // Проверка — не добавлен ли уже
     if (form.items.some((it) => it.tobaccoId === tobaccoId)) {
       toast.error('Этот табак уже в миксе')
       return
     }
-    setForm({ ...form, items: [...form.items, { tobaccoId, percent: 50 }] })
+    // Максимальный процент = 100 - текущая сумма
+    const remaining = 100 - totalPercent
+    const defaultPercent = Math.min(50, Math.max(1, remaining))
+    if (defaultPercent <= 0) {
+      toast.error('Сумма процентов уже 100%')
+      return
+    }
+    setForm({ ...form, items: [...form.items, { tobaccoId, percent: defaultPercent }] })
   }
 
   const removeItem = (idx: number) => {
@@ -159,10 +182,18 @@ export function MixesPanel({ role, masterId, refreshKey, onRefresh }: MixesPanel
   }
 
   const updatePercent = (idx: number, percent: number) => {
+    const clamped = Math.max(1, Math.min(100, percent))
     const items = [...form.items]
-    items[idx] = { ...items[idx], percent: Math.max(1, Math.min(100, percent)) }
+    const newTotal = items.reduce((sum, it, i) => (i === idx ? sum + clamped : sum + it.percent), 0)
+    if (newTotal > 100) {
+      toast.error('Сумма процентов не может превышать 100%')
+      return
+    }
+    items[idx] = { ...items[idx], percent: clamped }
     setForm({ ...form, items })
   }
+
+  const totalPercent = form.items.reduce((sum, it) => sum + it.percent, 0)
 
   const handleSave = async () => {
     if (!form.name.trim()) {
@@ -173,21 +204,24 @@ export function MixesPanel({ role, masterId, refreshKey, onRefresh }: MixesPanel
       toast.error('Добавьте хотя бы один табак')
       return
     }
+    if (totalPercent > 100) {
+      toast.error('Сумма процентов превышает 100%')
+      return
+    }
 
     setSaving(true)
     try {
-      const url = '/api/mixes'
       const method = editingMix ? 'PATCH' : 'POST'
       const body = editingMix
         ? { id: editingMix.id, ...form }
         : form
 
-      const res = await fetch(url, {
+      const res = await fetch('/api/mixes', {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      const data = await res.json()
+      const data = await res.json().catch(() => ({ error: 'Неизвестная ошибка' }))
       if (!res.ok) {
         toast.error(data.error || 'Ошибка')
         return
@@ -207,7 +241,7 @@ export function MixesPanel({ role, masterId, refreshKey, onRefresh }: MixesPanel
   const handleDelete = async (id: string) => {
     try {
       const res = await fetch(`/api/mixes?id=${id}`, { method: 'DELETE' })
-      const data = await res.json()
+      const data = await res.json().catch(() => ({ error: 'Ошибка' }))
       if (!res.ok) {
         toast.error(data.error || 'Ошибка')
         return
@@ -220,9 +254,6 @@ export function MixesPanel({ role, masterId, refreshKey, onRefresh }: MixesPanel
     }
   }
 
-  const totalPercent = form.items.reduce((sum, it) => sum + it.percent, 0)
-
-  // Найти табак по ID для отображения
   const getTobacco = (id: string) => tobaccos.find((t) => t.id === id)
 
   return (
@@ -266,7 +297,6 @@ export function MixesPanel({ role, masterId, refreshKey, onRefresh }: MixesPanel
               className="rounded-lg border border-border bg-card overflow-hidden"
             >
               <div className="p-3 sm:p-4">
-                {/* Заголовок */}
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="flex-1 min-w-0">
                     <h3 className="font-mono font-bold text-sm truncate">{m.name}</h3>
@@ -275,43 +305,27 @@ export function MixesPanel({ role, masterId, refreshKey, onRefresh }: MixesPanel
                     )}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    {/* Аватар автора */}
                     <div
-                      className={`h-6 w-6 ${masterAvatarClass(
-                        m.author.color,
-                      )} flex items-center justify-center text-[8px] font-mono font-bold text-white rounded-md`}
+                      className={`h-6 w-6 ${masterAvatarClass(m.author.color)} flex items-center justify-center text-[8px] font-mono font-bold text-white rounded-md`}
                       title={`Автор: ${m.author.name}`}
                     >
                       {initials(m.author.name)}
                     </div>
                     {m.canEdit && (
                       <>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => openEdit(m)}
-                          title="Редактировать"
-                        >
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(m)} title="Редактировать">
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              title="Удалить"
-                            >
+                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Удалить">
                               <Trash2 className="h-3.5 w-3.5 text-destructive" />
                             </Button>
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
                               <AlertDialogTitle>Удалить микс «{m.name}»?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Это действие нельзя отменить.
-                              </AlertDialogDescription>
+                              <AlertDialogDescription>Это действие нельзя отменить.</AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                               <AlertDialogCancel>Отмена</AlertDialogCancel>
@@ -329,7 +343,6 @@ export function MixesPanel({ role, masterId, refreshKey, onRefresh }: MixesPanel
                   </div>
                 </div>
 
-                {/* Состав микса */}
                 <div className="space-y-1.5">
                   {m.items.map((it, i) => (
                     <div key={i} className="flex items-center gap-2 text-xs">
@@ -340,10 +353,7 @@ export function MixesPanel({ role, masterId, refreshKey, onRefresh }: MixesPanel
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-ember"
-                            style={{ width: `${it.percent}%` }}
-                          />
+                          <div className="h-full bg-ember" style={{ width: `${it.percent}%` }} />
                         </div>
                         <span className="label-mono-sm tabular w-8 text-right">{it.percent}%</span>
                       </div>
@@ -351,15 +361,10 @@ export function MixesPanel({ role, masterId, refreshKey, onRefresh }: MixesPanel
                   ))}
                 </div>
 
-                {/* Автор */}
                 <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-border/50">
-                  <span className="label-mono-sm text-muted-foreground">
-                    Автор: {m.author.name}
-                  </span>
+                  <span className="label-mono-sm text-muted-foreground">Автор: {m.author.name}</span>
                   {m.isMine && (
-                    <Badge variant="outline" className="label-mono-sm text-[10px] py-0 border-ember text-ember">
-                      твой
-                    </Badge>
+                    <Badge variant="outline" className="label-mono-sm text-[10px] py-0 border-ember text-ember">твой</Badge>
                   )}
                 </div>
               </div>
@@ -400,35 +405,48 @@ export function MixesPanel({ role, masterId, refreshKey, onRefresh }: MixesPanel
               />
             </div>
 
-            {/* Добавление табака */}
+            {/* Шаг 1: Выбор бренда */}
             <div>
-              <Label className="text-xs">Табаки в миксе</Label>
-              {tobaccos.length > 0 && (
+              <Label className="text-xs">Шаг 1: Выберите бренд</Label>
+              <Select value={selectedBrand} onValueChange={setSelectedBrand}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Все бренды" />
+                </SelectTrigger>
+                <SelectContent>
+                  {brands.map((b) => (
+                    <SelectItem key={b} value={b}>{b}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Шаг 2: Выбор табака из бренда */}
+            {selectedBrand && (
+              <div>
+                <Label className="text-xs">Шаг 2: Добавить табак из {selectedBrand}</Label>
                 <Select onValueChange={addItem}>
                   <SelectTrigger className="h-8 text-xs">
-                    <SelectValue placeholder="+ Добавить табак" />
+                    <SelectValue placeholder="+ Выбрать табак" />
                   </SelectTrigger>
                   <SelectContent>
-                    {tobaccos.map((t) => (
+                    {tobaccosForBrand.map((t) => (
                       <SelectItem key={t.id} value={t.id}>
-                        {t.brand} {t.line ? t.line + ' ' : ''}{t.flavor}
+                        {t.line ? t.line + ' / ' : ''}{t.flavor}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Список добавленных табаков */}
             {form.items.length > 0 && (
               <div className="space-y-2">
+                <Label className="text-xs">Состав микса</Label>
                 {form.items.map((it, idx) => {
                   const t = getTobacco(it.tobaccoId)
                   return (
-                    <div
-                      key={idx}
-                      className="flex items-center gap-2 rounded-md border border-border p-2 bg-card"
-                    >
+                    <div key={idx} className="flex items-center gap-2 rounded-md border border-border p-2 bg-card">
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-sans truncate">
                           {t ? `${t.brand} ${t.line ? t.line + ' ' : ''}${t.flavor}` : 'Неизвестный табак'}
@@ -443,20 +461,15 @@ export function MixesPanel({ role, masterId, refreshKey, onRefresh }: MixesPanel
                         className="h-7 w-16 text-xs"
                       />
                       <span className="text-xs">%</span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 shrink-0"
-                        onClick={() => removeItem(idx)}
-                      >
+                      <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeItem(idx)}>
                         <X className="h-3.5 w-3.5 text-destructive" />
                       </Button>
                     </div>
                   )
                 })}
                 <div className="flex items-center justify-between text-xs px-2">
-                  <span className="label-mono-sm text-muted-foreground">Сумма процентов:</span>
-                  <span className={`label-mono-sm font-bold ${totalPercent === 100 ? 'text-emerald-500' : 'text-amber-500'}`}>
+                  <span className="label-mono-sm text-muted-foreground">Сумма:</span>
+                  <span className={`label-mono-sm font-bold ${totalPercent === 100 ? 'text-emerald-500' : totalPercent < 100 ? 'text-amber-500' : 'text-destructive'}`}>
                     {totalPercent}%
                   </span>
                 </div>
@@ -468,7 +481,7 @@ export function MixesPanel({ role, masterId, refreshKey, onRefresh }: MixesPanel
             <Button variant="outline" onClick={() => { setDialogOpen(false); setEditingMix(null) }}>
               Отмена
             </Button>
-            <Button onClick={handleSave} disabled={saving}>
+            <Button onClick={handleSave} disabled={saving || totalPercent > 100}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               {editingMix ? 'Сохранить' : 'Создать'}
             </Button>
