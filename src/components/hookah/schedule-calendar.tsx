@@ -271,13 +271,11 @@ export function ScheduleCalendar({
                           )} rounded-sm`}
                         />
                         <span className="truncate text-foreground">
-                          {e.masterName}
-                        </span>
-                        {e.shiftType && e.shiftType !== 'full' && (
-                          <span className="text-[9px] px-0.5 rounded bg-muted text-muted-foreground shrink-0">
-                            {SHIFT_TYPES[e.shiftType]?.short || ''}
+                          {e.masterName}{' '}
+                          <span className="text-muted-foreground">
+                            ({e.shiftType === 'morning' ? 'У' : e.shiftType === 'evening' ? 'В' : 'П'})
                           </span>
-                        )}
+                        </span>
                       </div>
                     ))}
                     {more > 0 && (
@@ -431,7 +429,6 @@ function DayDialog({
             </p>
           ) : (
             entries.map((e) => {
-              const st = SHIFT_TYPES[e.shiftType] || SHIFT_TYPES.full
               return (
               <div
                 key={e.id}
@@ -445,11 +442,11 @@ function DayDialog({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <p className="font-mono text-sm font-bold tracking-tight truncate">
-                      {e.masterName}
+                      {e.masterName}{' '}
+                      <span className="text-muted-foreground font-normal">
+                        ({e.shiftType === 'morning' ? 'У' : e.shiftType === 'evening' ? 'В' : 'П'})
+                      </span>
                     </p>
-                    <span className="label-mono-sm text-[10px] px-1.5 py-0.5 rounded bg-muted text-foreground">
-                      {st.icon} {st.short}
-                    </span>
                   </div>
                   {e.note && (
                     <p className="label-mono-sm text-muted-foreground mt-0.5 truncate">
