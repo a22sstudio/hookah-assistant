@@ -46,7 +46,6 @@ import {
   Hash,
   Trash2,
   Save,
-  Wallet,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { masterAvatarClass, masterColorClasses, initials } from '@/lib/master-utils'
@@ -58,7 +57,6 @@ interface MasterRow {
   color: string
   pin: string
   telegramId: string | null
-  rate?: number
   active?: boolean
 }
 
@@ -96,7 +94,6 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
     pin: '',
     color: 'emerald',
     telegramId: '',
-    rate: 1600,
     active: true,
   })
 
@@ -182,7 +179,6 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
       pin: m.pin,
       color: m.color,
       telegramId: m.telegramId ?? '',
-      rate: m.rate ?? 1600,
       active: m.active ?? true,
     })
     setEditDialogOpen(true)
@@ -206,7 +202,6 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
           pin: editForm.pin.trim(),
           color: editForm.color,
           telegramId: editForm.telegramId.trim() || null,
-          rate: editForm.rate,
           active: editForm.active,
         }),
       })
@@ -509,12 +504,6 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                               )}
                             </span>
                           )}
-                          {m.rate != null && m.rate > 0 && (
-                            <span className="flex items-center gap-1 label-mono-sm">
-                              <Wallet className="h-3 w-3" />
-                              <span className="font-bold text-foreground">{m.rate}₽/смена</span>
-                            </span>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -657,24 +646,14 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label>Ставка (₽/смена)</Label>
-                  <Input
-                    type="number"
-                    value={editForm.rate}
-                    onChange={(e) => setEditForm({ ...editForm, rate: parseInt(e.target.value) || 0 })}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Telegram ID</Label>
-                  <Input
-                    inputMode="numeric"
-                    placeholder="123456789"
-                    value={editForm.telegramId}
-                    onChange={(e) => setEditForm({ ...editForm, telegramId: e.target.value.replace(/[^\d]/g, '') })}
-                  />
-                </div>
+              <div className="space-y-1.5">
+                <Label>Telegram ID</Label>
+                <Input
+                  inputMode="numeric"
+                  placeholder="123456789"
+                  value={editForm.telegramId}
+                  onChange={(e) => setEditForm({ ...editForm, telegramId: e.target.value.replace(/[^\d]/g, '') })}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>Цвет аватара</Label>

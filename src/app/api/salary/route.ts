@@ -3,7 +3,13 @@ import { db } from '@/lib/db'
 import { getCurrentMaster } from '@/lib/auth'
 import { startOfDay, addDays } from '@/lib/datetime-utils'
 
-// Проверка что текущий пользователь — старший мастер
+// Фиксированные ставки по типу смены
+const SHIFT_RATES: Record<string, number> = {
+  full: 4400,
+  morning: 2200,
+  evening: 2200,
+}
+
 async function requireSenior() {
   const me = await getCurrentMaster()
   if (!me) {
@@ -25,7 +31,6 @@ async function requireSenior() {
 }
 
 // GET /api/salary?masterId=&from=&to=
-// Возвращает закрытые смены мастера в диапазоне, ставку, итог.
 export async function GET(req: NextRequest) {
   const { error, me } = await requireSenior()
   if (error) return error
@@ -40,7 +45,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'masterId обязателен' }, { status: 400 })
   }
 
-  // Период по умолчанию — текущий месяц
   const today = new Date()
   const defaultFrom = startOfDay(new Date(today.getFullYear(), today.getMonth(), 1))
   const defaultTo = addDays(
@@ -56,7 +60,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Мастер не найден' }, { status: 404 })
   }
 
-  // Записи графика (ScheduleEntry) в диапазоне — замена Shifts
   const entries = await db.scheduleEntry.findMany({
     where: {
       masterId,
@@ -65,9 +68,32 @@ export async function GET(req: NextRequest) {
     orderBy: { date: 'asc' },
   })
 
-  const rate = master.rate
-  const count = entries.length
-  const total = count * rate
+  // Считаем по типам смен
+  let total = 0
+  const shiftBreakdown: Record<string, { count: number; rate: number; sum: number }> = {
+    full: { count: 0, rate: SHIFT_RATES.full, sum: 0 },
+    morning: { count: 0, rate: SHIFT_RATES.morning, sum: 0 },
+    evening: { count: 0, rate: SHIFT_RATES.evening, sum: 0 },
+  }
+
+  const shifts = entries.map((e) => {
+    const shiftType = e.shiftType || 'full'
+    const rate = SHIFT_RATES[shiftType] ?? SHIFT_RATES.full
+    total += rate
+    if (shiftBreakdown[shiftType]) {
+      shiftBreakdown[shiftType].count++
+      shiftBreakdown[shiftType].sum += rate
+    } else {
+      shiftBreakdown[shiftType] = { count: 1, rate, sum: rate }
+    }
+    return {
+      id: e.id,
+      date: e.date,
+      shiftType,
+      rate,
+      note: e.note,
+    }
+  })
 
   return NextResponse.json({
     master: {
@@ -75,21 +101,15 @@ export async function GET(req: NextRequest) {
       name: master.name,
       role: master.role,
       color: master.color,
-      rate,
     },
     period: {
       from: fromDate,
       to: addDays(toDate, -1),
     },
-    shifts: entries.map((e) => ({
-      id: e.id,
-      openedAt: e.date,
-      closedAt: null,
-      hookahCount: 0,
-      note: e.note,
-    })),
-    count,
-    rate,
+    shifts,
+    count: entries.length,
+    shiftBreakdown,
+    rates: SHIFT_RATES,
     total,
   })
 }

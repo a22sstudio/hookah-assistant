@@ -594,7 +594,7 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
           toDate = addDays(startOfDay(new Date(today.getFullYear(), today.getMonth() + 1, 0)), 1)
         }
 
-        // Считаем записи графика мастера в диапазоне (замена Shifts)
+        // Считаем записи графика мастера в диапазоне
         const entries = await db.scheduleEntry.findMany({
           where: {
             masterId: masterRec.id,
@@ -603,18 +603,40 @@ async function executeAction(action: AIAction, master: SessionMaster): Promise<{
           orderBy: { date: 'asc' },
         })
 
-        const count = entries.length
-        const rate = masterRec.rate
-        const total = count * rate
+        // Ставки по типу смены
+        const SHIFT_RATES: Record<string, number> = {
+          full: 4400,
+          morning: 2200,
+          evening: 2200,
+        }
+        const SHIFT_LABELS: Record<string, string> = {
+          full: 'полная',
+          morning: 'утренняя',
+          evening: 'вечерняя',
+        }
+
+        let total = 0
+        const breakdown: Record<string, number> = { full: 0, morning: 0, evening: 0 }
+        for (const e of entries) {
+          const st = e.shiftType || 'full'
+          const rate = SHIFT_RATES[st] ?? SHIFT_RATES.full
+          total += rate
+          breakdown[st] = (breakdown[st] || 0) + 1
+        }
+
+        const breakdownStr = Object.entries(breakdown)
+          .filter(([, c]) => c > 0)
+          .map(([st, c]) => `${c}× ${SHIFT_LABELS[st]}(${SHIFT_RATES[st]}₽)`)
+          .join(' + ')
 
         return {
           success: true,
-          message: `💰 Зарплата ${masterRec.name}: ${count} смен × ${rate}₽ = ${total}₽. Период: ${formatDateRu(fromDate)} — ${formatDateRu(addDays(toDate, -1))}`,
+          message: `💰 Зарплата ${masterRec.name}: ${entries.length} смен (${breakdownStr}) = ${total}₽. Период: ${formatDateRu(fromDate)} — ${formatDateRu(addDays(toDate, -1))}`,
           data: {
             master: masterRec.name,
-            count,
-            rate,
+            count: entries.length,
             total,
+            breakdown,
             from: fromDate,
             to: addDays(toDate, -1),
           },
