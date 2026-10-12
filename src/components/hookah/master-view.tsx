@@ -10,6 +10,7 @@ import { Dashboard } from '@/components/hookah/dashboard'
 import { ConsumablesPanel } from '@/components/hookah/consumables-panel'
 import { WishesPanel } from '@/components/hookah/wishes-panel'
 import { MixesPanel } from '@/components/hookah/mixes-panel'
+import { MyIncomePanel } from '@/components/hookah/my-income-panel'
 import { AIChat } from '@/components/hookah/ai-chat'
 import { ScheduleCalendar } from '@/components/hookah/schedule-calendar'
 import { masterAvatarClass, initials } from '@/lib/master-utils'
@@ -22,6 +23,7 @@ import {
   Layers,
   Home,
   Beaker,
+  Wallet,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Tobacco } from '@/lib/types'
@@ -111,7 +113,7 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
           <div className="min-w-0 space-y-6">
             {/* Табы */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 h-auto">
+              <TabsList className="grid w-full grid-cols-3 sm:grid-cols-7 h-auto">
                 <TabsTrigger value="today" className="flex flex-col gap-1 py-2.5">
                   <Home className="h-4 w-4" />
                   <span>Сегодня</span>
@@ -131,6 +133,10 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
                 <TabsTrigger value="mixes" className="flex flex-col gap-1 py-2.5">
                   <Beaker className="h-4 w-4" />
                   <span>Миксы</span>
+                </TabsTrigger>
+                <TabsTrigger value="income" className="flex flex-col gap-1 py-2.5">
+                  <Wallet className="h-4 w-4" />
+                  <span>Доход</span>
                 </TabsTrigger>
                 <TabsTrigger value="wishes" className="flex flex-col gap-1 py-2.5">
                   <Star className="h-4 w-4" />
@@ -167,6 +173,14 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
                 <MixesPanel
                   role="REGULAR"
                   masterId={master.id}
+                  refreshKey={refreshKey}
+                  onRefresh={refresh}
+                />
+              </TabsContent>
+              <TabsContent value="income" className="pt-6">
+                <MyIncomePanel
+                  masterName={master.name}
+                  masterColor={master.color}
                   refreshKey={refreshKey}
                   onRefresh={refresh}
                 />

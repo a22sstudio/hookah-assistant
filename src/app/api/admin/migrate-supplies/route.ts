@@ -251,6 +251,48 @@ export async function POST(req: NextRequest) {
       results.push({ step: 'create Vacation table', ok: false, message: (e as Error).message })
     }
 
+    // ─── Шаг 5.9b: Таблицы Bonus и Payslip ───
+    try {
+      await db.$executeRaw`
+        CREATE TABLE IF NOT EXISTS "Bonus" (
+          "id" TEXT NOT NULL,
+          "masterId" TEXT NOT NULL,
+          "year" INTEGER NOT NULL,
+          "month" INTEGER NOT NULL,
+          "amount" INTEGER NOT NULL,
+          "note" TEXT,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "Bonus_pkey" PRIMARY KEY ("id")
+        )
+      `
+      await db.$executeRaw`CREATE UNIQUE INDEX IF NOT EXISTS "Bonus_masterId_year_month_key" ON "Bonus"("masterId", "year", "month")`
+      results.push({ step: 'create Bonus table', ok: true, message: 'OK' })
+    } catch (e) {
+      results.push({ step: 'create Bonus table', ok: false, message: (e as Error).message })
+    }
+
+    try {
+      await db.$executeRaw`
+        CREATE TABLE IF NOT EXISTS "Payslip" (
+          "id" TEXT NOT NULL,
+          "masterId" TEXT NOT NULL,
+          "year" INTEGER NOT NULL,
+          "month" INTEGER NOT NULL,
+          "firstHalfAmount" INTEGER NOT NULL,
+          "secondHalfAmount" INTEGER NOT NULL,
+          "bonusAmount" INTEGER NOT NULL DEFAULT 0,
+          "totalAmount" INTEGER NOT NULL,
+          "status" TEXT NOT NULL DEFAULT 'closed',
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "Payslip_pkey" PRIMARY KEY ("id")
+        )
+      `
+      await db.$executeRaw`CREATE UNIQUE INDEX IF NOT EXISTS "Payslip_masterId_year_month_key" ON "Payslip"("masterId", "year", "month")`
+      results.push({ step: 'create Payslip table', ok: true, message: 'OK' })
+    } catch (e) {
+      results.push({ step: 'create Payslip table', ok: false, message: (e as Error).message })
+    }
+
     // ─── Шаг 6: foreign key SupplyItem.supplyId → Supply.id (опционально) ───
     try {
       await db.$executeRaw`

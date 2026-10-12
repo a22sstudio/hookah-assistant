@@ -133,6 +133,8 @@ model Master {
   dailySummaries DailySummary[]
   mixes         Mix[]
   vacations     Vacation[]
+  bonuses       Bonus[]
+  payslips      Payslip[]
 }
 
 // Смена мастера
@@ -373,4 +375,39 @@ model Vacation {
   @@unique([masterId, date])
   @@index([masterId])
   @@index([date])
+}
+
+// ============================================
+// Премии и расчётные листы
+// ============================================
+
+model Bonus {
+  id          String   @id @default(cuid())
+  masterId    String
+  year        Int      // год
+  month       Int      // месяц (1-12)
+  amount      Int      // сумма премии в рублях
+  note        String?
+  createdAt   DateTime @default(now())
+  master      Master   @relation(fields: [masterId], references: [id], onDelete: Cascade)
+
+  @@unique([masterId, year, month])
+  @@index([masterId])
+}
+
+model Payslip {
+  id          String   @id @default(cuid())
+  masterId    String
+  year        Int
+  month       Int
+  firstHalfAmount   Int   // сумма за 1-15 числа
+  secondHalfAmount  Int   // сумма за 16-30/31 числа
+  bonusAmount       Int   @default(0)  // премия
+  totalAmount       Int   // общая сумма (first + second + bonus)
+  status      String   @default("closed") // closed
+  createdAt   DateTime @default(now())
+  master      Master   @relation(fields: [masterId], references: [id], onDelete: Cascade)
+
+  @@unique([masterId, year, month])
+  @@index([masterId])
 }

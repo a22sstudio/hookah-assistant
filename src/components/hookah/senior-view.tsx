@@ -16,6 +16,7 @@ import { AIChat } from '@/components/hookah/ai-chat'
 import { ScheduleCalendar } from '@/components/hookah/schedule-calendar'
 import { SalaryCalculator } from '@/components/hookah/salary-calculator'
 import { MixesPanel } from '@/components/hookah/mixes-panel'
+import { MyIncomePanel } from '@/components/hookah/my-income-panel'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { Leaf } from 'lucide-react'
 import {
@@ -32,6 +33,7 @@ import {
   Home,
   Truck,
   Beaker,
+  Wallet,
 } from 'lucide-react'
 import { masterAvatarClass, initials } from '@/lib/master-utils'
 import { toast } from 'sonner'
@@ -113,7 +115,7 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
           {/* Левая колонка */}
           <div className="min-w-0">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-4 sm:grid-cols-10 h-auto mb-6">
+              <TabsList className="grid w-full grid-cols-4 sm:grid-cols-11 h-auto mb-6">
                 <TabsTrigger value="today" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
                   <Home className="h-4 w-4" />
                   <span>Сегодня</span>
@@ -145,6 +147,10 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
                 <TabsTrigger value="mixes" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
                   <Beaker className="h-4 w-4" />
                   <span>Миксы</span>
+                </TabsTrigger>
+                <TabsTrigger value="income" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
+                  <Wallet className="h-4 w-4" />
+                  <span>Доход</span>
                 </TabsTrigger>
                 <TabsTrigger value="wishes" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
                   <Star className="h-4 w-4" />
@@ -185,6 +191,14 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
                 <MixesPanel
                   role="SENIOR"
                   masterId={master.id}
+                  refreshKey={refreshKey}
+                  onRefresh={refresh}
+                />
+              </TabsContent>
+              <TabsContent value="income">
+                <MyIncomePanel
+                  masterName={master.name}
+                  masterColor={master.color}
                   refreshKey={refreshKey}
                   onRefresh={refresh}
                 />

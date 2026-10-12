@@ -46,6 +46,7 @@ import {
   Hash,
   Trash2,
   Save,
+  Gift,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { masterAvatarClass, masterColorClasses, initials } from '@/lib/master-utils'
@@ -88,6 +89,7 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<MasterRow | null>(null)
   const [editSaving, setEditSaving] = useState(false)
+  const [bonusDialogOpen, setBonusDialogOpen] = useState(false)
   const [editForm, setEditForm] = useState({
     name: '',
     role: 'REGULAR' as 'SENIOR' | 'REGULAR',
@@ -308,6 +310,9 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => setBonusDialogOpen(true)}>
+            <Gift className="h-4 w-4" /> <span className="hidden sm:inline">Премии</span>
+          </Button>
           <Button size="icon" variant="outline" onClick={load} title="Обновить">
             <RefreshCw className="h-4 w-4" />
           </Button>
@@ -698,11 +703,174 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
         </DialogContent>
       </Dialog>
 
+      {/* Модалка премий */}
+      <BonusDialog
+        open={bonusDialogOpen}
+        onOpenChange={setBonusDialogOpen}
+        masters={masters}
+        onRefresh={load}
+      />
+
       <p className="label-mono-sm text-center">
         Мастера также могут привязать Telegram сами: откройте{' '}
         <span className="font-bold text-foreground">@Defowork_bot</span> и отправьте{' '}
         <span className="font-bold text-foreground">/claim ВАШ_PIN</span>
       </p>
     </div>
+  )
+}
+
+// ─── Модалка премий ───
+function BonusDialog({
+  open,
+  onOpenChange,
+  masters,
+  onRefresh,
+}: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  masters: MasterRow[]
+  onRefresh: () => void
+}) {
+  const [bonuses, setBonuses] = useState<Array<{ id: string; masterId: string; masterName: string; amount: number; note: string | null }>>([])
+  const [selectedMaster, setSelectedMaster] = useState('')
+  const [amount, setAmount] = useState('')
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1
+
+  const loadBonuses = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/bonuses?year=${year}&month=${month}`)
+      if (res.ok) {
+        const d = await res.json()
+        setBonuses(d.bonuses ?? [])
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false)
+    }
+  }, [year, month])
+
+  useEffect(() => {
+    if (open) loadBonuses()
+  }, [open, loadBonuses])
+
+  const handleSave = async () => {
+    if (!selectedMaster) {
+      toast.error('Выберите мастера')
+      return
+    }
+    const amt = parseInt(amount)
+    if (isNaN(amt) || amt < 0) {
+      toast.error('Введите сумму')
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await fetch('/api/bonuses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ masterId: selectedMaster, year, month, amount: amt, note: note.trim() || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || 'Ошибка')
+        return
+      }
+      toast.success(data.message || 'Премия сохранена')
+      setSelectedMaster('')
+      setAmount('')
+      setNote('')
+      await loadBonuses()
+      onRefresh()
+    } catch {
+      toast.error('Ошибка сети')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    try {
+      await fetch(`/api/bonuses?id=${id}`, { method: 'DELETE' })
+      toast.success('Премия удалена')
+      await loadBonuses()
+      onRefresh()
+    } catch {
+      toast.error('Ошибка')
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[500px] w-[95vw] max-h-[85vh] flex flex-col p-4 sm:p-6 gap-3 overflow-hidden">
+        <DialogHeader className="shrink-0">
+          <DialogTitle className="label-mono flex items-center gap-2">
+            <Gift className="h-4 w-4" /> Премии · {['', 'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'][month]} {year}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="flex-1 min-h-0 overflow-y-auto pr-1 -mr-1 space-y-3">
+          {/* Текущие премии */}
+          {loading ? (
+            <div className="text-center py-4"><Loader2 className="h-4 w-4 animate-spin mx-auto" /></div>
+          ) : bonuses.length > 0 ? (
+            <div className="space-y-1.5">
+              {bonuses.map((b) => (
+                <div key={b.id} className="flex items-center gap-2 rounded-md border border-border p-2 bg-card">
+                  <span className="flex-1 font-mono text-sm font-bold">{b.masterName}</span>
+                  <span className="font-mono font-bold tabular text-ember">{b.amount}₽</span>
+                  {b.note && <span className="text-xs text-muted-foreground truncate max-w-[100px]">{b.note}</span>}
+                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDelete(b.id)}>
+                    <Trash2 className="h-3 w-3 text-destructive" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-center text-sm text-muted-foreground py-2">Премий пока нет</p>
+          )}
+
+          {/* Форма */}
+          <div className="border-t border-border pt-3 space-y-2">
+            <span className="label-mono">Назначить премию</span>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Мастер</Label>
+              <Select value={selectedMaster} onValueChange={setSelectedMaster}>
+                <SelectTrigger className="w-full h-8 text-sm"><SelectValue placeholder="Выберите мастера" /></SelectTrigger>
+                <SelectContent>
+                  {masters.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Сумма (₽)</Label>
+              <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="5000" className="h-8" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Заметка (необязательно)</Label>
+              <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="за отличную работу" className="h-8" />
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="border-t border-border pt-3 shrink-0">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Закрыть</Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gift className="h-4 w-4" />}
+            Сохранить
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
