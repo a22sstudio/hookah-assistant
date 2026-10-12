@@ -42,6 +42,7 @@ export async function GET() {
     masterName: e.master.name,
     masterColor: e.master.color,
     masterRole: e.master.role,
+    shiftType: e.shiftType,
     isMine: e.masterId === me.id,
     note: e.note,
   }))
@@ -52,6 +53,7 @@ export async function GET() {
     masterName: e.master.name,
     masterColor: e.master.color,
     masterRole: e.master.role,
+    shiftType: e.shiftType,
     isMine: e.masterId === me.id,
     note: e.note,
   }))

@@ -22,6 +22,7 @@ interface DashboardEntry {
   masterName: string
   masterColor: string
   masterRole: string
+  shiftType: string
   isMine: boolean
   note: string | null
 }
@@ -196,6 +197,12 @@ export function HomeDashboard({ refreshKey, onNavigate }: HomeDashboardProps) {
   )
 }
 
+const SHIFT_LABELS_FULL: Record<string, string> = {
+  full: 'Полная смена',
+  morning: 'Утренняя смена',
+  evening: 'Вечерняя смена',
+}
+
 function MasterChip({ entry }: { entry: DashboardEntry }) {
   return (
     <div
@@ -210,6 +217,11 @@ function MasterChip({ entry }: { entry: DashboardEntry }) {
       <span className="font-mono text-sm font-bold tracking-tight text-foreground">
         {entry.masterName}
       </span>
+      {entry.shiftType && (
+        <span className="label-mono-sm text-muted-foreground">
+          {SHIFT_LABELS_FULL[entry.shiftType] || entry.shiftType}
+        </span>
+      )}
       {entry.isMine && (
         <span className="label-mono-sm text-ember">ты</span>
       )}
@@ -245,19 +257,25 @@ function SeniorTodayBlock({ data }: { data: HomeDashboardData }) {
 }
 
 function RegularOnShiftBlock({ data }: { data: HomeDashboardData }) {
+  const others = data.today.entries.filter((e) => !e.isMine)
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 label-mono">
         <CalendarCheck className="h-3.5 w-3.5 text-ember" />
         Сегодня твоя смена
       </div>
-      {data.today.entries.length > 1 && (
+      {others.length > 0 && (
         <p className="body-sans text-sm text-muted-foreground">
           За стойкой также:{' '}
-          {data.today.entries
-            .filter((e) => !e.isMine)
-            .map((e) => e.masterName)
-            .join(', ')}
+          {others.map((e, i) => (
+            <span key={e.id}>
+              <span className="font-mono font-bold text-foreground">{e.masterName}</span>
+              {e.shiftType && (
+                <span className="text-muted-foreground"> ({SHIFT_LABELS_FULL[e.shiftType] || e.shiftType})</span>
+              )}
+              {i < others.length - 1 ? ', ' : ''}
+            </span>
+          ))}
         </p>
       )}
     </div>
@@ -266,17 +284,24 @@ function RegularOnShiftBlock({ data }: { data: HomeDashboardData }) {
 
 function RegularOffShiftBlock({ data }: { data: HomeDashboardData }) {
   const others = data.today.entries.filter((e) => !e.isMine)
-  const otherNames = others.map((e) => e.masterName)
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 label-mono">
         <CalendarOff className="h-3.5 w-3.5" />
         Сегодня выходной
       </div>
-      {otherNames.length > 0 ? (
+      {others.length > 0 ? (
         <p className="body-sans text-sm text-foreground">
           За стойкой:{' '}
-          <span className="font-mono font-bold">{otherNames.join(', ')}</span>
+          {others.map((e, i) => (
+            <span key={e.id}>
+              <span className="font-mono font-bold">{e.masterName}</span>
+              {e.shiftType && (
+                <span className="text-muted-foreground"> ({SHIFT_LABELS_FULL[e.shiftType] || e.shiftType})</span>
+              )}
+              {i < others.length - 1 ? ', ' : ''}
+            </span>
+          ))}
         </p>
       ) : (
         <p className="body-sans text-sm text-muted-foreground">
