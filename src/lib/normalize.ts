@@ -99,21 +99,31 @@ export function normalize(text: string): string {
     .trim()
 }
 
-// Найти бренд в тексте по алиасу (нечёткое сравнение)
+// Найти бренд в тексте по алиасу (с word-boundary, не substring)
 export function findBrandInText(text: string): { brand: string | null; rest: string } {
   const normalized = normalize(text)
   
-  // Сначала ищем по точному совпадению алиаса
-  for (const [alias, canonical] of Object.entries(BRAND_ALIASES)) {
+  // Сортируем алиасы по длине (длинные первыми) — чтобы «black burn» не побеждал «burn»
+  const sortedAliases = Object.entries(BRAND_ALIASES).sort((a, b) => b[0].length - a[0].length)
+  
+  for (const [alias, canonical] of sortedAliases) {
     const aliasNorm = normalize(alias)
-    if (normalized.includes(aliasNorm)) {
+    // Word-boundary: алиас должен быть отдельным словом/фразой, не частью другого слова
+    // Используем regex с границами слов (\b) + поддержкой кириллицы
+    const pattern = new RegExp(`(^|\\s)${escapeRegex(aliasNorm)}(\\s|$)`, 'i')
+    const match = normalized.match(pattern)
+    if (match) {
       // Удаляем найденный алиас из текста
-      const rest = normalized.replace(aliasNorm, ' ').replace(/\s+/g, ' ').trim()
+      const rest = normalized.replace(match[0], ' ').replace(/\s+/g, ' ').trim()
       return { brand: canonical, rest }
     }
   }
   
   return { brand: null, rest: normalized }
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 // Получить каноничное имя бренда по любому варианту
@@ -158,15 +168,24 @@ export function isNumeric(s: string): boolean {
 const NUM_WORD_MAP: Record<string, number> = {
   'ноль': 0, 'ноля': 0,
   'один': 1, 'одна': 1, 'одну': 1,
-  'два': 2, 'две': 2, 'двe': 2,
+  'два': 2, 'две': 2,
   'три': 3,
-  'четыре': 4, 'четыре': 4,
+  'четыре': 4,
   'пять': 5,
   'шесть': 6,
   'семь': 7,
   'восемь': 8,
   'девять': 9,
   'десять': 10,
+  'одиннадцать': 11,
+  'двенадцать': 12,
+  'тринадцать': 13,
+  'четырнадцать': 14,
+  'пятнадцать': 15,
+  'шестнадцать': 16,
+  'семнадцать': 17,
+  'восемнадцать': 18,
+  'девятнадцать': 19,
   'двадцать': 20,
   'тридцать': 30,
   'сорок': 40,

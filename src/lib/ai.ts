@@ -111,22 +111,22 @@ export interface AIResult {
 function buildSystemPrompt(stockContext: string, master: SessionMaster, scheduleContext: string, consumablesContext: string): string {
   const isSenior = master.role === 'SENIOR'
 
+  // LLM НЕ имеет доступа к операциям с табаком (update_stock, add_incoming, add_tobacco).
+  // Все табачные операции обрабатываются intent parser'ом (мгновенно, без галлюцинаций).
+  // LLM используется только для: расписание, зарплата, заявки, хотелки, свободная речь.
   const tools = isSenior
-    ? `1. update_stock(brand,line,flavor,grams,note?) — установить остаток (абсолют)
-2. add_incoming(brand,line,flavor,grams,note?) — приход, прибавить к остатку
-3. add_tobacco(brand,line,flavor,defaultJarGrams?) — добавить позицию в базу
-4. create_order(brand,line,flavor,grams,note?) — заявка на закуп по табаку
-5. create_request(text,grams?) — заявка свободной формы ("BlackBurn Energy 2 банки")
-6. create_wish(text) — хотелка
-7. update_schedule(masterName,dateText,action="add"|"remove") — график: "поставь Марата на завтра"
-8. add_schedule_multi(masterNames[],dateText) — несколько мастеров: "поставь Марата и Айрата на завтра"
-9. calc_salary(masterName,dateText?) — зарплата: "зарплата Марата за сентябрь"
-10. query(what="low_stock"|"all_stock"|"schedule") — "чего мало?" / "остатки" / "кто работает"`
-    : `1. update_stock(brand,line,flavor,grams,note?) — отметить остаток (обычный не оформляет приход и не создаёт новые позиции — это старший)
-2. create_request(text,grams?) — заявка на закуп свободной формы
-3. create_wish(text) — хотелка
-4. query(what="low_stock"|"all_stock"|"schedule") — "чего мало?" / "остатки" / "кто сегодня работает"
-НЕ используй add_incoming, add_tobacco, create_order, update_schedule, add_schedule_multi, calc_salary — это для старшего.`
+    ? `1. create_request(text,grams?) — заявка на закуп свободной формы ("BlackBurn Energy 2 банки")
+2. create_wish(text) — хотелка
+3. update_schedule(masterName,dateText,action="add"|"remove") — график: "поставь Марата на завтра"
+4. add_schedule_multi(masterNames[],dateText) — несколько мастеров: "поставь Марата и Айрата на завтра"
+5. calc_salary(masterName,dateText?) — зарплата: "зарплата Марата за сентябрь"
+6. query(what="schedule") — "кто работает?"
+НЕ используй update_stock, add_incoming, add_tobacco, create_order — эти операции обрабатывает парсер.
+Если мастер пишет про остатки/приход/расход табака — скажи ему использовать прямые команды.`
+    : `1. create_request(text,grams?) — заявка на закуп свободной формы
+2. create_wish(text) — хотелка
+3. query(what="schedule") — "кто сегодня работает"
+НЕ используй update_stock, add_incoming, add_tobacco, create_order, update_schedule, add_schedule_multi, calc_salary.`
 
   return `Ты — умный ассистент кальянной. Работает: ${master.name} (${isSenior ? 'старший мастер, полный доступ' : 'мастер, отмечает остатки и заявки'}).
 

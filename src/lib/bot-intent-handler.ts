@@ -5,7 +5,8 @@ import { isConfirmation } from '@/lib/verb-detector'
 import { pushToSeniors } from '@/lib/notify'
 
 // ───────────────────────────────────────────
-// Обработчик intent parser для бота с поддержкой сессий.
+// Обработчик intent parser с поддержкой сессий.
+// ВАЖНО: "да"/"нет"/числа НИКОГДА не идут в LLM.
 // ───────────────────────────────────────────
 
 export interface IntentResult {
@@ -18,7 +19,7 @@ interface PendingAction {
   type: 'suggest' | 'ambiguous' | 'no_verb'
   tobacco?: { id: string; brand: string; line: string; flavor: string; defaultJarGrams: number }
   options?: Array<{ id: string; brand: string; line: string; flavor: string }>
-  grams?: number
+  grams?: number | null
   actionType?: 'add_incoming' | 'spend' | 'set_stock'
   raw: string
 }
@@ -27,23 +28,47 @@ export async function tryHandleWithParser(
   text: string,
   masterId: string,
 ): Promise<IntentResult> {
-  // ─── Сначала проверяем — может это ответ на предыдущий вопрос ───
-  const session = await db.botSession.findUnique({ where: { masterId } })
+  // ─── Проверяем подтверждение ───
+  const confirmation = isConfirmation(text)
   
-  if (session?.pendingAction) {
-    const pending: PendingAction = JSON.parse(session.pendingAction)
-    const confirmation = isConfirmation(text)
-    
-    if (confirmation !== null) {
-      // Это ответ на вопрос — обрабатываем
-      const result = await handleConfirmation(pending, confirmation, masterId)
-      // Очищаем pending
-      await db.botSession.update({
-        where: { masterId },
-        data: { pendingAction: null },
-      })
-      return result
+  // Безопасное чтение сессии (таблица может не существовать)
+  let session: { pendingAction: string | null } | null = null
+  try {
+    session = await db.botSession.findUnique({ where: { masterId } })
+  } catch {
+    // Таблица не существует — работаем без сессий
+  }
+  
+  // Если это подтверждение (да/нет/1/2/3)
+  if (confirmation !== null) {
+    // Есть pending action — обрабатываем подтверждение
+    if (session?.pendingAction) {
+      let pending: PendingAction
+      try {
+        pending = JSON.parse(session.pendingAction)
+      } catch {
+        // Корrupted JSON — очищаем
+        await safeClearPending(masterId)
+        return { handled: true, reply: '❌ Ошибка контекста. Повтори команду.', executedCount: 0 }
+      }
+      
+      // Очищаем pending ДО исполнения (предотвращает stuck state при ошибке)
+      await safeClearPending(masterId)
+      
+      return await handleConfirmation(pending, confirmation, masterId)
     }
+    
+    // Нет pending action — "да" без контекста. НИКОГДА не отправляем в LLM.
+    return {
+      handled: true,
+      reply: '❓ Я тебя ни о чём не спрашивал. Напиши команду, например:\n• «принял blackburn ёлка 25»\n• «минус 30 банан»\n• «обнови остаток дарксайд кола 125»\n• «чё мало»',
+      executedCount: 0,
+    }
+  }
+  
+  // ─── Не подтверждение — очищаем stale pending ───
+  if (session?.pendingAction) {
+    await safeClearPending(masterId)
   }
   
   // ─── Обычный парсинг ───
@@ -56,13 +81,8 @@ export async function tryHandleWithParser(
   const first = actions[0]
   
   // Unknown с подсказкой
-  if (first.type === 'unknown' && first.message && first.message !== '__CONFIRM__') {
+  if (first.type === 'unknown' && first.message) {
     return { handled: true, reply: first.message, executedCount: 0 }
-  }
-  
-  // Confirm маркер
-  if (first.message === '__CONFIRM__') {
-    return { handled: false, reply: '', executedCount: 0 }
   }
   
   // Query
@@ -79,22 +99,16 @@ export async function tryHandleWithParser(
   // Clarify — сохраняем в сессию
   if (first.type === 'clarify') {
     const pending: PendingAction = {
-      type: first.clarifyType as 'suggest' | 'ambiguous' | 'no_verb',
+      type: (first.clarifyType === 'ambiguous_tobacco' ? 'ambiguous' : 
+             first.clarifyType === 'suggest' ? 'suggest' : 'no_verb') as PendingAction['type'],
       tobacco: first.tobacco,
       options: first.options,
-      grams: first.grams,
+      grams: first.grams ?? null,
       actionType: first.actionType,
       raw: first.raw,
     }
     
-    await db.botSession.upsert({
-      where: { masterId },
-      update: { pendingAction: JSON.stringify(pending) },
-      create: {
-        masterId,
-        pendingAction: JSON.stringify(pending),
-      },
-    })
+    await safeSetPending(masterId, pending)
     
     return { handled: true, reply: first.message || 'Уточни.', executedCount: 0 }
   }
@@ -102,28 +116,20 @@ export async function tryHandleWithParser(
   // Исполняем действия
   const replies: string[] = []
   let executed = 0
-  let lastTobaccoId: string | null = null
-  let lastAction: string | null = null
   
   for (const action of actions) {
-    if (action.type === 'add_incoming' && action.tobacco && action.grams) {
+    if (action.type === 'add_incoming' && action.tobacco && typeof action.grams === 'number') {
       const r = await executeAddIncoming(action, masterId)
       replies.push(r)
       executed++
-      lastTobaccoId = action.tobacco.id
-      lastAction = 'add_incoming'
-    } else if (action.type === 'spend' && action.tobacco && action.grams) {
+    } else if (action.type === 'spend' && action.tobacco && typeof action.grams === 'number') {
       const r = await executeSpend(action, masterId)
       replies.push(r)
       executed++
-      lastTobaccoId = action.tobacco.id
-      lastAction = 'spend'
-    } else if (action.type === 'set_stock' && action.tobacco && action.grams !== undefined) {
+    } else if (action.type === 'set_stock' && action.tobacco && typeof action.grams === 'number') {
       const r = await executeSetStock(action, masterId)
       replies.push(r)
       executed++
-      lastTobaccoId = action.tobacco.id
-      lastAction = 'set_stock'
     } else if (action.type === 'clarify') {
       replies.push(action.message || 'Уточни.')
     }
@@ -133,21 +139,6 @@ export async function tryHandleWithParser(
     return { handled: false, reply: '', executedCount: 0 }
   }
   
-  // Сохраняем контекст сессии
-  await db.botSession.upsert({
-    where: { masterId },
-    update: {
-      lastTobaccoId,
-      lastAction,
-      pendingAction: null,  // очищаем pending после успешного выполнения
-    },
-    create: {
-      masterId,
-      lastTobaccoId,
-      lastAction,
-    },
-  })
-  
   return {
     handled: true,
     reply: replies.join('\n'),
@@ -155,7 +146,35 @@ export async function tryHandleWithParser(
   }
 }
 
-// ─── Обработка подтверждения (да/нет/1/2/3) ───
+// ─── Безопасные операции с сессией ───
+
+async function safeClearPending(masterId: string): Promise<void> {
+  try {
+    await db.botSession.update({
+      where: { masterId },
+      data: { pendingAction: null },
+    })
+  } catch {
+    // Таблица не существует или запись не найдена — игнорируем
+  }
+}
+
+async function safeSetPending(masterId: string, pending: PendingAction): Promise<void> {
+  try {
+    await db.botSession.upsert({
+      where: { masterId },
+      update: { pendingAction: JSON.stringify(pending) },
+      create: {
+        masterId,
+        pendingAction: JSON.stringify(pending),
+      },
+    })
+  } catch {
+    // Таблица не существует — работаем без сессий
+  }
+}
+
+// ─── Обработка подтверждения ───
 
 async function handleConfirmation(
   pending: PendingAction,
@@ -169,19 +188,33 @@ async function handleConfirmation(
   
   // «да» — для suggest (может это?)
   if (confirmation === 'yes' && pending.type === 'suggest' && pending.tobacco) {
-    const action: ParsedAction = {
-      type: 'set_stock',  // по умолчанию — установка остатка (как было в исходном запросе)
-      tobacco: pending.tobacco,
-      grams: pending.grams,
-      raw: pending.raw,
+    if (pending.grams !== null && pending.grams !== undefined) {
+      const action: ParsedAction = {
+        type: pending.actionType || 'set_stock',
+        tobacco: pending.tobacco,
+        grams: pending.grams,
+        raw: pending.raw,
+      }
+      const r = await executeAction(action, masterId)
+      return { handled: true, reply: r, executedCount: 1 }
     }
-    
-    // Если в исходном запросе был глагол add/spend — используем его
-    if (pending.actionType) {
-      action.type = pending.actionType
-    }
-    
-    if (action.grams) {
+    return { handled: true, reply: 'Сколько грамм?', executedCount: 0 }
+  }
+  
+  // «да» — для ambiguous → берём первый вариант
+  if (confirmation === 'yes' && pending.type === 'ambiguous' && pending.options && pending.options.length > 0) {
+    return await pickAndExecute(pending, 1, masterId)
+  }
+  
+  // «да» — для no_verb → по умолчанию set_stock
+  if (confirmation === 'yes' && pending.type === 'no_verb' && pending.tobacco) {
+    if (pending.grams !== null && pending.grams !== undefined) {
+      const action: ParsedAction = {
+        type: 'set_stock',
+        tobacco: pending.tobacco,
+        grams: pending.grams,
+        raw: pending.raw,
+      }
       const r = await executeAction(action, masterId)
       return { handled: true, reply: r, executedCount: 1 }
     }
@@ -190,38 +223,81 @@ async function handleConfirmation(
   
   // число 1-9 — выбор из ambiguous
   if (typeof confirmation === 'number' && pending.options && confirmation >= 1) {
-    const idx = confirmation - 1
-    if (idx < pending.options.length) {
-      const chosen = pending.options[idx]
-      // Загружаем полный табак
-      const tobacco = await db.tobacco.findUnique({
-        where: { id: chosen.id },
-        select: { id: true, brand: true, line: true, flavor: true, defaultJarGrams: true },
-      })
-      
-      if (tobacco && pending.grams) {
-        const action: ParsedAction = {
-          type: pending.actionType || 'set_stock',
-          tobacco: {
-            id: tobacco.id,
-            brand: tobacco.brand,
-            line: tobacco.line,
-            flavor: tobacco.flavor,
-            defaultJarGrams: tobacco.defaultJarGrams,
-          },
-          grams: pending.grams,
-          raw: pending.raw,
-        }
-        const r = await executeAction(action, masterId)
-        return { handled: true, reply: r, executedCount: 1 }
+    return await pickAndExecute(pending, confirmation, masterId)
+  }
+  
+  // число для suggest → трактуем как «да»
+  if (typeof confirmation === 'number' && pending.type === 'suggest' && pending.tobacco) {
+    if (pending.grams !== null && pending.grams !== undefined) {
+      const action: ParsedAction = {
+        type: pending.actionType || 'set_stock',
+        tobacco: pending.tobacco,
+        grams: pending.grams,
+        raw: pending.raw,
       }
+      const r = await executeAction(action, masterId)
+      return { handled: true, reply: r, executedCount: 1 }
+    }
+    return { handled: true, reply: 'Сколько грамм?', executedCount: 0 }
+  }
+  
+  return { handled: true, reply: 'Не понял ответ. Повтори команду.', executedCount: 0 }
+}
+
+async function pickAndExecute(
+  pending: PendingAction,
+  choice: number,
+  masterId: string,
+): Promise<IntentResult> {
+  const idx = choice - 1
+  if (!pending.options || idx >= pending.options.length) {
+    return { handled: true, reply: 'Нет такого номера. Повтори команду.', executedCount: 0 }
+  }
+  
+  const chosen = pending.options[idx]
+  let tobacco = pending.tobacco
+  
+  // Загружаем полный табак
+  try {
+    const full = await db.tobacco.findUnique({
+      where: { id: chosen.id },
+      select: { id: true, brand: true, line: true, flavor: true, defaultJarGrams: true },
+    })
+    if (full) {
+      tobacco = {
+        id: full.id,
+        brand: full.brand,
+        line: full.line,
+        flavor: full.flavor,
+        defaultJarGrams: full.defaultJarGrams,
+      }
+    }
+  } catch {
+    // Если не удалось загрузить — используем данные из options
+    tobacco = {
+      id: chosen.id,
+      brand: chosen.brand,
+      line: chosen.line,
+      flavor: chosen.flavor,
+      defaultJarGrams: 250,
     }
   }
   
-  return { handled: true, reply: 'Не понял ответ. Попробуй ещё раз.', executedCount: 0 }
+  if (tobacco && pending.grams !== null && pending.grams !== undefined) {
+    const action: ParsedAction = {
+      type: pending.actionType || 'set_stock',
+      tobacco,
+      grams: pending.grams,
+      raw: pending.raw,
+    }
+    const r = await executeAction(action, masterId)
+    return { handled: true, reply: r, executedCount: 1 }
+  }
+  
+  return { handled: true, reply: 'Сколько грамм?', executedCount: 0 }
 }
 
-// ─── Универсальное исполнение действия ───
+// ─── Исполнение действий ───
 
 async function executeAction(action: ParsedAction, masterId: string): Promise<string> {
   if (action.type === 'add_incoming') return executeAddIncoming(action, masterId)
@@ -252,7 +328,7 @@ async function executeAddIncoming(action: ParsedAction, masterId: string): Promi
       gramsAfter: after,
       delta: grams,
       source: 'TEXT',
-      note: 'Telegram (intent parser)',
+      note: 'Intent parser',
       rawInput: action.raw,
     },
   })
@@ -280,18 +356,18 @@ async function executeSpend(action: ParsedAction, masterId: string): Promise<str
       gramsAfter: after,
       delta: -grams,
       source: 'TEXT',
-      note: 'Расход (intent parser)',
+      note: 'Расход (parser)',
       rawInput: action.raw,
     },
   })
   
   // Проверка порога — пуш старшему
   if (after < t.defaultJarGrams * 0.3) {
-    await pushToSeniors({
-      type: 'LOW_STOCK',
-      message: `⚠️ ${t.brand} ${t.flavor}: ${after}г (после списания ${grams}г)`,
-      masterId,
-    })
+    try {
+      await pushToSeniors(`⚠️ ${t.brand} ${t.flavor}: ${after}г (после списания ${grams}г)`)
+    } catch {
+      // Не критично если пуш не ушёл
+    }
   }
   
   return `✓ ${t.brand} ${t.line ? t.line + ' ' : ''}${t.flavor} -${grams}г (${before}→${after})`
@@ -319,7 +395,7 @@ async function executeSetStock(action: ParsedAction, masterId: string): Promise<
       gramsAfter: after,
       delta: after - before,
       source: 'TEXT',
-      note: 'Установка остатка (intent parser)',
+      note: 'Установка остатка (parser)',
       rawInput: action.raw,
     },
   })
@@ -350,10 +426,10 @@ async function handleQuery(text: string): Promise<string> {
     
     const lines = low.map(t => {
       const grams = t.stock?.currentGrams ?? 0
-      return `• ${t.brand} ${t.line ? t.line + ' ' : ''}${t.flavor}: ${grams}г (порог ${t.thresholdGrams}г)`
+      return `• ${t.brand} ${t.line ? t.line + ' ' : ''}${t.flavor}: ${grams}г`
     })
     
-    return `⚠️ Мало на складе (${low.length}):\n${lines.join('\n')}`
+    return `⚠️ Мало (${low.length}):\n${lines.join('\n')}`
   }
   
   if (normalized.includes('остатк') || normalized.includes('склад') || normalized.includes('список')) {
@@ -375,8 +451,8 @@ async function handleQuery(text: string): Promise<string> {
       return `• ${t.brand} ${t.line ? t.line + ' ' : ''}${t.flavor}: ${grams}г`
     })
     
-    return `📦 Остатки (${withStock.length} поз.):\n${lines.join('\n')}`
+    return `📦 Остатки (${withStock.length}):\n${lines.join('\n')}`
   }
   
-  return 'Что именно показать? Напиши «мало» или «остатки».'
+  return 'Что показать? Напиши «мало» или «остатки».'
 }

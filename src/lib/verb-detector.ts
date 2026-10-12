@@ -46,6 +46,7 @@ const SET_VERBS = [
   'в банке', 'в баночке',
   'имею', 'имеется',
   'весит', 'вес', 'взвесил', 'взвесить',
+  'пусто', 'кончился', 'закончился', 'нету',
 ]
 
 // Глаголы запроса
@@ -66,88 +67,88 @@ const SCHEDULE_VERBS = [
   'выходной', 'отдыхает',
 ]
 
-// Определить операцию по тексту
+// Определить операцию по тексту (с word-boundary, не substring)
 export function detectOperation(text: string): { type: OperationType; verb: string | null } {
   const normalized = normalize(text)
   
-  // Проверяем глаголы прихода
-  for (const verb of ADD_VERBS) {
-    if (normalized.includes(normalize(verb))) {
-      return { type: 'add_incoming', verb }
+  // Проверяем по спискам глаголов, используя word boundaries
+  const checkList = (list: string[]): string | null => {
+    // Сортируем по длине (длинные первыми) — «чё мало» перед «мало»
+    const sorted = [...list].sort((a, b) => b.length - a.length)
+    for (const verb of sorted) {
+      const verbNorm = normalize(verb)
+      const pattern = new RegExp(`(^|\\s)${escapeRegex(verbNorm)}(\\s|$)`, 'i')
+      if (pattern.test(normalized)) return verb
     }
+    return null
   }
   
-  // Проверяем глаголы расхода
-  for (const verb of SPEND_VERBS) {
-    if (normalized.includes(normalize(verb))) {
-      return { type: 'spend', verb }
-    }
-  }
+  // Проверяем в порядке приоритета
+  // ВАЖНО: query и schedule проверяем ПОСЛЕ add/spend/set, чтобы «мало» не перехватывало раньше
+  const addVerb = checkList(ADD_VERBS)
+  if (addVerb) return { type: 'add_incoming', verb: addVerb }
   
-  // Проверяем глаголы установки остатка
-  for (const verb of SET_VERBS) {
-    if (normalized.includes(normalize(verb))) {
-      return { type: 'set_stock', verb }
-    }
-  }
+  const spendVerb = checkList(SPEND_VERBS)
+  if (spendVerb) return { type: 'spend', verb: spendVerb }
   
-  // Проверяем глаголы запроса
-  for (const verb of QUERY_VERBS) {
-    if (normalized.includes(normalize(verb))) {
-      return { type: 'query', verb }
-    }
-  }
+  const setVerb = checkList(SET_VERBS)
+  if (setVerb) return { type: 'set_stock', verb: setVerb }
   
-  // Проверяем глаголы графика
-  for (const verb of SCHEDULE_VERBS) {
-    if (normalized.includes(normalize(verb))) {
-      return { type: 'schedule', verb }
-    }
-  }
+  const queryVerb = checkList(QUERY_VERBS)
+  if (queryVerb) return { type: 'query', verb: queryVerb }
+  
+  const scheduleVerb = checkList(SCHEDULE_VERBS)
+  if (scheduleVerb) return { type: 'schedule', verb: scheduleVerb }
   
   return { type: 'unknown', verb: null }
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+// Все глаголы для удаления из текста
+const ALL_VERBS = [...ADD_VERBS, ...SPEND_VERBS, ...SET_VERBS, ...QUERY_VERBS, ...SCHEDULE_VERBS]
+
+// Удалить глагол из текста (с word-boundary)
+export function removeVerb(text: string): string {
+  let normalized = normalize(text)
+  
+  const sortedVerbs = [...ALL_VERBS].sort((a, b) => b.length - a.length)
+  
+  for (const verb of sortedVerbs) {
+    const verbNorm = normalize(verb)
+    const pattern = new RegExp(`(^|\\s)${escapeRegex(verbNorm)}(\\s|$)`, 'gi')
+    normalized = normalized.replace(pattern, ' ')
+  }
+  
+  return normalized.replace(/\s+/g, ' ').trim()
 }
 
 // Проверить, является ли сообщение подтверждением (да/нет/1/2/3)
 export function isConfirmation(text: string): 'yes' | 'no' | 'cancel' | number | null {
   const normalized = normalize(text).trim()
   
-  if (['да', 'ок', 'подтверждаю', 'верно', 'точно', 'yes', 'y'].includes(normalized)) {
+  // Да
+  if (['да', 'ок', 'окей', 'подтверждаю', 'верно', 'точно', 'именно', 'конечно', 'ага', 'угу', 'yes', 'y', 'даа', 'дада', 'дадада'].includes(normalized) 
+      || normalized.startsWith('да ')) {
     return 'yes'
   }
-  if (['нет', 'no', 'отмена', 'отменить', 'cancel', 'не'].includes(normalized)) {
+  // Нет
+  if (['нет', 'no', 'не', 'неа', 'не-а', 'ноу', 'n'].includes(normalized)) {
     return 'no'
   }
-  if (['отмена', 'отменить', 'стоп', 'cancel'].includes(normalized)) {
+  // Отмена
+  if (['отмена', 'отменить', 'отмени', 'стоп', 'cancel', 'abort'].includes(normalized)) {
     return 'cancel'
   }
   
-  // Число 1-9 — выбор варианта
-  const numMatch = normalized.match(/^(\d)$/)
+  // Число 1-99 — выбор варианта
+  const numMatch = normalized.match(/^(\d{1,2})$/)
   if (numMatch) {
     const num = parseInt(numMatch[1], 10)
-    if (num >= 1 && num <= 9) return num
+    if (num >= 1 && num <= 99) return num
   }
   
   return null
-}
-
-// Все глаголы для удаления из текста
-const ALL_VERBS = [...ADD_VERBS, ...SPEND_VERBS, ...SET_VERBS, ...QUERY_VERBS, ...SCHEDULE_VERBS]
-
-// Удалить глагол из текста (чтобы осталось только название табака)
-export function removeVerb(text: string): string {
-  let normalized = normalize(text)
-  
-  // Сортируем глаголы по длине (длинные первыми) — чтобы «чё мало» не ломалось на «мало»
-  const sortedVerbs = [...ALL_VERBS].sort((a, b) => b.length - a.length)
-  
-  for (const verb of sortedVerbs) {
-    const verbNorm = normalize(verb)
-    if (normalized.includes(verbNorm)) {
-      normalized = normalized.replace(verbNorm, ' ')
-    }
-  }
-  
-  return normalized.replace(/\s+/g, ' ').trim()
 }
