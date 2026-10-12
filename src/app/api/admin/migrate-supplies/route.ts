@@ -185,6 +185,17 @@ export async function POST(req: NextRequest) {
     }
 
     // ─── Шаг 5.8: Таблицы Mix и MixItem (пользовательские миксы) ───
+
+    // Сначала добавим shiftType в ScheduleEntry (если нет)
+    try {
+      await db.$executeRawUnsafe(
+        `ALTER TABLE "ScheduleEntry" ADD COLUMN IF NOT EXISTS "shiftType" TEXT NOT NULL DEFAULT 'full'`,
+      )
+      results.push({ step: 'ScheduleEntry.shiftType', ok: true, message: 'column ready' })
+    } catch (e) {
+      results.push({ step: 'ScheduleEntry.shiftType', ok: false, message: (e as Error).message })
+    }
+
     try {
       await db.$executeRaw`
         CREATE TABLE IF NOT EXISTS "Mix" (

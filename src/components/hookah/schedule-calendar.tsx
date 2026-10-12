@@ -36,8 +36,16 @@ interface ScheduleEntry {
   masterName: string
   masterColor: string
   masterRole: string
+  shiftType: string // morning | evening | full
   note: string | null
   isMine?: boolean
+}
+
+// Метки и цвета типов смены
+const SHIFT_TYPES: Record<string, { label: string; short: string; icon: string }> = {
+  morning: { label: 'Утренняя смена', short: 'УТР', icon: '☀️' },
+  evening: { label: 'Вечерняя смена', short: 'ВЕЧ', icon: '🌙' },
+  full: { label: 'Полная смена', short: 'ПОЛН', icon: '🕐' },
 }
 
 interface Master {
@@ -265,6 +273,11 @@ export function ScheduleCalendar({
                         <span className="truncate text-foreground">
                           {e.masterName}
                         </span>
+                        {e.shiftType && e.shiftType !== 'full' && (
+                          <span className="text-[9px] px-0.5 rounded bg-muted text-muted-foreground shrink-0">
+                            {SHIFT_TYPES[e.shiftType]?.short || ''}
+                          </span>
+                        )}
                       </div>
                     ))}
                     {more > 0 && (
@@ -330,6 +343,7 @@ function DayDialog({
 }) {
   const [masterId, setMasterId] = useState<string>('')
   const [note, setNote] = useState('')
+  const [shiftType, setShiftType] = useState<string>('full')
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
@@ -337,6 +351,7 @@ function DayDialog({
     if (iso) {
       setMasterId(masters[0]?.id ?? '')
       setNote('')
+      setShiftType('full')
     }
   }, [iso, masters])
 
@@ -362,6 +377,7 @@ function DayDialog({
         body: JSON.stringify({
           masterId,
           date: iso,
+          shiftType,
           note: note.trim() || null,
         }),
       })
@@ -414,7 +430,9 @@ function DayDialog({
               {canEdit ? 'Нет запланированных смен. Добавьте ниже.' : 'Смен нет.'}
             </p>
           ) : (
-            entries.map((e) => (
+            entries.map((e) => {
+              const st = SHIFT_TYPES[e.shiftType] || SHIFT_TYPES.full
+              return (
               <div
                 key={e.id}
                 className="flex items-center gap-2 border border-border rounded-md p-2.5"
@@ -425,9 +443,14 @@ function DayDialog({
                   )} rounded-sm`}
                 />
                 <div className="flex-1 min-w-0">
-                  <p className="font-mono text-sm font-bold tracking-tight truncate">
-                    {e.masterName}
-                  </p>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="font-mono text-sm font-bold tracking-tight truncate">
+                      {e.masterName}
+                    </p>
+                    <span className="label-mono-sm text-[10px] px-1.5 py-0.5 rounded bg-muted text-foreground">
+                      {st.icon} {st.short}
+                    </span>
+                  </div>
                   {e.note && (
                     <p className="label-mono-sm text-muted-foreground mt-0.5 truncate">
                       {e.note}
@@ -451,7 +474,8 @@ function DayDialog({
                   </Button>
                 )}
               </div>
-            ))
+              )
+            })
           )}
         </div>
 
@@ -471,6 +495,19 @@ function DayDialog({
                         {m.name} {m.role === 'SENIOR' ? '⭐' : ''}
                       </SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Тип смены</Label>
+                <Select value={shiftType} onValueChange={setShiftType}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="full">🕐 Полная смена</SelectItem>
+                    <SelectItem value="morning">☀️ Утренняя смена</SelectItem>
+                    <SelectItem value="evening">🌙 Вечерняя смена</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

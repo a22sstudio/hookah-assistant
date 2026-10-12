@@ -57,6 +57,7 @@ export async function GET(req: NextRequest) {
       masterName: e.master.name,
       masterColor: e.master.color,
       masterRole: e.master.role,
+      shiftType: e.shiftType,
       note: e.note,
       isMine: e.masterId === me.id,
     })),
@@ -75,9 +76,13 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json()
-  const { masterId, dateText, date, note } = body
+  const { masterId, dateText, date, note, shiftType } = body
 
   if (!masterId) return NextResponse.json({ error: 'masterId обязателен' }, { status: 400 })
+
+  // Нормализуем shiftType
+  const validShiftTypes = ['morning', 'evening', 'full']
+  const finalShiftType = validShiftTypes.includes(shiftType) ? shiftType : 'full'
 
   // Если дата как текст ("четверг", "23 числа", "сегодня") — парсим
   let dateObj: Date
@@ -104,6 +109,7 @@ export async function POST(req: NextRequest) {
     data: {
       masterId,
       date: dateObj,
+      shiftType: finalShiftType,
       note: note ?? null,
     },
     include: { master: true },
@@ -115,9 +121,10 @@ export async function POST(req: NextRequest) {
       date: entry.date,
       dateLabel: formatDateRu(entry.date),
       masterName: entry.master.name,
+      shiftType: entry.shiftType,
       note: entry.note,
     },
-    message: `${entry.master.name} работает ${formatDateRu(entry.date)}`,
+    message: `${entry.master.name} — ${shiftTypeLabel(finalShiftType)} ${formatDateRu(entry.date)}`,
   })
 }
 
@@ -135,4 +142,14 @@ export async function DELETE(req: NextRequest) {
 
   await db.scheduleEntry.delete({ where: { id } })
   return NextResponse.json({ ok: true })
+}
+
+// Метки типов смены
+function shiftTypeLabel(type: string): string {
+  switch (type) {
+    case 'morning': return 'утренняя смена'
+    case 'evening': return 'вечерняя смена'
+    case 'full': return 'полная смена'
+    default: return 'смена'
+  }
 }

@@ -201,6 +201,7 @@ model ScheduleEntry {
   id        String   @id @default(cuid())
   masterId  String
   date      DateTime  // дата смены (без времени, 00:00)
+  shiftType String   @default("full") // morning | evening | full
   note      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
