@@ -7,6 +7,7 @@ import { pushToSeniors } from '@/lib/notify'
 // ───────────────────────────────────────────
 // Обработчик intent parser с поддержкой сессий.
 // ВАЖНО: "да"/"нет"/числа НИКОГДА не идут в LLM.
+// Сессии хранятся в памяти (Map) — не зависят от БД.
 // ───────────────────────────────────────────
 
 export interface IntentResult {
@@ -24,37 +25,55 @@ interface PendingAction {
   raw: string
 }
 
+// In-memory кэш сессий (masterId → PendingAction)
+// TTL 5 минут, потом автоматически очищается
+const sessions = new Map<string, { pending: PendingAction; expiresAt: number }>()
+const SESSION_TTL = 5 * 60 * 1000 // 5 минут
+
+function getSession(masterId: string): PendingAction | null {
+  const entry = sessions.get(masterId)
+  if (!entry) return null
+  if (Date.now() > entry.expiresAt) {
+    sessions.delete(masterId)
+    return null
+  }
+  return entry.pending
+}
+
+function setSession(masterId: string, pending: PendingAction): void {
+  sessions.set(masterId, { pending, expiresAt: Date.now() + SESSION_TTL })
+}
+
+function clearSession(masterId: string): void {
+  sessions.delete(masterId)
+}
+
+// Очистка истёкших сессий (раз в минуту)
+let lastCleanup = 0
+function cleanupExpired(): void {
+  if (Date.now() - lastCleanup < 60_000) return
+  lastCleanup = Date.now()
+  for (const [key, val] of sessions) {
+    if (Date.now() > val.expiresAt) sessions.delete(key)
+  }
+}
+
 export async function tryHandleWithParser(
   text: string,
   masterId: string,
 ): Promise<IntentResult> {
+  cleanupExpired()
+  
   // ─── Проверяем подтверждение ───
   const confirmation = isConfirmation(text)
-  
-  // Безопасное чтение сессии (таблица может не существовать)
-  let session: { pendingAction: string | null } | null = null
-  try {
-    session = await db.botSession.findUnique({ where: { masterId } })
-  } catch {
-    // Таблица не существует — работаем без сессий
-  }
+  const pending = getSession(masterId)
   
   // Если это подтверждение (да/нет/1/2/3)
   if (confirmation !== null) {
     // Есть pending action — обрабатываем подтверждение
-    if (session?.pendingAction) {
-      let pending: PendingAction
-      try {
-        pending = JSON.parse(session.pendingAction)
-      } catch {
-        // Корrupted JSON — очищаем
-        await safeClearPending(masterId)
-        return { handled: true, reply: '❌ Ошибка контекста. Повтори команду.', executedCount: 0 }
-      }
-      
-      // Очищаем pending ДО исполнения (предотвращает stuck state при ошибке)
-      await safeClearPending(masterId)
-      
+    if (pending) {
+      // Очищаем ДО исполнения (предотвращает stuck state)
+      clearSession(masterId)
       return await handleConfirmation(pending, confirmation, masterId)
     }
     
@@ -67,8 +86,8 @@ export async function tryHandleWithParser(
   }
   
   // ─── Не подтверждение — очищаем stale pending ───
-  if (session?.pendingAction) {
-    await safeClearPending(masterId)
+  if (pending) {
+    clearSession(masterId)
   }
   
   // ─── Обычный парсинг ───
@@ -96,9 +115,9 @@ export async function tryHandleWithParser(
     return { handled: false, reply: '', executedCount: 0 }
   }
   
-  // Clarify — сохраняем в сессию
+  // Clarify — сохраняем в сессию (in-memory)
   if (first.type === 'clarify') {
-    const pending: PendingAction = {
+    const pendingAction: PendingAction = {
       type: (first.clarifyType === 'ambiguous_tobacco' ? 'ambiguous' : 
              first.clarifyType === 'suggest' ? 'suggest' : 'no_verb') as PendingAction['type'],
       tobacco: first.tobacco,
@@ -108,7 +127,7 @@ export async function tryHandleWithParser(
       raw: first.raw,
     }
     
-    await safeSetPending(masterId, pending)
+    setSession(masterId, pendingAction)
     
     return { handled: true, reply: first.message || 'Уточни.', executedCount: 0 }
   }
@@ -143,34 +162,6 @@ export async function tryHandleWithParser(
     handled: true,
     reply: replies.join('\n'),
     executedCount: executed,
-  }
-}
-
-// ─── Безопасные операции с сессией ───
-
-async function safeClearPending(masterId: string): Promise<void> {
-  try {
-    await db.botSession.update({
-      where: { masterId },
-      data: { pendingAction: null },
-    })
-  } catch {
-    // Таблица не существует или запись не найдена — игнорируем
-  }
-}
-
-async function safeSetPending(masterId: string, pending: PendingAction): Promise<void> {
-  try {
-    await db.botSession.upsert({
-      where: { masterId },
-      update: { pendingAction: JSON.stringify(pending) },
-      create: {
-        masterId,
-        pendingAction: JSON.stringify(pending),
-      },
-    })
-  } catch {
-    // Таблица не существует — работаем без сессий
   }
 }
 
