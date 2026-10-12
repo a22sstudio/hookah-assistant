@@ -27,7 +27,6 @@ import {
   LogOut,
   Users,
   CalendarRange,
-  Wallet,
   Package,
   Layers,
   Home,
