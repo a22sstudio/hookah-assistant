@@ -183,55 +183,161 @@ export async function PATCH(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { id, telegramId } = body as { id?: string; telegramId?: string }
+    const { id, name, role, pin, color, rate, telegramId, active } = body as {
+      id?: string
+      name?: string
+      role?: string
+      pin?: string
+      color?: string
+      rate?: number
+      telegramId?: string
+      active?: boolean
+    }
 
     if (!id || typeof id !== 'string') {
       return NextResponse.json({ error: 'id обязателен' }, { status: 400 })
     }
 
-    // Проверка существования мастера
     const master = await db.master.findUnique({ where: { id } })
     if (!master) {
       return NextResponse.json({ error: 'Мастер не найден' }, { status: 404 })
     }
 
-    // Если telegramId пустой → отвязать
-    let finalTelegramId: string | null = null
-    if (telegramId && String(telegramId).trim() !== '') {
-      finalTelegramId = String(telegramId).trim()
+    // Собираем поля для обновления
+    const updateData: Record<string, unknown> = {}
 
-      // Проверка уникальности telegramId (кроме текущего мастера)
-      const existing = await db.master.findFirst({
-        where: { telegramId: finalTelegramId, NOT: { id } },
+    if (typeof name === 'string' && name.trim()) {
+      // Проверка уникальности имени
+      const existingName = await db.master.findFirst({
+        where: { name: name.trim(), NOT: { id } },
       })
-      if (existing) {
+      if (existingName) {
         return NextResponse.json(
-          {
-            error: `Telegram ID ${finalTelegramId} уже привязан к «${existing.name}»`,
-          },
+          { error: `Имя «${name.trim()}» уже занято` },
           { status: 400 },
         )
       }
+      updateData.name = name.trim()
+    }
+
+    if (typeof role === 'string' && (role === 'SENIOR' || role === 'REGULAR')) {
+      updateData.role = role
+    }
+
+    if (typeof pin === 'string' && pin.trim()) {
+      const pinTrimmed = pin.trim()
+      if (!/^\d{4}$/.test(pinTrimmed)) {
+        return NextResponse.json(
+          { error: 'PIN должен быть 4 цифры' },
+          { status: 400 },
+        )
+      }
+      // Проверка уникальности PIN
+      const existingPin = await db.master.findFirst({
+        where: { pin: pinTrimmed, NOT: { id } },
+      })
+      if (existingPin) {
+        return NextResponse.json(
+          { error: `PIN ${pinTrimmed} уже занят «${existingPin.name}»` },
+          { status: 400 },
+        )
+      }
+      updateData.pin = pinTrimmed
+    }
+
+    if (typeof color === 'string' && color.trim()) {
+      updateData.color = color.trim()
+    }
+
+    if (typeof rate === 'number' && rate >= 0) {
+      updateData.rate = Math.floor(rate)
+    }
+
+    if (typeof active === 'boolean') {
+      updateData.active = active
+    }
+
+    // Telegram ID
+    if (telegramId !== undefined) {
+      let finalTelegramId: string | null = null
+      if (telegramId && String(telegramId).trim() !== '') {
+        finalTelegramId = String(telegramId).trim()
+        const existing = await db.master.findFirst({
+          where: { telegramId: finalTelegramId, NOT: { id } },
+        })
+        if (existing) {
+          return NextResponse.json(
+            { error: `Telegram ID ${finalTelegramId} уже привязан к «${existing.name}»` },
+            { status: 400 },
+          )
+        }
+      }
+      updateData.telegramId = finalTelegramId
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: 'Нет полей для обновления' }, { status: 400 })
     }
 
     const updated = await db.master.update({
       where: { id },
-      data: { telegramId: finalTelegramId },
+      data: updateData,
     })
 
     return NextResponse.json({
       master: {
         id: updated.id,
         name: updated.name,
+        role: updated.role,
+        color: updated.color,
+        pin: updated.pin,
         telegramId: updated.telegramId,
+        rate: updated.rate,
+        active: updated.active,
       },
-      message: finalTelegramId
-        ? `Telegram ID ${finalTelegramId} привязан к «${updated.name}»`
-        : `Telegram ID отвязан от «${updated.name}»`,
+      message: 'Мастер обновлён',
     })
   } catch (e) {
     return NextResponse.json(
       { error: 'Ошибка обновления', detail: (e as Error).message },
+      { status: 500 },
+    )
+  }
+}
+
+// DELETE /api/masters?id=xxx — удалить мастера (только SENIOR)
+export async function DELETE(req: NextRequest) {
+  const { error } = await requireSenior()
+  if (error) return error
+
+  try {
+    const { searchParams } = new URL(req.url)
+    const id = searchParams.get('id')
+    if (!id) {
+      return NextResponse.json({ error: 'id обязателен' }, { status: 400 })
+    }
+
+    const master = await db.master.findUnique({ where: { id } })
+    if (!master) {
+      return NextResponse.json({ error: 'Мастер не найден' }, { status: 404 })
+    }
+
+    // Не позволяем удалить себя
+    const me = await getCurrentMaster()
+    if (me?.id === id) {
+      return NextResponse.json(
+        { error: 'Нельзя удалить самого себя' },
+        { status: 400 },
+      )
+    }
+
+    // Удаляем мастера (cascade удалит связанные shifts, wishes, requests, etc.)
+    await db.master.delete({ where: { id } })
+
+    return NextResponse.json({ ok: true, message: `Мастер «${master.name}» удалён` })
+  } catch (e) {
+    return NextResponse.json(
+      { error: 'Ошибка удаления', detail: (e as Error).message },
       { status: 500 },
     )
   }

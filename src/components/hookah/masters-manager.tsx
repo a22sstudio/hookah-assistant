@@ -16,6 +16,17 @@ import {
   DialogClose,
 } from '@/components/ui/dialog'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -33,6 +44,9 @@ import {
   Send,
   KeyRound,
   Hash,
+  Trash2,
+  Save,
+  Wallet,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { masterAvatarClass, masterColorClasses, initials } from '@/lib/master-utils'
@@ -44,6 +58,8 @@ interface MasterRow {
   color: string
   pin: string
   telegramId: string | null
+  rate?: number
+  active?: boolean
 }
 
 interface MastersManagerProps {
@@ -70,16 +86,21 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [creating, setCreating] = useState(false)
 
-  // Форма создания мастера
-  const [form, setForm] = useState({
+  // Редактирование
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<MasterRow | null>(null)
+  const [editSaving, setEditSaving] = useState(false)
+  const [editForm, setEditForm] = useState({
     name: '',
     role: 'REGULAR' as 'SENIOR' | 'REGULAR',
     pin: '',
     color: 'emerald',
     telegramId: '',
+    rate: 1600,
+    active: true,
   })
 
-  // Локальное состояние inline-редактирования telegramId (по masterId)
+  // Inline-редактирование telegramId
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const [savingId, setSavingId] = useState<string | null>(null)
@@ -152,6 +173,76 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
     }
   }
 
+  // ─── Полное редактирование ───
+  const openEditDialog = (m: MasterRow) => {
+    setEditTarget(m)
+    setEditForm({
+      name: m.name,
+      role: m.role,
+      pin: m.pin,
+      color: m.color,
+      telegramId: m.telegramId ?? '',
+      rate: m.rate ?? 1600,
+      active: m.active ?? true,
+    })
+    setEditDialogOpen(true)
+  }
+
+  const handleEditSave = async () => {
+    if (!editTarget) return
+    if (!editForm.name.trim()) {
+      toast.error('Имя не может быть пустым')
+      return
+    }
+    setEditSaving(true)
+    try {
+      const res = await fetch('/api/masters', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editTarget.id,
+          name: editForm.name.trim(),
+          role: editForm.role,
+          pin: editForm.pin.trim(),
+          color: editForm.color,
+          telegramId: editForm.telegramId.trim() || null,
+          rate: editForm.rate,
+          active: editForm.active,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || 'Ошибка обновления')
+        return
+      }
+      toast.success(data.message || 'Мастер обновлён')
+      setEditDialogOpen(false)
+      setEditTarget(null)
+      await load()
+      onRefresh()
+    } catch {
+      toast.error('Ошибка сети')
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
+  const handleDelete = async (id: string, name: string) => {
+    try {
+      const res = await fetch(`/api/masters?id=${id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || 'Ошибка удаления')
+        return
+      }
+      toast.success(data.message || `Мастер «${name}» удалён`)
+      await load()
+      onRefresh()
+    } catch {
+      toast.error('Ошибка сети')
+    }
+  }
+
   // Inline-редактирование Telegram ID
   const startEdit = (m: MasterRow) => {
     setEditingId(m.id)
@@ -189,6 +280,15 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
     }
   }
 
+  // Форма создания
+  const [form, setForm] = useState({
+    name: '',
+    role: 'REGULAR' as 'SENIOR' | 'REGULAR',
+    pin: '',
+    color: 'emerald',
+    telegramId: '',
+  })
+
   const stats = {
     total: masters.length,
     senior: masters.filter((m) => m.role === 'SENIOR').length,
@@ -209,7 +309,7 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
             Мастера
           </h2>
           <p className="body-sans text-xs text-muted-foreground mt-2">
-            Управление командой: PIN-коды, роли и привязка к Telegram.
+            Управление командой: PIN-коды, роли, ставки и привязка к Telegram.
           </p>
         </div>
         <div className="flex gap-2">
@@ -237,15 +337,12 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                     autoFocus
                   />
                 </div>
-
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label htmlFor="m-role">Роль</Label>
                     <Select
                       value={form.role}
-                      onValueChange={(v) =>
-                        setForm({ ...form, role: v as 'SENIOR' | 'REGULAR' })
-                      }
+                      onValueChange={(v) => setForm({ ...form, role: v as 'SENIOR' | 'REGULAR' })}
                     >
                       <SelectTrigger id="m-role" className="w-full">
                         <SelectValue />
@@ -266,10 +363,7 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                         placeholder="1234"
                         value={form.pin}
                         onChange={(e) =>
-                          setForm({
-                            ...form,
-                            pin: e.target.value.replace(/\D/g, '').slice(0, 4),
-                          })
+                          setForm({ ...form, pin: e.target.value.replace(/\D/g, '').slice(0, 4) })
                         }
                       />
                       <Button
@@ -284,7 +378,6 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                     </div>
                   </div>
                 </div>
-
                 <div className="space-y-1.5">
                   <Label htmlFor="m-color">Цвет аватара</Label>
                   <div className="flex items-center gap-2 flex-wrap">
@@ -304,7 +397,6 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                     ))}
                   </div>
                 </div>
-
                 <div className="space-y-1.5">
                   <Label htmlFor="m-tg">Telegram ID (необязательно)</Label>
                   <Input
@@ -313,10 +405,7 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                     placeholder="123456789"
                     value={form.telegramId}
                     onChange={(e) =>
-                      setForm({
-                        ...form,
-                        telegramId: e.target.value.replace(/[^\d]/g, ''),
-                      })
+                      setForm({ ...form, telegramId: e.target.value.replace(/[^\d]/g, '') })
                     }
                   />
                   <p className="label-mono-sm">
@@ -330,9 +419,7 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                 </DialogClose>
                 <Button onClick={handleCreate} disabled={creating}>
                   {creating ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-1 animate-spin" /> Создание...
-                    </>
+                    <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Создание...</>
                   ) : (
                     'Создать'
                   )}
@@ -389,9 +476,7 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                     {/* Аватар + имя + роль */}
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div
-                        className={`h-10 w-10 shrink-0 ${masterAvatarClass(
-                          m.color,
-                        )} flex items-center justify-center text-xs font-mono font-bold uppercase text-white border-2 ${colors.ring}/30 rounded-md`}
+                        className={`h-10 w-10 shrink-0 ${masterAvatarClass(m.color)} flex items-center justify-center text-xs font-mono font-bold uppercase text-white border-2 ${colors.ring}/30 rounded-md`}
                       >
                         {initials(m.name)}
                       </div>
@@ -401,35 +486,33 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                             {m.name}
                           </span>
                           {m.role === 'SENIOR' ? (
-                            <Badge className="border-ember text-ember bg-transparent">
-                              старший
-                            </Badge>
+                            <Badge className="border-ember text-ember bg-transparent">старший</Badge>
                           ) : (
-                            <Badge variant="outline">
-                              мастер
-                            </Badge>
+                            <Badge variant="outline">мастер</Badge>
+                          )}
+                          {m.active === false && (
+                            <Badge variant="outline" className="text-muted-foreground">неактивен</Badge>
                           )}
                         </div>
-                        {/* PIN + Telegram ID строка */}
                         <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                           <span className="flex items-center gap-1 label-mono-sm">
                             <KeyRound className="h-3 w-3" />
-                            <span className="font-bold text-foreground">
-                              {m.pin}
-                            </span>
+                            <span className="font-bold text-foreground">{m.pin}</span>
                           </span>
                           {!isEditing && (
                             <span className="flex items-center gap-1 label-mono-sm">
                               <Hash className="h-3 w-3" />
                               {m.telegramId ? (
-                                <span className="font-bold text-foreground">
-                                  {m.telegramId}
-                                </span>
+                                <span className="font-bold text-foreground">{m.telegramId}</span>
                               ) : (
-                                <span className="italic text-muted-foreground/70">
-                                  не привязан
-                                </span>
+                                <span className="italic text-muted-foreground/70">не привязан</span>
                               )}
+                            </span>
+                          )}
+                          {m.rate != null && m.rate > 0 && (
+                            <span className="flex items-center gap-1 label-mono-sm">
+                              <Wallet className="h-3 w-3" />
+                              <span className="font-bold text-foreground">{m.rate}₽/смена</span>
                             </span>
                           )}
                         </div>
@@ -444,11 +527,7 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                             inputMode="numeric"
                             placeholder="123456789"
                             value={editValue}
-                            onChange={(e) =>
-                              setEditValue(
-                                e.target.value.replace(/[^\d]/g, ''),
-                              )
-                            }
+                            onChange={(e) => setEditValue(e.target.value.replace(/[^\d]/g, ''))}
                             className="h-8 w-40 text-xs"
                             autoFocus
                             onKeyDown={(e) => {
@@ -463,11 +542,7 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                             disabled={isSaving}
                             title="Сохранить"
                           >
-                            {isSaving ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Check className="h-3.5 w-3.5" />
-                            )}
+                            {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                           </Button>
                           <Button
                             size="icon"
@@ -482,7 +557,16 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                         </>
                       ) : (
                         <>
-                          {!m.telegramId ? (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8"
+                            onClick={() => openEditDialog(m)}
+                            title="Редактировать"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          {!m.telegramId && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -491,17 +575,37 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
                             >
                               <Send className="h-3 w-3" /> привязать
                             </Button>
-                          ) : (
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-8 w-8"
-                              onClick={() => startEdit(m)}
-                              title="Изменить Telegram ID"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
                           )}
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8"
+                                title="Удалить"
+                              >
+                                <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Удалить мастера «{m.name}»?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Мастер будет удалён вместе со всеми связанными сменами, хотелками и заявками.
+                                  Это действие нельзя отменить.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Отмена</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => handleDelete(m.id, m.name)}
+                                  className="bg-destructive hover:bg-destructive/90"
+                                >
+                                  Удалить
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         </>
                       )}
                     </div>
@@ -512,6 +616,108 @@ export function MastersManager({ refreshKey, onRefresh }: MastersManagerProps) {
           </ScrollArea>
         )}
       </div>
+
+      {/* Модалка редактирования */}
+      <Dialog open={editDialogOpen} onOpenChange={(o) => { setEditDialogOpen(o); if (!o) setEditTarget(null) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Редактировать мастера</DialogTitle>
+          </DialogHeader>
+          {editTarget && (
+            <div className="space-y-3 py-2">
+              <div className="space-y-1.5">
+                <Label>Имя *</Label>
+                <Input
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  autoFocus
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Роль</Label>
+                  <Select
+                    value={editForm.role}
+                    onValueChange={(v) => setEditForm({ ...editForm, role: v as 'SENIOR' | 'REGULAR' })}
+                  >
+                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="REGULAR">мастер</SelectItem>
+                      <SelectItem value="SENIOR">старший</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>PIN</Label>
+                  <Input
+                    inputMode="numeric"
+                    maxLength={4}
+                    value={editForm.pin}
+                    onChange={(e) => setEditForm({ ...editForm, pin: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Ставка (₽/смена)</Label>
+                  <Input
+                    type="number"
+                    value={editForm.rate}
+                    onChange={(e) => setEditForm({ ...editForm, rate: parseInt(e.target.value) || 0 })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Telegram ID</Label>
+                  <Input
+                    inputMode="numeric"
+                    placeholder="123456789"
+                    value={editForm.telegramId}
+                    onChange={(e) => setEditForm({ ...editForm, telegramId: e.target.value.replace(/[^\d]/g, '') })}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Цвет аватара</Label>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {COLOR_OPTIONS.map((c) => (
+                    <button
+                      key={c.value}
+                      type="button"
+                      onClick={() => setEditForm({ ...editForm, color: c.value })}
+                      className={`h-8 w-8 ${c.className} rounded-md transition-base ${
+                        editForm.color === c.value
+                          ? 'ring-2 ring-offset-2 ring-foreground scale-110'
+                          : 'hover:scale-105 opacity-80'
+                      }`}
+                      title={c.label}
+                      aria-label={c.label}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={editForm.active ? 'default' : 'outline'}
+                  onClick={() => setEditForm({ ...editForm, active: !editForm.active })}
+                >
+                  {editForm.active ? '✓ Активен' : 'Неактивен'}
+                </Button>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setEditDialogOpen(false); setEditTarget(null) }}>
+              Отмена
+            </Button>
+            <Button onClick={handleEditSave} disabled={editSaving}>
+              {editSaving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4" />}
+              Сохранить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <p className="label-mono-sm text-center">
         Мастера также могут привязать Telegram сами: откройте{' '}

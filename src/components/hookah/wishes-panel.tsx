@@ -5,9 +5,15 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion'
 import { Wish, WISH_STATUS_LABELS } from '@/lib/types'
 import { masterAvatarClass, timeAgo, initials } from '@/lib/master-utils'
-import { Send, Loader2, Star, CheckCircle2, Inbox } from 'lucide-react'
+import { Send, Loader2, Star, CheckCircle2, Inbox, Archive } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface WishesPanelProps {
@@ -98,7 +104,66 @@ export function WishesPanel({ role, refreshKey, onRefresh }: WishesPanelProps) {
     }
   }
 
-  const pendingCount = items.filter((w) => w.status === 'PENDING').length
+  const pendingItems = items.filter((w) => w.status === 'PENDING')
+  const doneItems = items.filter((w) => w.status === 'DONE')
+  const pendingCount = pendingItems.length
+
+  const renderWish = (w: Wish) => (
+    <div
+      key={w.id}
+      className="p-4 border-b border-border last:border-b-0 space-y-2"
+    >
+      <div className="flex items-start gap-3">
+        {isSenior && (
+          <div
+            className={`mt-0.5 h-9 w-9 shrink-0 ${masterAvatarClass(
+              w.master.color,
+            )} flex items-center justify-center text-[10px] font-mono font-bold uppercase text-white rounded-md`}
+          >
+            {initials(w.master.name)}
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          {isSenior && (
+            <div className="label-mono-sm mb-1">
+              {w.master.name}
+              {w.isMine && (
+                <span className="ml-1.5 text-ember">· ты</span>
+              )}
+            </div>
+          )}
+          <p className={`body-sans text-sm break-words ${w.status === 'DONE' ? 'line-through opacity-60' : ''}`}>
+            {w.text}
+          </p>
+          <div className="flex items-center gap-2 mt-2">
+            <Badge variant="outline" className={STATUS_STYLE[w.status]}>
+              {WISH_STATUS_LABELS[w.status]}
+            </Badge>
+            <span className="label-mono-sm">
+              {timeAgo(w.createdAt)}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {isSenior && w.status === 'PENDING' && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-[11px] ml-12"
+          disabled={updatingId === w.id}
+          onClick={() => markDone(w.id)}
+        >
+          {updatingId === w.id ? (
+            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+          ) : (
+            <CheckCircle2 className="h-3 w-3" />
+          )}
+          Выполнено
+        </Button>
+      )}
+    </div>
+  )
 
   return (
     <div className="space-y-6">
@@ -161,77 +226,53 @@ export function WishesPanel({ role, refreshKey, onRefresh }: WishesPanelProps) {
         </div>
       )}
 
-      {/* Список */}
+      {/* Активные хотелки */}
       <div className="border border-border rounded-md shadow-sm-soft">
         {loading ? (
           <div className="p-8 text-center text-muted-foreground label-mono flex items-center justify-center gap-2">
             <Loader2 className="h-3 w-3 animate-spin" /> Загрузка...
           </div>
-        ) : items.length === 0 ? (
+        ) : pendingItems.length === 0 && doneItems.length === 0 ? (
           <div className="p-8 text-center text-muted-foreground text-sm body-sans">
             {isSenior ? 'Хотелок пока нет.' : 'Ты ещё ничего не попросил.'}
+          </div>
+        ) : pendingItems.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground text-sm body-sans">
+            <CheckCircle2 className="h-5 w-5 mx-auto mb-2 text-emerald-500" />
+            Все хотелки выполнены!
           </div>
         ) : (
           <ScrollArea className="max-h-[60vh]">
             <div className="stagger-children">
-              {items.map((w) => (
-                <div
-                  key={w.id}
-                  className="p-4 border-b border-border last:border-b-0 space-y-2"
-                >
-                  <div className="flex items-start gap-3">
-                    {isSenior && (
-                      <div
-                        className={`mt-0.5 h-9 w-9 shrink-0 ${masterAvatarClass(
-                          w.master.color,
-                        )} flex items-center justify-center text-[10px] font-mono font-bold uppercase text-white rounded-md`}
-                      >
-                        {initials(w.master.name)}
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      {isSenior && (
-                        <div className="label-mono-sm mb-1">
-                          {w.master.name}
-                          {w.isMine && (
-                            <span className="ml-1.5 text-ember">· ты</span>
-                          )}
-                        </div>
-                      )}
-                      <p className="body-sans text-sm break-words">{w.text}</p>
-                      <div className="flex items-center gap-2 mt-2">
-                        <Badge variant="outline" className={STATUS_STYLE[w.status]}>
-                          {WISH_STATUS_LABELS[w.status]}
-                        </Badge>
-                        <span className="label-mono-sm">
-                          {timeAgo(w.createdAt)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {isSenior && w.status === 'PENDING' && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-[11px] ml-12"
-                      disabled={updatingId === w.id}
-                      onClick={() => markDone(w.id)}
-                    >
-                      {updatingId === w.id ? (
-                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                      ) : (
-                        <CheckCircle2 className="h-3 w-3" />
-                      )}
-                      Выполнено
-                    </Button>
-                  )}
-                </div>
-              ))}
+              {pendingItems.map(renderWish)}
             </div>
           </ScrollArea>
         )}
       </div>
+
+      {/* Архив выполненных (аккордеон, закрыт по умолчанию) */}
+      {doneItems.length > 0 && (
+        <Accordion type="single" collapsible className="border border-border rounded-md shadow-sm-soft">
+          <AccordionItem value="archive" className="border-b-0">
+            <AccordionTrigger className="px-4 py-3 hover:bg-muted/40 transition-colors">
+              <div className="flex items-center gap-2 label-mono-sm text-muted-foreground">
+                <Archive className="h-3.5 w-3.5" />
+                Архив выполненных
+                <Badge variant="outline" className="label-mono-sm py-0">
+                  {doneItems.length}
+                </Badge>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="p-0">
+              <ScrollArea className="max-h-[40vh]">
+                <div className="stagger-children">
+                  {doneItems.map(renderWish)}
+                </div>
+              </ScrollArea>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+      )}
     </div>
   )
 }
