@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
 import {
   Select,
   SelectContent,
@@ -21,10 +22,16 @@ import { masterAvatarClass, initials } from '@/lib/master-utils'
 
 interface SalaryShift {
   id: string
-  openedAt: string
-  closedAt: string | null
-  hookahCount: number
+  date: string
+  shiftType: string
+  rate: number
   note: string | null
+}
+
+interface ShiftBreakdown {
+  count: number
+  rate: number
+  sum: number
 }
 
 interface SalaryResponse {
@@ -33,12 +40,12 @@ interface SalaryResponse {
     name: string
     role: string
     color: string
-    rate: number
   }
   period: { from: string; to: string }
   shifts: SalaryShift[]
   count: number
-  rate: number
+  shiftBreakdown: Record<string, ShiftBreakdown>
+  rates: Record<string, number>
   total: number
 }
 
@@ -60,6 +67,17 @@ const MONTHS_NOM = [
   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
 ]
 
+const SHIFT_LABELS: Record<string, string> = {
+  full: 'Полная',
+  morning: 'Утренняя',
+  evening: 'Вечерняя',
+}
+const SHIFT_SHORT: Record<string, string> = {
+  full: 'П',
+  morning: 'У',
+  evening: 'В',
+}
+
 function toISODate(d: Date): string {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
@@ -79,6 +97,12 @@ function fmtDateShort(iso: string): string {
   return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
+function fmtDateDay(iso: string): string {
+  const d = new Date(iso)
+  const wd = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'][d.getDay()]
+  return `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, '0')} ${wd}`
+}
+
 export function SalaryCalculator({ refreshKey }: SalaryCalculatorProps) {
   const [masters, setMasters] = useState<Master[]>([])
   const [masterId, setMasterId] = useState<string>('')
@@ -88,14 +112,12 @@ export function SalaryCalculator({ refreshKey }: SalaryCalculatorProps) {
   const [loading, setLoading] = useState(false)
   const [mastersLoading, setMastersLoading] = useState(true)
 
-  // Инициализация диапазона — текущий месяц
   useEffect(() => {
     const now = new Date()
     setFromDate(toISODate(startOfMonth(now)))
     setToDate(toISODate(endOfMonth(now)))
   }, [])
 
-  // Загрузка списка мастеров
   useEffect(() => {
     ;(async () => {
       setMastersLoading(true)
@@ -106,7 +128,6 @@ export function SalaryCalculator({ refreshKey }: SalaryCalculatorProps) {
           const list: Master[] = d.masters ?? []
           setMasters(list)
           if (!masterId && list.length > 0) {
-            // Сначала старший, потом обычные
             const senior = list.find((m) => m.role === 'SENIOR') ?? list[0]
             setMasterId(senior.id)
           }
@@ -146,13 +167,10 @@ export function SalaryCalculator({ refreshKey }: SalaryCalculatorProps) {
     }
   }, [load, masterId, fromDate, toDate, refreshKey])
 
-  // Сетка месяца для отображения календаря (по from-дате)
+  // Календарь месяца
   const calendar = useMemo(() => {
     if (!fromDate) return []
     const start = startOfMonth(new Date(fromDate))
-    const end = endOfMonth(new Date(new Date(toDate).getFullYear(), new Date(toDate).getMonth(), 1))
-    // Если период跨越 2 месяца — берём месяц начала. Если один месяц — нормально.
-    // Берём месяц fromDate
     const first = startOfMonth(start)
     const firstDow = (first.getDay() + 6) % 7
     const last = endOfMonth(start)
@@ -164,19 +182,18 @@ export function SalaryCalculator({ refreshKey }: SalaryCalculatorProps) {
       cells.push({ date, iso: toISODate(date) })
     }
     while (cells.length % 7 !== 0) cells.push({ date: null, iso: null })
-    void end
     return cells
   }, [fromDate, toDate])
 
-  // Множество дат (по дню открытия смены), когда был закрытый shift
+  // Дни со сменами + тип смены для подсветки
   const workedDays = useMemo(() => {
-    const set = new Set<string>()
-    if (!data) return set
+    const map = new Map<string, string>() // iso → shiftType
+    if (!data) return map
     for (const s of data.shifts) {
-      const dayIso = toISODate(new Date(s.openedAt))
-      set.add(dayIso)
+      const dayIso = toISODate(new Date(s.date))
+      map.set(dayIso, s.shiftType || 'full')
     }
-    return set
+    return map
   }, [data])
 
   const sortedMasters = useMemo(() => {
@@ -194,38 +211,38 @@ export function SalaryCalculator({ refreshKey }: SalaryCalculatorProps) {
       toast.error('Нет данных для экспорта')
       return
     }
-    const header = [
-      'Дата',
-      'Открыта',
-      'Закрыта',
-      'Кальяны',
-      'Заметка',
-    ]
+    const header = ['Дата', 'День недели', 'Тип смены', 'Ставка (₽)', 'Заметка']
     const rows: string[][] = [header]
     for (const s of data.shifts) {
+      const d = new Date(s.date)
+      const wd = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'][d.getDay()]
       rows.push([
-        new Date(s.openedAt).toLocaleDateString('ru-RU'),
-        new Date(s.openedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
-        s.closedAt
-          ? new Date(s.closedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-          : '—',
-        String(s.hookahCount),
+        d.toLocaleDateString('ru-RU'),
+        wd,
+        SHIFT_LABELS[s.shiftType] || s.shiftType,
+        String(s.rate),
         s.note ?? '',
       ])
     }
     rows.push([])
-    rows.push([
-      `ИТОГО: ${data.count} смен × ${data.rate}₽ = ${data.total}₽`,
-      '', '', '', '',
-    ])
-    rows.push([
-      `Мастер: ${data.master.name}`,
-      '', '', '', '',
-    ])
-    rows.push([
-      `Период: ${fmtDateShort(data.period.from)} - ${fmtDateShort(data.period.to)}`,
-      '', '', '', '',
-    ])
+    // Итоги по типам
+    if (data.shiftBreakdown) {
+      for (const [st, info] of Object.entries(data.shiftBreakdown)) {
+        if (info.count > 0) {
+          rows.push([
+            `Итого ${SHIFT_LABELS[st] || st}:`,
+            `${info.count} смен`,
+            '',
+            `× ${info.rate}₽`,
+            `= ${info.sum}₽`,
+          ])
+        }
+      }
+    }
+    rows.push([])
+    rows.push([`ВСЕГО: ${data.count} смен = ${data.total}₽`, '', '', '', ''])
+    rows.push([`Мастер: ${data.master.name}`, '', '', '', ''])
+    rows.push([`Период: ${fmtDateShort(data.period.from)} — ${fmtDateShort(data.period.to)}`, '', '', '', ''])
 
     const escape = (s: string | number | null | undefined) => {
       const v = s === null || s === undefined ? '' : String(s)
@@ -246,13 +263,15 @@ export function SalaryCalculator({ refreshKey }: SalaryCalculatorProps) {
     toast.success('CSV выгружен')
   }
 
-  // Текстовый экспорт (короткая сводка)
   const exportText = () => {
-    if (!data) {
-      toast.error('Нет данных')
-      return
-    }
-    const text = `Зарплата ${data.master.name}: ${data.count} смен × ${data.rate}₽ = ${data.total}₽. Период: ${fmtDateShort(data.period.from)} - ${fmtDateShort(data.period.to)}`
+    if (!data) return
+    const breakdownStr = data.shiftBreakdown
+      ? Object.entries(data.shiftBreakdown)
+          .filter(([, info]) => info.count > 0)
+          .map(([st, info]) => `${info.count}× ${SHIFT_LABELS[st]}(${info.rate}₽)`)
+          .join(' + ')
+      : ''
+    const text = `Зарплата ${data.master.name}: ${data.count} смен (${breakdownStr}) = ${data.total}₽. Период: ${fmtDateShort(data.period.from)} — ${fmtDateShort(data.period.to)}`
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -281,36 +300,14 @@ export function SalaryCalculator({ refreshKey }: SalaryCalculatorProps) {
           </h2>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={load}
-            disabled={loading || !masterId}
-            title="Обновить"
-          >
-            {loading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="h-3.5 w-3.5" />
-            )}
-            Обновить
+          <Button size="sm" variant="outline" onClick={load} disabled={loading || !masterId} title="Обновить">
+            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            <span className="hidden sm:inline">Обновить</span>
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={exportText}
-            disabled={!data}
-            title="Экспорт сводки"
-          >
+          <Button size="sm" variant="outline" onClick={exportText} disabled={!data}>
             Сводка
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={exportCsv}
-            disabled={!data}
-            title="Экспортировать CSV"
-          >
+          <Button size="sm" variant="outline" onClick={exportCsv} disabled={!data}>
             <Download className="h-3.5 w-3.5" /> CSV
           </Button>
         </div>
@@ -341,32 +338,19 @@ export function SalaryCalculator({ refreshKey }: SalaryCalculatorProps) {
         </div>
         <div className="space-y-1">
           <span className="label-mono block">От</span>
-          <Input
-            type="date"
-            value={fromDate}
-            onChange={(e) => setFromDate(e.target.value)}
-            className="font-mono"
-          />
+          <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="font-mono" />
         </div>
         <div className="space-y-1">
           <span className="label-mono block">До</span>
-          <Input
-            type="date"
-            value={toDate}
-            onChange={(e) => setToDate(e.target.value)}
-            className="font-mono"
-          />
+          <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="font-mono" />
         </div>
       </div>
 
-      {/* Календарь с подсветкой дней со сменами */}
+      {/* Календарь с подсветкой */}
       <div className="border border-border rounded-md shadow-sm-soft overflow-hidden">
         <div className="grid grid-cols-7 bg-muted/40 border-b border-border">
           {WEEKDAYS_SHORT.map((d) => (
-            <div
-              key={d}
-              className="label-mono text-center py-2 border-r border-border last:border-r-0"
-            >
+            <div key={d} className="label-mono text-center py-2 border-r border-border last:border-r-0">
               {d}
             </div>
           ))}
@@ -376,15 +360,12 @@ export function SalaryCalculator({ refreshKey }: SalaryCalculatorProps) {
             {calendar.map((cell, i) => {
               if (!cell.date || !cell.iso) {
                 return (
-                  <div
-                    key={`empty-${i}`}
-                    className="border-b border-r border-border last:border-r-0 min-h-[64px] sm:min-h-[80px] bg-muted/30"
-                  />
+                  <div key={`empty-${i}`} className="border-b border-r border-border last:border-r-0 min-h-[64px] sm:min-h-[80px] bg-muted/30" />
                 )
               }
-              const worked = workedDays.has(cell.iso)
-              const inRange =
-                cell.iso >= fromDate && cell.iso <= toDate
+              const shiftType = workedDays.get(cell.iso)
+              const worked = !!shiftType
+              const inRange = cell.iso >= fromDate && cell.iso <= toDate
               return (
                 <div
                   key={cell.iso}
@@ -392,22 +373,19 @@ export function SalaryCalculator({ refreshKey }: SalaryCalculatorProps) {
                     !inRange ? 'bg-muted/20' : ''
                   } ${worked ? 'frame-ember' : ''}`}
                 >
-                  <span
-                    className={`font-mono text-xs tabular ${
-                      worked
-                        ? 'text-ember font-bold'
-                        : 'text-muted-foreground'
-                    }`}
-                  >
-                    {cell.date.getDate()}
-                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className={`font-mono text-xs tabular ${worked ? 'text-ember font-bold' : 'text-muted-foreground'}`}>
+                      {cell.date.getDate()}
+                    </span>
+                    {worked && shiftType && (
+                      <span className="label-mono-sm text-[9px] px-1 rounded bg-muted text-foreground">
+                        {SHIFT_SHORT[shiftType] || '?'}
+                      </span>
+                    )}
+                  </div>
                   {worked && currentMaster && (
                     <div className="flex items-center gap-1 mt-auto">
-                      <span
-                        className={`h-2 w-2 ${masterAvatarClass(
-                          currentMaster.color,
-                        )} rounded-sm`}
-                      />
+                      <span className={`h-2 w-2 ${masterAvatarClass(currentMaster.color)} rounded-sm`} />
                       <span className="label-mono-sm text-foreground truncate">
                         {currentMaster.name}
                       </span>
@@ -422,50 +400,87 @@ export function SalaryCalculator({ refreshKey }: SalaryCalculatorProps) {
           <span className="label-mono">Легенда:</span>
           <div className="flex items-center gap-1.5">
             <div className="h-3 w-3 frame-ember rounded-sm" />
-            <span className="label-mono-sm text-muted-foreground">
-              смена отработана
-            </span>
+            <span className="label-mono-sm text-muted-foreground">смена отработана</span>
           </div>
-          <span className="label-mono-sm text-muted-foreground ml-auto hidden sm:inline">
-            Период: {MONTHS_NOM[new Date(fromDate).getMonth()]} {new Date(fromDate).getFullYear()}
-          </span>
+          <div className="flex items-center gap-2 ml-auto">
+            <Badge variant="outline" className="label-mono-sm text-[10px] py-0">П — полная</Badge>
+            <Badge variant="outline" className="label-mono-sm text-[10px] py-0">У — утренняя</Badge>
+            <Badge variant="outline" className="label-mono-sm text-[10px] py-0">В — вечерняя</Badge>
+          </div>
         </div>
       </div>
 
       {/* Итоги */}
       {data && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="border border-border rounded-md p-4 flex flex-col gap-3 shadow-sm-soft">
-            <span className="label-mono">Смен отработано</span>
-            <span
-              className="font-mono font-bold leading-none tabular text-foreground"
-              style={{ fontSize: 'clamp(28px, 4vw, 40px)' }}
-            >
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="border border-border rounded-md p-4 flex flex-col gap-2 shadow-sm-soft">
+            <span className="label-mono">Смен</span>
+            <span className="font-mono font-bold leading-none tabular text-foreground" style={{ fontSize: 'clamp(24px, 3vw, 32px)' }}>
               {data.count}
             </span>
           </div>
-          <div className="border border-border rounded-md p-4 flex flex-col gap-3 shadow-sm-soft">
-            <span className="label-mono">Ставка за смену</span>
-            <span
-              className="font-mono font-bold leading-none tabular text-foreground"
-              style={{ fontSize: 'clamp(28px, 4vw, 40px)' }}
-            >
-              {data.rate}
-              <span className="text-muted-foreground text-base ml-1">₽</span>
+          {data.shiftBreakdown && Object.entries(data.shiftBreakdown).filter(([, info]) => info.count > 0).map(([st, info]) => (
+            <div key={st} className="border border-border rounded-md p-4 flex flex-col gap-2 shadow-sm-soft">
+              <span className="label-mono">{SHIFT_LABELS[st] || st}</span>
+              <span className="font-mono font-bold leading-none tabular text-foreground" style={{ fontSize: 'clamp(20px, 2.5vw, 28px)' }}>
+                {info.count}
+                <span className="text-muted-foreground text-sm ml-1">× {info.rate}₽</span>
+              </span>
+              <span className="label-mono-sm text-muted-foreground">{info.sum}₽</span>
+            </div>
+          ))}
+          <div className="border rounded-md p-4 flex flex-col gap-2 shadow-sm-soft frame-ember">
+            <span className="label-mono">Итого</span>
+            <span className="font-mono font-bold leading-none tabular text-ember" style={{ fontSize: 'clamp(28px, 4vw, 40px)' }}>
+              {data.total}
+              <span className="text-ember/70 text-base ml-1">₽</span>
             </span>
           </div>
-          <div className="border rounded-md p-4 flex flex-col gap-3 shadow-sm-soft frame-ember">
-            <span className="label-mono">Итого к выплате</span>
-            <span
-              className="font-mono font-bold leading-none tabular text-ember"
-              style={{ fontSize: 'clamp(32px, 5vw, 48px)' }}
-            >
-              {data.total}
-              <span className="text-ember/70 text-lg ml-1">₽</span>
-            </span>
-            <span className="label-mono-sm text-muted-foreground">
-              {data.count} × {data.rate}₽
-            </span>
+        </div>
+      )}
+
+      {/* Детальный отчёт по дням */}
+      {data && data.shifts.length > 0 && (
+        <div className="border border-border rounded-md shadow-sm-soft overflow-hidden">
+          <div className="px-4 py-3 border-b border-border bg-muted/40">
+            <span className="label-mono">Детальный отчёт по сменам</span>
+          </div>
+          <div className="max-h-[400px] overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-muted/80 backdrop-blur">
+                <tr className="text-muted-foreground label-mono-sm">
+                  <th className="text-left font-normal py-2 px-3">Дата</th>
+                  <th className="text-left font-normal py-2 px-3">Тип смены</th>
+                  <th className="text-right font-normal py-2 px-3">Ставка</th>
+                  <th className="text-left font-normal py-2 px-3">Заметка</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.shifts.map((s, i) => (
+                  <tr key={s.id || i} className="border-t border-border/50 hover:bg-muted/30">
+                    <td className="py-2 px-3 font-mono tabular">
+                      {fmtDateDay(s.date)}
+                    </td>
+                    <td className="py-2 px-3">
+                      <span className="label-mono-sm px-1.5 py-0.5 rounded bg-muted text-foreground">
+                        {SHIFT_SHORT[s.shiftType] || '?'} {SHIFT_LABELS[s.shiftType] || s.shiftType}
+                      </span>
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono tabular font-bold">
+                      {s.rate}₽
+                    </td>
+                    <td className="py-2 px-3 text-muted-foreground">
+                      {s.note || '—'}
+                    </td>
+                  </tr>
+                ))}
+                <tr className="border-t-2 border-border bg-muted/30">
+                  <td className="py-2 px-3 font-bold" colSpan={2}>ИТОГО ({data.count} смен)</td>
+                  <td className="py-2 px-3 text-right font-mono tabular font-bold text-ember">{data.total}₽</td>
+                  <td></td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       )}
@@ -475,26 +490,28 @@ export function SalaryCalculator({ refreshKey }: SalaryCalculatorProps) {
         <div className="border border-border rounded-md p-4 shadow-sm-soft">
           <div className="flex items-center gap-2 mb-2">
             {currentMaster && (
-              <span
-                className={`h-7 w-7 shrink-0 ${masterAvatarClass(
-                  currentMaster.color,
-                )} flex items-center justify-center text-[10px] font-mono font-bold uppercase text-white rounded-md`}
-              >
+              <span className={`h-7 w-7 shrink-0 ${masterAvatarClass(currentMaster.color)} flex items-center justify-center text-[10px] font-mono font-bold uppercase text-white rounded-md`}>
                 {initials(currentMaster.name)}
               </span>
             )}
             <div>
-              <p className="font-mono text-sm font-bold tracking-tight">
-                {data.master.name}
-              </p>
+              <p className="font-mono text-sm font-bold tracking-tight">{data.master.name}</p>
               <p className="label-mono-sm text-muted-foreground">
                 Период: {fmtDateShort(data.period.from)} — {fmtDateShort(data.period.to)}
               </p>
             </div>
           </div>
+          {data.shiftBreakdown && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {Object.entries(data.shiftBreakdown).filter(([, info]) => info.count > 0).map(([st, info]) => (
+                <Badge key={st} variant="outline" className="label-mono-sm">
+                  {info.count}× {SHIFT_LABELS[st]} ({info.rate}₽) = {info.sum}₽
+                </Badge>
+              ))}
+            </div>
+          )}
           <p className="body-sans text-sm text-foreground">
-            Зарплата: <span className="font-bold">{data.count} смен</span> ×{' '}
-            <span className="font-bold">{data.rate}₽</span> ={' '}
+            Зарплата: <span className="font-bold">{data.count} смен</span> ={' '}
             <span className="font-mono font-bold text-ember text-lg">{data.total}₽</span>
           </p>
         </div>
