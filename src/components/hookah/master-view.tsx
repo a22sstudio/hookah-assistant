@@ -8,14 +8,12 @@ import { ThemeToggle } from '@/components/theme-toggle'
 import { HomeDashboard } from '@/components/hookah/home-dashboard'
 import { Dashboard } from '@/components/hookah/dashboard'
 import { ConsumablesPanel } from '@/components/hookah/consumables-panel'
-import { PurchasePanel } from '@/components/hookah/purchase-panel'
 import { WishesPanel } from '@/components/hookah/wishes-panel'
 import { AIChat } from '@/components/hookah/ai-chat'
 import { ScheduleCalendar } from '@/components/hookah/schedule-calendar'
 import { masterAvatarClass, initials } from '@/lib/master-utils'
 import {
   MessageCircle,
-  ShoppingCart,
   Star,
   Package,
   LogOut,
@@ -63,21 +61,10 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
     setActiveTab(tab)
   }
 
-  // Обработчик "Заказ" из Склада → переключить на ЗАКУП + prefill
+  // Обработчик "Заказ" из Склада → сообщить мастеру
   const handleOrderItem = useCallback((t: Tobacco) => {
-    const item: PrefillItem = {
-      itemType: 'TOBACCO',
-      brand: t.brand,
-      line: t.line,
-      flavor: t.flavor,
-      name: `${t.brand} ${t.line ? t.line + ' ' : ''}${t.flavor}`.trim(),
-      packGrams: t.defaultJarGrams,
-      quantity: 1,
-      unit: 'банок',
-    }
-    setPrefillItem(item)
-    setActiveTab('purchase')
-    toast.info(`Добавлено в форму: ${item.name}`)
+    const itemName = `${t.brand} ${t.line ? t.line + ' ' : ''}${t.flavor}`.trim()
+    toast.info(`Напиши боту: «закажи ${itemName}» или обратись к старшему`)
   }, [])
 
   const handlePrefillConsumed = useCallback(() => {
@@ -122,7 +109,7 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
           <div className="min-w-0 space-y-6">
             {/* Табы */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 h-auto">
+              <TabsList className="grid w-full grid-cols-3 sm:grid-cols-5 h-auto">
                 <TabsTrigger value="today" className="flex flex-col gap-1 py-2.5">
                   <Home className="h-4 w-4" />
                   <span>Сегодня</span>
@@ -138,10 +125,6 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
                 <TabsTrigger value="consumables" className="flex flex-col gap-1 py-2.5">
                   <Layers className="h-4 w-4" />
                   <span>Расход</span>
-                </TabsTrigger>
-                <TabsTrigger value="purchase" className="flex flex-col gap-1 py-2.5">
-                  <ShoppingCart className="h-4 w-4" />
-                  <span>Закуп</span>
                 </TabsTrigger>
                 <TabsTrigger value="wishes" className="flex flex-col gap-1 py-2.5">
                   <Star className="h-4 w-4" />
@@ -172,15 +155,6 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
                   readOnly
                   refreshKey={refreshKey}
                   onRefresh={refresh}
-                />
-              </TabsContent>
-              <TabsContent value="purchase" className="pt-6">
-                <PurchasePanel
-                  role="REGULAR"
-                  refreshKey={refreshKey}
-                  onRefresh={refresh}
-                  prefillItem={prefillItem}
-                  onPrefillConsumed={handlePrefillConsumed}
                 />
               </TabsContent>
               <TabsContent value="wishes" className="pt-6">
