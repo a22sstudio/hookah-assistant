@@ -7,7 +7,6 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { HomeDashboard } from '@/components/hookah/home-dashboard'
 import { Dashboard } from '@/components/hookah/dashboard'
 import { ConsumablesPanel } from '@/components/hookah/consumables-panel'
-import { PurchasePanel } from '@/components/hookah/purchase-panel'
 import { SupplyPanel } from '@/components/hookah/supply-panel'
 import { WishesPanel } from '@/components/hookah/wishes-panel'
 import { MastersManager } from '@/components/hookah/masters-manager'
@@ -22,17 +21,16 @@ import { Leaf } from 'lucide-react'
 import {
   MessageCircle,
   LayoutDashboard,
-  ShoppingCart,
   Star,
   LogOut,
   Users,
   CalendarRange,
+  Wallet,
   Package,
   Layers,
   Home,
   Truck,
   Beaker,
-  Wallet,
 } from 'lucide-react'
 import { masterAvatarClass, initials } from '@/lib/master-utils'
 import { toast } from 'sonner'
@@ -114,7 +112,7 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
           {/* Левая колонка */}
           <div className="min-w-0">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-4 sm:grid-cols-11 h-auto mb-6">
+              <TabsList className="grid w-full grid-cols-4 sm:grid-cols-10 h-auto mb-6">
                 <TabsTrigger value="today" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
                   <Home className="h-4 w-4" />
                   <span>Сегодня</span>
@@ -134,10 +132,6 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
                 <TabsTrigger value="consumables" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
                   <Layers className="h-4 w-4" />
                   <span>Расход</span>
-                </TabsTrigger>
-                <TabsTrigger value="purchase" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
-                  <ShoppingCart className="h-4 w-4" />
-                  <span>Закуп</span>
                 </TabsTrigger>
                 <TabsTrigger value="supply" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
                   <Truck className="h-4 w-4" />
@@ -175,13 +169,6 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
               </TabsContent>
               <TabsContent value="consumables">
                 <ConsumablesPanel refreshKey={refreshKey} onRefresh={refresh} />
-              </TabsContent>
-              <TabsContent value="purchase">
-                <PurchasePanel
-                  role="SENIOR"
-                  refreshKey={refreshKey}
-                  onRefresh={refresh}
-                />
               </TabsContent>
               <TabsContent value="supply">
                 <SupplyPanel refreshKey={refreshKey} onRefresh={refresh} />
