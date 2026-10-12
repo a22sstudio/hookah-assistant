@@ -2,6 +2,7 @@ import 'server-only'
 import { Telegraf } from 'telegraf'
 import { db } from '@/lib/db'
 import { processMasterMessage, transcribeAudio } from '@/lib/ai'
+import { tryHandleWithParser } from '@/lib/bot-intent-handler'
 import type { SessionMaster } from '@/lib/auth'
 
 // ───────────────────────────────────────────
@@ -295,7 +296,7 @@ function createBot(): Telegraf {
     }
   }
 
-  // Текстовые сообщения → AI
+  // Текстовые сообщения → сначала intent parser (быстро), потом LLM (для сложного)
   bot.on('text', async (ctx) => {
     const master = (ctx.state as { master: SessionMaster | null }).master
     const tgId = String((ctx.from as { id?: number })?.id || '')
@@ -310,6 +311,19 @@ function createBot(): Telegraf {
     if (text.startsWith('/')) return // команды уже обработаны
 
     await ctx.sendChatAction('typing')
+
+    // ─── Шаг 1: пробуем intent parser (мгновенно, без LLM) ───
+    try {
+      const result = await tryHandleWithParser(text, master.id)
+      if (result.handled) {
+        return ctx.reply(result.reply)
+      }
+    } catch (e) {
+      console.error('Intent parser error:', (e as Error).message)
+      // продолжаем к LLM
+    }
+
+    // ─── Шаг 2: fallback на LLM (для сложных запросов: график, свободная речь) ───
     const stop = { value: false }
     const typingLoop = keepTyping(ctx, stop).catch(() => {})
 
@@ -326,7 +340,7 @@ function createBot(): Telegraf {
       stop.value = true
       await typingLoop
       console.error('Text/AI error:', (e as Error).message)
-      return ctx.reply('⚠️ Не удалось обработать (AI не ответил вовремя). Попробуй ещё раз.')
+      return ctx.reply('⚠️ Не удалось обработать. Попробуй ещё раз или напиши проще.')
     }
   })
 
@@ -365,6 +379,18 @@ function createBot(): Telegraf {
         return ctx.reply('⚠️ Не удалось распознать речь (пустой ответ).')
       }
 
+      // ─── Шаг 1: пробуем intent parser (мгновенно) ───
+      try {
+        const result = await tryHandleWithParser(transcribedText, master.id)
+        if (result.handled) {
+          stop.value = true; await typingLoop
+          return ctx.reply(`🎙 «${transcribedText}»\n\n${result.reply}`)
+        }
+      } catch (e) {
+        console.error('Voice intent parser error:', (e as Error).message)
+      }
+
+      // ─── Шаг 2: fallback на LLM ───
       const result = await withTimeout(
         processMasterMessage(transcribedText, { source: 'VOICE', transcribedText, masterId: master.id }),
         50000,
