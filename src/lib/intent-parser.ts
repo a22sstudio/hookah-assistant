@@ -80,6 +80,7 @@ export async function parseIntent(text: string): Promise<ParsedAction[]> {
       return [{
         type: 'clarify',
         clarifyType: 'no_quantity',
+        actionType: type !== 'unknown' ? type : undefined,  // сохраняем глагол
         tobacco: search.status === 'single' ? {
           id: search.matches[0].tobacco.id,
           brand: search.matches[0].tobacco.brand,
@@ -87,6 +88,12 @@ export async function parseIntent(text: string): Promise<ParsedAction[]> {
           flavor: search.matches[0].tobacco.flavor,
           defaultJarGrams: search.matches[0].tobacco.defaultJarGrams,
         } : undefined,
+        options: search.status === 'ambiguous' ? search.matches.map(m => ({
+          id: m.tobacco.id,
+          brand: m.tobacco.brand,
+          line: m.tobacco.line,
+          flavor: m.tobacco.flavor,
+        })) : undefined,
         raw: text,
         message: `Сколько грамм? (например: «25», «пол банки», «2б»)`,
       }]
@@ -217,6 +224,7 @@ export async function parseIntent(text: string): Promise<ParsedAction[]> {
         return [{
           type: 'clarify',
           clarifyType: 'no_quantity',
+          actionType: type,  // сохраняем глагол (add/spend/set)
           tobacco: {
             id: match.tobacco.id,
             brand: match.tobacco.brand,

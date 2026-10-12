@@ -1,12 +1,12 @@
 import 'server-only'
 import { db } from '@/lib/db'
-import { parseIntent, ParsedAction } from '@/lib/intent-parser'
-import { isConfirmation } from '@/lib/verb-detector'
+import { parseIntent, parseMultiLine, ParsedAction } from '@/lib/intent-parser'
+import { isConfirmation, detectOperation } from '@/lib/verb-detector'
 import { pushToSeniors } from '@/lib/notify'
 
 // ───────────────────────────────────────────
 // Обработчик intent parser с поддержкой сессий.
-// ВАЖНО: "да"/"нет"/числа НИКОГДА не идут в LLM.
+// ВАЖНО: "да"/"нет"/числа/глаголы НИКОГДА не идут в LLM.
 // Сессии хранятся в памяти (Map) — не зависят от БД.
 // ───────────────────────────────────────────
 
@@ -17,7 +17,7 @@ export interface IntentResult {
 }
 
 interface PendingAction {
-  type: 'suggest' | 'ambiguous' | 'no_verb'
+  type: 'suggest' | 'ambiguous' | 'no_verb' | 'no_quantity'
   tobacco?: { id: string; brand: string; line: string; flavor: string; defaultJarGrams: number }
   options?: Array<{ id: string; brand: string; line: string; flavor: string }>
   grams?: number | null
@@ -64,20 +64,67 @@ export async function tryHandleWithParser(
 ): Promise<IntentResult> {
   cleanupExpired()
   
-  // ─── Проверяем подтверждение ───
   const confirmation = isConfirmation(text)
   const pending = getSession(masterId)
   
-  // Если это подтверждение (да/нет/1/2/3)
-  if (confirmation !== null) {
-    // Есть pending action — обрабатываем подтверждение
-    if (pending) {
-      // Очищаем ДО исполнения (предотвращает stuck state)
+  // ─── Если есть pending и это подтверждение ───
+  if (pending && confirmation !== null) {
+    clearSession(masterId)
+    return await handleConfirmation(pending, confirmation, masterId)
+  }
+  
+  // ─── Если есть pending типа no_verb и reply — это глагол ───
+  // Бот спросил «добавить, списать или остаток?» → мастер пишет «добавить»
+  if (pending && pending.type === 'no_verb' && confirmation === null) {
+    const { type } = detectOperation(text)
+    if (type === 'add_incoming' || type === 'spend' || type === 'set_stock') {
+      // Мастер ответил глаголом! Объединяем с pending табаком
       clearSession(masterId)
-      return await handleConfirmation(pending, confirmation, masterId)
+      
+      if (pending.tobacco && pending.grams !== null && pending.grams !== undefined) {
+        const action: ParsedAction = {
+          type,
+          tobacco: pending.tobacco,
+          grams: pending.grams,
+          raw: pending.raw + ' → ' + text,
+        }
+        const r = await executeAction(action, masterId)
+        return { handled: true, reply: r, executedCount: 1 }
+      }
+      
+      // Если grams не было — спрашиваем
+      if (pending.tobacco) {
+        const newPending: PendingAction = {
+          type: 'no_quantity',
+          tobacco: pending.tobacco,
+          actionType: type,
+          raw: pending.raw,
+        }
+        setSession(masterId, newPending)
+        return { handled: true, reply: `Сколько грамм для ${pending.tobacco.brand} ${pending.tobacco.flavor}?`, executedCount: 0 }
+      }
     }
+  }
+  
+  // ─── Если есть pending типа no_quantity и reply — это число ───
+  // Бот спросил «Сколько грамм?» → мастер пишет «25»
+  if (pending && pending.type === 'no_quantity' && typeof confirmation === 'number') {
+    clearSession(masterId)
     
-    // Нет pending action — "да" без контекста. НИКОГДА не отправляем в LLM.
+    if (pending.tobacco) {
+      const action: ParsedAction = {
+        type: pending.actionType || 'set_stock',
+        tobacco: pending.tobacco,
+        grams: confirmation,
+        raw: pending.raw,
+      }
+      const r = await executeAction(action, masterId)
+      return { handled: true, reply: r, executedCount: 1 }
+    }
+  }
+  
+  // ─── Подтверждение без pending — "да" без контекста ───
+  if (confirmation !== null && !pending) {
     return {
       handled: true,
       reply: '❓ Я тебя ни о чём не спрашивал. Напиши команду, например:\n• «принял blackburn ёлка 25»\n• «минус 30 банан»\n• «обнови остаток дарксайд кола 125»\n• «чё мало»',
@@ -85,13 +132,16 @@ export async function tryHandleWithParser(
     }
   }
   
-  // ─── Не подтверждение — очищаем stale pending ───
+  // ─── Не подтверждение и не verb reply — очищаем stale pending ───
   if (pending) {
     clearSession(masterId)
   }
   
   // ─── Обычный парсинг ───
-  const actions = await parseIntent(text)
+  // Если многострочный текст → parseMultiLine
+  const actions = text.includes('\n')
+    ? await parseMultiLine(text)
+    : await parseIntent(text)
   
   if (actions.length === 0) {
     return { handled: false, reply: '', executedCount: 0 }
@@ -118,8 +168,7 @@ export async function tryHandleWithParser(
   // Clarify — сохраняем в сессию (in-memory)
   if (first.type === 'clarify') {
     const pendingAction: PendingAction = {
-      type: (first.clarifyType === 'ambiguous_tobacco' ? 'ambiguous' : 
-             first.clarifyType === 'suggest' ? 'suggest' : 'no_verb') as PendingAction['type'],
+      type: mapClarifyType(first.clarifyType),
       tobacco: first.tobacco,
       options: first.options,
       grams: first.grams ?? null,
@@ -165,6 +214,16 @@ export async function tryHandleWithParser(
   }
 }
 
+function mapClarifyType(clarifyType: string | undefined): PendingAction['type'] {
+  switch (clarifyType) {
+    case 'suggest': return 'suggest'
+    case 'ambiguous_tobacco': return 'ambiguous'
+    case 'no_verb': return 'no_verb'
+    case 'no_quantity': return 'no_quantity'
+    default: return 'no_verb'
+  }
+}
+
 // ─── Обработка подтверждения ───
 
 async function handleConfirmation(
@@ -189,6 +248,14 @@ async function handleConfirmation(
       const r = await executeAction(action, masterId)
       return { handled: true, reply: r, executedCount: 1 }
     }
+    // Нет grams → спрашиваем
+    const newPending: PendingAction = {
+      type: 'no_quantity',
+      tobacco: pending.tobacco,
+      actionType: pending.actionType,
+      raw: pending.raw,
+    }
+    setSession(masterId, newPending)
     return { handled: true, reply: 'Сколько грамм?', executedCount: 0 }
   }
   
@@ -197,7 +264,7 @@ async function handleConfirmation(
     return await pickAndExecute(pending, 1, masterId)
   }
   
-  // «да» — для no_verb → по умолчанию set_stock
+  // «да» — для no_verb → set_stock по умолчанию
   if (confirmation === 'yes' && pending.type === 'no_verb' && pending.tobacco) {
     if (pending.grams !== null && pending.grams !== undefined) {
       const action: ParsedAction = {
@@ -209,11 +276,25 @@ async function handleConfirmation(
       const r = await executeAction(action, masterId)
       return { handled: true, reply: r, executedCount: 1 }
     }
+    const newPending: PendingAction = {
+      type: 'no_quantity',
+      tobacco: pending.tobacco,
+      actionType: 'set_stock',
+      raw: pending.raw,
+    }
+    setSession(masterId, newPending)
     return { handled: true, reply: 'Сколько грамм?', executedCount: 0 }
   }
   
-  // число 1-9 — выбор из ambiguous
-  if (typeof confirmation === 'number' && pending.options && confirmation >= 1) {
+  // «да» — для no_quantity → не имеет смысла, переспрашиваем
+  if (confirmation === 'yes' && pending.type === 'no_quantity') {
+    // Сохраняем сессию заново
+    setSession(masterId, pending)
+    return { handled: true, reply: 'Напиши число, например «25» или «пол банки».', executedCount: 0 }
+  }
+  
+  // число 1-99 — выбор из ambiguous
+  if (typeof confirmation === 'number' && pending.type === 'ambiguous' && pending.options) {
     return await pickAndExecute(pending, confirmation, masterId)
   }
   
@@ -229,7 +310,36 @@ async function handleConfirmation(
       const r = await executeAction(action, masterId)
       return { handled: true, reply: r, executedCount: 1 }
     }
+    const newPending: PendingAction = {
+      type: 'no_quantity',
+      tobacco: pending.tobacco,
+      actionType: pending.actionType,
+      raw: pending.raw,
+    }
+    setSession(masterId, newPending)
     return { handled: true, reply: 'Сколько грамм?', executedCount: 0 }
+  }
+  
+  // число для no_verb → обновляем grams и спрашиваем глагол
+  if (typeof confirmation === 'number' && pending.type === 'no_verb' && pending.tobacco) {
+    const newPending: PendingAction = {
+      ...pending,
+      grams: confirmation,
+    }
+    setSession(masterId, newPending)
+    return { handled: true, reply: 'Это добавить, списать или новый остаток?', executedCount: 0 }
+  }
+  
+  // число для no_quantity → устанавливаем grams и исполняем
+  if (typeof confirmation === 'number' && pending.type === 'no_quantity' && pending.tobacco) {
+    const action: ParsedAction = {
+      type: pending.actionType || 'set_stock',
+      tobacco: pending.tobacco,
+      grams: confirmation,
+      raw: pending.raw,
+    }
+    const r = await executeAction(action, masterId)
+    return { handled: true, reply: r, executedCount: 1 }
   }
   
   return { handled: true, reply: 'Не понял ответ. Повтори команду.', executedCount: 0 }
@@ -241,7 +351,7 @@ async function pickAndExecute(
   masterId: string,
 ): Promise<IntentResult> {
   const idx = choice - 1
-  if (!pending.options || idx >= pending.options.length) {
+  if (!pending.options || idx >= pending.options.length || idx < 0) {
     return { handled: true, reply: 'Нет такого номера. Повтори команду.', executedCount: 0 }
   }
   
@@ -264,7 +374,6 @@ async function pickAndExecute(
       }
     }
   } catch {
-    // Если не удалось загрузить — используем данные из options
     tobacco = {
       id: chosen.id,
       brand: chosen.brand,
@@ -285,6 +394,14 @@ async function pickAndExecute(
     return { handled: true, reply: r, executedCount: 1 }
   }
   
+  // Нет grams → спрашиваем
+  const newPending: PendingAction = {
+    type: 'no_quantity',
+    tobacco: tobacco || undefined,
+    actionType: pending.actionType,
+    raw: pending.raw,
+  }
+  if (tobacco) setSession(masterId, newPending)
   return { handled: true, reply: 'Сколько грамм?', executedCount: 0 }
 }
 
@@ -357,7 +474,7 @@ async function executeSpend(action: ParsedAction, masterId: string): Promise<str
     try {
       await pushToSeniors(`⚠️ ${t.brand} ${t.flavor}: ${after}г (после списания ${grams}г)`)
     } catch {
-      // Не критично если пуш не ушёл
+      // Не критично
     }
   }
   
