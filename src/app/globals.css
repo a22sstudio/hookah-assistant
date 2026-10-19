@@ -5,8 +5,9 @@
 
 /* ═══════════════════════════════════════════════════════════
    HOOKAH ASSISTANT — Design System
-   Гибрид: editorial identity (JetBrains Mono + ember) +
-   Linear principles (3-tier tokens, dark-native, motion, shadows)
+   Based on GSAP style: near-black canvas, cream text,
+   outlined pill buttons, no filled CTAs, no box-shadows.
+   Dark theme is native; light theme is inverted.
    ═══════════════════════════════════════════════════════════ */
 
 @theme inline {
@@ -48,49 +49,29 @@
   --color-ember-foreground: var(--ember-foreground);
   --color-success: var(--success);
   --color-warning: var(--warning);
-  --radius-sm: calc(var(--radius) - 2px);
-  --radius-md: var(--radius);
-  --radius-lg: calc(var(--radius) + 2px);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
 }
 
 /* ═══════════════════════════════════════════════════════════
-   ТIER 1: PRIMITIVE — raw palette, never reference directly
+   TIER 1: PRIMITIVE — GSAP palette
    ═══════════════════════════════════════════════════════════ */
 :root {
-  /* Gray scale (neutral, cool undertone) */
-  --gray-50: #f9fafb;
-  --gray-100: #f3f4f6;
-  --gray-200: #e5e7eb;
-  --gray-300: #d1d5db;
-  --gray-400: #9ca3af;
-  --gray-500: #6b7280;
-  --gray-600: #4b5563;
-  --gray-700: #374151;
-  --gray-800: #1f2937;
-  --gray-900: #111827;
-  --gray-950: #030712;
-
-  /* Ember scale (brand accent — terracotta) */
-  --ember-50: #fef3f0;
-  --ember-100: #fde3dc;
-  --ember-200: #fbc8b9;
-  --ember-300: #f7a18a;
-  --ember-400: #f17551;
-  --ember-500: #dc2f02;  /* base ember */
-  --ember-600: #c42802;
-  --ember-700: #a32202;
-  --ember-800: #831f06;
-  --ember-900: #6b1d08;
-  --ember-950: #3b0d03;
-
-  /* Semantic status */
-  --green-500: #10b981;
-  --green-600: #059669;
-  --amber-500: #f59e0b;
-  --amber-600: #d97706;
-  --red-500: #ef4444;
-  --red-600: #dc2626;
+  /* GSAP core colors */
+  --just-black: #0e100f;
+  --surface-cream: #fffce1;
+  --surface-50: #7c7c6f;
+  --surface-25: #42433d;
+  --off-black: #191919;
+  --shockingly-green: #0ae448;
+  --light-green: #abff84;
+  --orangey: #ff8709;
+  --pink: #fec5fb;
+  --lilac: #9d95ff;
+  --blue: #00bae2;
+  --core-green: #dfffd1;
 
   /* Motion */
   --duration-instant: 0ms;
@@ -98,14 +79,13 @@
   --duration-base: 200ms;
   --duration-moderate: 300ms;
   --duration-slow: 500ms;
-
   --ease-linear: linear;
-  --ease-out: cubic-bezier(0, 0, 0.2, 1);     /* entrances */
-  --ease-in: cubic-bezier(0.4, 0, 1, 1);       /* exits */
-  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1); /* default */
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
-  /* Spacing scale (4px base) */
+  /* Spacing — 4px base */
   --space-0: 0px;
   --space-1: 4px;
   --space-2: 8px;
@@ -119,155 +99,135 @@
   --space-16: 64px;
   --space-20: 80px;
 
-  /* Radii — sharp but functional */
-  --radius: 6px;
+  /* Radii — GSAP: 8px cards, 100px buttons, 9999px pills */
+  --radius: 8px;
   --radius-pill: 9999px;
+  --radius-button: 100px;
   --radius-circle: 50%;
 
-  /* Type scale (Major Third, 1.25) */
-  --text-xs: 12px;    /* 0.75rem */
-  --text-sm: 14px;    /* 0.875rem */
-  --text-base: 16px;  /* 1rem */
-  --text-lg: 18px;    /* 1.125rem */
-  --text-xl: 20px;    /* 1.25rem */
-  --text-2xl: 24px;   /* 1.5rem */
-  --text-3xl: 30px;   /* 1.875rem */
-  --text-4xl: 36px;   /* 2.25rem */
-  --text-5xl: 48px;   /* 3rem */
-  --text-6xl: 60px;   /* 3.75rem */
-  --text-7xl: 72px;   /* 4.5rem */
-
   /* ═══════════════════════════════════════════════════════════
-     TIER 2: SEMANTIC — light theme (default)
+     TIER 2: SEMANTIC — DARK THEME (native, default)
+     Near-black canvas, cream text, no shadows
      ═══════════════════════════════════════════════════════════ */
 
   /* Surfaces */
-  --background: #ffffff;
-  --foreground: var(--gray-900);
-  --card: #ffffff;
-  --card-foreground: var(--gray-900);
-  --popover: #ffffff;
-  --popover-foreground: var(--gray-900);
+  --background: #0e100f;
+  --foreground: #fffce1;
+  --card: #0e100f;
+  --card-foreground: #fffce1;
+  --popover: #191919;
+  --popover-foreground: #fffce1;
 
   /* Muted/secondary */
-  --muted: var(--gray-50);
-  --muted-foreground: var(--gray-500);
-  --secondary: var(--gray-100);
-  --secondary-foreground: var(--gray-900);
+  --muted: rgba(255, 252, 225, 0.04);
+  --muted-foreground: #7c7c6f;
+  --secondary: rgba(255, 252, 225, 0.06);
+  --secondary-foreground: #fffce1;
 
-  /* Brand */
-  --ember: var(--ember-500);
-  --ember-foreground: #ffffff;
-  --accent: var(--ember-500);
-  --accent-foreground: #ffffff;
+  /* Brand — ember accent (terracotta, for status/warnings only) */
+  --ember: #dc2f02;
+  --ember-foreground: #fffce1;
+  --accent: #0ae448;
+  --accent-foreground: #0e100f;
 
   /* Status */
-  --success: var(--green-600);
-  --success-foreground: #ffffff;
-  --warning: var(--amber-600);
-  --warning-foreground: #ffffff;
-  --destructive: var(--red-600);
-  --destructive-foreground: #ffffff;
+  --success: #0ae448;
+  --success-foreground: #0e100f;
+  --warning: #ff8709;
+  --warning-foreground: #0e100f;
+  --destructive: #ef4444;
+  --destructive-foreground: #fffce1;
 
-  /* Borders — semi-transparent for subtle structure */
-  --border: rgba(0, 0, 0, 0.09);
-  --input: rgba(0, 0, 0, 0.12);
-  --ring: var(--ember-500);
+  /* Borders — hairline cream, semi-transparent */
+  --border: rgba(255, 252, 225, 0.08);
+  --input: rgba(255, 252, 225, 0.12);
+  --ring: #0ae448;
 
-  /* Primary (ink) */
-  --primary: var(--gray-900);
-  --primary-foreground: #ffffff;
+  /* Primary (cream = primary text/action) */
+  --primary: #fffce1;
+  --primary-foreground: #0e100f;
 
   /* Sidebar */
-  --sidebar: var(--gray-50);
-  --sidebar-foreground: var(--gray-900);
-  --sidebar-primary: var(--gray-900);
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: var(--gray-100);
-  --sidebar-accent-foreground: var(--gray-900);
+  --sidebar: #0e100f;
+  --sidebar-foreground: #fffce1;
+  --sidebar-primary: #fffce1;
+  --sidebar-primary-foreground: #0e100f;
+  --sidebar-accent: rgba(255, 252, 225, 0.06);
+  --sidebar-accent-foreground: #fffce1;
   --sidebar-border: var(--border);
-  --sidebar-ring: var(--ember-500);
+  --sidebar-ring: #0ae448;
 
   /* Charts */
-  --chart-1: var(--ember-500);
-  --chart-2: var(--gray-900);
-  --chart-3: var(--gray-500);
-  --chart-4: var(--green-500);
-  --chart-5: var(--amber-500);
+  --chart-1: #0ae448;
+  --chart-2: #fffce1;
+  --chart-3: #7c7c6f;
+  --chart-4: #00bae2;
+  --chart-5: #ff8709;
 
-  /* Shadows — multi-layered for depth */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04);
-  --shadow-xl: 0 10px 20px rgba(0, 0, 0, 0.08), 0 4px 8px rgba(0, 0, 0, 0.04);
-  --shadow-2xl: 0 20px 40px rgba(0, 0, 0, 0.12), 0 8px 16px rgba(0, 0, 0, 0.06);
+  /* Shadows — GSAP: NO shadows, depth via gradients only */
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-xl: none;
+  --shadow-2xl: none;
 }
 
 /* ═══════════════════════════════════════════════════════════
-   DARK THEME — native dark, not "applied"
-   Inspired by Linear (#08090a canvas, semi-transparent white borders)
+   LIGHT THEME — inverted GSAP
+   Cream canvas, near-black text, same outlined buttons
    ═══════════════════════════════════════════════════════════ */
-.dark {
-  /* Surfaces — layered dark */
-  --background: #0a0b0d;       /* canvas */
-  --foreground: #f7f8f8;      /* near-white, not pure */
-  --card: #111316;             /* panel background */
-  --card-foreground: #f7f8f8;
-  --popover: #16181c;          /* elevated surface */
-  --popover-foreground: #f7f8f8;
+.light {
+  --background: #fffce1;
+  --foreground: #0e100f;
+  --card: #fffce1;
+  --card-foreground: #0e100f;
+  --popover: #f5f3d8;
+  --popover-foreground: #0e100f;
 
-  /* Muted/secondary */
-  --muted: rgba(255, 255, 255, 0.04);
-  --muted-foreground: rgba(255, 255, 255, 0.55);
-  --secondary: rgba(255, 255, 255, 0.06);
-  --secondary-foreground: #f7f8f8;
+  --muted: rgba(14, 16, 15, 0.04);
+  --muted-foreground: #7c7c6f;
+  --secondary: rgba(14, 16, 15, 0.06);
+  --secondary-foreground: #0e100f;
 
-  /* Brand — slightly brighter ember for dark */
-  --ember: #ff5733;
-  --ember-foreground: #ffffff;
-  --accent: #ff5733;
-  --accent-foreground: #ffffff;
+  --ember: #dc2f02;
+  --ember-foreground: #fffce1;
+  --accent: #0ae448;
+  --accent-foreground: #0e100f;
 
-  /* Status — brighter for dark */
-  --success: #34d399;
-  --success-foreground: #0a0b0d;
-  --warning: #fbbf24;
-  --warning-foreground: #0a0b0d;
-  --destructive: #f87171;
-  --destructive-foreground: #0a0b0d;
+  --success: #0ae448;
+  --success-foreground: #fffce1;
+  --warning: #ff8709;
+  --warning-foreground: #fffce1;
+  --destructive: #dc2626;
+  --destructive-foreground: #fffce1;
 
-  /* Borders — semi-transparent white (Linear-style) */
-  --border: rgba(255, 255, 255, 0.08);
-  --input: rgba(255, 255, 255, 0.12);
-  --ring: var(--ember);
+  --border: rgba(14, 16, 15, 0.08);
+  --input: rgba(14, 16, 15, 0.12);
+  --ring: #0ae448;
 
-  /* Primary (ink = white in dark) */
-  --primary: #f7f8f8;
-  --primary-foreground: #0a0b0d;
+  --primary: #0e100f;
+  --primary-foreground: #fffce1;
 
-  /* Sidebar */
-  --sidebar: #08090a;
-  --sidebar-foreground: #f7f8f8;
-  --sidebar-primary: #f7f8f8;
-  --sidebar-primary-foreground: #0a0b0d;
-  --sidebar-accent: rgba(255, 255, 255, 0.06);
-  --sidebar-accent-foreground: #f7f8f8;
+  --sidebar: #fffce1;
+  --sidebar-foreground: #0e100f;
+  --sidebar-primary: #0e100f;
+  --sidebar-primary-foreground: #fffce1;
+  --sidebar-accent: rgba(14, 16, 15, 0.04);
+  --sidebar-accent-foreground: #0e100f;
   --sidebar-border: var(--border);
-  --sidebar-ring: var(--ember);
+  --sidebar-ring: #0ae448;
 
-  /* Charts */
-  --chart-1: #ff5733;
-  --chart-2: #f7f8f8;
-  --chart-3: rgba(255, 255, 255, 0.55);
-  --chart-4: #34d399;
-  --chart-5: #fbbf24;
+  --chart-1: #0ae448;
+  --chart-2: #0e100f;
+  --chart-3: #7c7c6f;
+  --chart-4: #00bae2;
+  --chart-5: #ff8709;
 
-  /* Shadows — heavier on dark for depth */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.2);
-  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.2);
-  --shadow-xl: 0 12px 32px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.3);
-  --shadow-2xl: 0 24px 64px rgba(0, 0, 0, 0.6), 0 8px 16px rgba(0, 0, 0, 0.4);
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-xl: none;
+  --shadow-2xl: none;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -288,14 +248,13 @@
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
-    font-feature-settings: "cv01", "ss01", "ss03";
-    font-weight: 450; /* between regular (400) and medium (500) — Linear signature */
+    font-weight: 400;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    letter-spacing: -0.01em;
   }
 
-  /* Reduced motion respect */
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
       animation-duration: 0.01ms !important;
@@ -307,10 +266,11 @@
 }
 
 /* ═══════════════════════════════════════════════════════════
-   TIER 3: COMPONENT-LEVEL UTILITIES (editorial identity preserved)
+   TIER 3: COMPONENT-LEVEL UTILITIES
+   GSAP-inspired: outlined pills, no shadows, hairline borders
    ═══════════════════════════════════════════════════════════ */
 @layer utilities {
-  /* Type utilities — editorial identity via JetBrains Mono */
+  /* Type utilities — monospace labels preserved */
   .label-mono {
     font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
     text-transform: uppercase;
@@ -344,16 +304,13 @@
     font-feature-settings: "tnum";
   }
 
-  /* Ember utilities */
+  /* Ember/brand utilities */
   .ember-text { color: var(--ember); }
   .ember-bg { background: var(--ember); color: var(--ember-foreground); }
   .ember-border { border-color: var(--ember); }
   .ember-frame { border: 1px solid var(--ember); }
 
-  /* Ink (primary dark) */
-  .ink-bg { background: var(--primary); color: var(--primary-foreground); }
-
-  /* Surface utilities */
+  /* Surface utilities — GSAP: no shadows */
   .surface-card {
     background: var(--card);
     border: 1px solid var(--border);
@@ -361,22 +318,21 @@
   .surface-elevated {
     background: var(--popover);
     border: 1px solid var(--border);
-    box-shadow: var(--shadow-lg);
   }
   .surface-flat {
     background: var(--muted);
   }
 
-  /* Frame utilities */
+  /* Frame utilities — hairline borders */
   .frame { border: 1px solid var(--border); }
   .frame-strong { border: 1px solid var(--foreground); }
   .frame-ember { border: 1px solid var(--ember); }
 
-  /* Shadows */
-  .shadow-sm-soft { box-shadow: var(--shadow-sm); }
-  .shadow-md-soft { box-shadow: var(--shadow-md); }
-  .shadow-lg-soft { box-shadow: var(--shadow-lg); }
-  .shadow-xl-soft { box-shadow: var(--shadow-xl); }
+  /* Shadows — GSAP: disabled, kept for compatibility */
+  .shadow-sm-soft { box-shadow: none; }
+  .shadow-md-soft { box-shadow: none; }
+  .shadow-lg-soft { box-shadow: none; }
+  .shadow-xl-soft { box-shadow: none; }
 
   /* Motion presets */
   .transition-fast { transition-duration: var(--duration-fast); transition-timing-function: var(--ease-out); }
@@ -387,16 +343,15 @@
 /* ═══════════════════════════════════════════════════════════
    SCROLLBAR — minimal, themed
    ═══════════════════════════════════════════════════════════ */
-::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: var(--muted-foreground);
   border-radius: var(--radius-pill);
   opacity: 0.3;
 }
-::-webkit-scrollbar-thumb:hover { background: var(--ember); }
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 
-/* Firefox */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--muted-foreground) transparent;
@@ -431,7 +386,6 @@
 .cursor-blink { animation: blink 1s step-end infinite; }
 .live-pulse { animation: pulse 2s var(--ease-in-out) infinite; }
 
-/* Staggered children — for lists */
 .stagger-children > * {
   animation: fadeIn var(--duration-moderate) var(--ease-out) both;
 }
@@ -444,7 +398,6 @@
 .stagger-children > *:nth-child(7) { animation-delay: 240ms; }
 .stagger-children > *:nth-child(8) { animation-delay: 280ms; }
 
-/* Reduced motion — disable all animations */
 @media (prefers-reduced-motion: reduce) {
   .fade-in,
   .fade-in-scale,

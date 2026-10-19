@@ -106,111 +106,97 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
         </div>
       </header>
 
-      {/* Main */}
-      <main className="flex-1 mx-auto max-w-[1400px] w-full px-4 sm:px-6 py-6">
-        <div className="grid lg:grid-cols-[1fr_440px] gap-6">
-          {/* Левая колонка */}
-          <div className="min-w-0 space-y-6">
-            {/* Табы */}
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-3 sm:grid-cols-7 h-auto">
-                <TabsTrigger value="today" className="flex flex-col gap-1 py-2.5">
-                  <Home className="h-4 w-4" />
-                  <span>Сегодня</span>
-                </TabsTrigger>
-                <TabsTrigger value="schedule" className="flex flex-col gap-1 py-2.5">
-                  <CalendarRange className="h-4 w-4" />
-                  <span>График</span>
-                </TabsTrigger>
-                <TabsTrigger value="stock" className="flex flex-col gap-1 py-2.5">
-                  <Package className="h-4 w-4" />
-                  <span>Склад</span>
-                </TabsTrigger>
-                <TabsTrigger value="consumables" className="flex flex-col gap-1 py-2.5">
-                  <Layers className="h-4 w-4" />
-                  <span>Расход</span>
-                </TabsTrigger>
-                <TabsTrigger value="mixes" className="flex flex-col gap-1 py-2.5">
-                  <Beaker className="h-4 w-4" />
-                  <span>Миксы</span>
-                </TabsTrigger>
-                <TabsTrigger value="income" className="flex flex-col gap-1 py-2.5">
-                  <Wallet className="h-4 w-4" />
-                  <span>Доход</span>
-                </TabsTrigger>
-                <TabsTrigger value="wishes" className="flex flex-col gap-1 py-2.5">
-                  <Star className="h-4 w-4" />
-                  <span>Хотелки</span>
-                </TabsTrigger>
-              </TabsList>
+      {/* Main — full width, no sidebar */}
+      <main className="flex-1 mx-auto max-w-[1280px] w-full px-4 sm:px-6 py-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-7 h-auto">
+            <TabsTrigger value="today" className="flex flex-col gap-1 py-2.5">
+              <Home className="h-4 w-4" />
+              <span>Сегодня</span>
+            </TabsTrigger>
+            <TabsTrigger value="schedule" className="flex flex-col gap-1 py-2.5">
+              <CalendarRange className="h-4 w-4" />
+              <span>График</span>
+            </TabsTrigger>
+            <TabsTrigger value="stock" className="flex flex-col gap-1 py-2.5">
+              <Package className="h-4 w-4" />
+              <span>Склад</span>
+            </TabsTrigger>
+            <TabsTrigger value="consumables" className="flex flex-col gap-1 py-2.5">
+              <Layers className="h-4 w-4" />
+              <span>Расход</span>
+            </TabsTrigger>
+            <TabsTrigger value="mixes" className="flex flex-col gap-1 py-2.5">
+              <Beaker className="h-4 w-4" />
+              <span>Миксы</span>
+            </TabsTrigger>
+            <TabsTrigger value="income" className="flex flex-col gap-1 py-2.5">
+              <Wallet className="h-4 w-4" />
+              <span>Доход</span>
+            </TabsTrigger>
+            <TabsTrigger value="wishes" className="flex flex-col gap-1 py-2.5">
+              <Star className="h-4 w-4" />
+              <span>Хотелки</span>
+            </TabsTrigger>
+          </TabsList>
 
-              <TabsContent value="today" className="pt-6">
-                <HomeDashboard refreshKey={refreshKey} onNavigate={navigate} />
-              </TabsContent>
-              <TabsContent value="schedule" className="pt-6">
-                <ScheduleCalendar
-                  canEdit={false}
-                  refreshKey={refreshKey}
-                  onRefresh={refresh}
-                />
-              </TabsContent>
-              <TabsContent value="stock" className="pt-6">
-                <Dashboard
-                  readOnly
-                  refreshKey={refreshKey}
-                  onRefresh={refresh}
-                  onOrderItem={handleOrderItem}
-                />
-              </TabsContent>
-              <TabsContent value="consumables" className="pt-6">
-                <ConsumablesPanel
-                  readOnly
-                  refreshKey={refreshKey}
-                  onRefresh={refresh}
-                />
-              </TabsContent>
-              <TabsContent value="mixes" className="pt-6">
-                <MixesPanel
-                  role="REGULAR"
-                  masterId={master.id}
-                  refreshKey={refreshKey}
-                  onRefresh={refresh}
-                />
-              </TabsContent>
-              <TabsContent value="income" className="pt-6">
-                <MyIncomePanel
-                  masterName={master.name}
-                  masterColor={master.color}
-                  refreshKey={refreshKey}
-                  onRefresh={refresh}
-                />
-              </TabsContent>
-              <TabsContent value="wishes" className="pt-6">
-                <WishesPanel
-                  role="REGULAR"
-                  refreshKey={refreshKey}
-                  onRefresh={refresh}
-                />
-              </TabsContent>
-            </Tabs>
-          </div>
-
-          {/* Правая колонка — чат (десктоп) */}
-          <aside className="hidden lg:block">
-            <div className="sticky top-[76px] h-[calc(100vh-100px)]">
-              <AIChat onAction={refresh} />
-            </div>
-          </aside>
-        </div>
+          <TabsContent value="today" className="pt-6">
+            <HomeDashboard refreshKey={refreshKey} onNavigate={navigate} />
+          </TabsContent>
+          <TabsContent value="schedule" className="pt-6">
+            <ScheduleCalendar
+              canEdit={false}
+              refreshKey={refreshKey}
+              onRefresh={refresh}
+            />
+          </TabsContent>
+          <TabsContent value="stock" className="pt-6">
+            <Dashboard
+              readOnly
+              refreshKey={refreshKey}
+              onRefresh={refresh}
+              onOrderItem={handleOrderItem}
+            />
+          </TabsContent>
+          <TabsContent value="consumables" className="pt-6">
+            <ConsumablesPanel
+              readOnly
+              refreshKey={refreshKey}
+              onRefresh={refresh}
+            />
+          </TabsContent>
+          <TabsContent value="mixes" className="pt-6">
+            <MixesPanel
+              role="REGULAR"
+              masterId={master.id}
+              refreshKey={refreshKey}
+              onRefresh={refresh}
+            />
+          </TabsContent>
+          <TabsContent value="income" className="pt-6">
+            <MyIncomePanel
+              masterName={master.name}
+              masterColor={master.color}
+              refreshKey={refreshKey}
+              onRefresh={refresh}
+            />
+          </TabsContent>
+          <TabsContent value="wishes" className="pt-6">
+            <WishesPanel
+              role="REGULAR"
+              refreshKey={refreshKey}
+              onRefresh={refresh}
+            />
+          </TabsContent>
+        </Tabs>
       </main>
 
-      {/* Мобильный чат */}
+      {/* AI Chat — floating button + Sheet for ALL screen sizes */}
       <Sheet open={mobileChatOpen} onOpenChange={setMobileChatOpen}>
         <SheetTrigger asChild>
           <Button
-            className="lg:hidden fixed bottom-20 right-4 z-40 h-12 w-12"
+            className="fixed bottom-20 right-4 z-40 h-12 w-12 rounded-full"
             size="icon"
-            variant="destructive"
           >
             <MessageCircle className="h-5 w-5" />
           </Button>
@@ -224,7 +210,7 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
 
       {/* Footer */}
       <footer className="mt-auto border-t border-border bg-background">
-        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 py-3 flex items-center justify-between label-mono-sm">
+        <div className="mx-auto max-w-[1280px] px-4 sm:px-6 py-3 flex items-center justify-between label-mono-sm">
           <span>
             Кальянный ассистент · <span className="font-bold text-foreground">{master.name}</span>
           </span>

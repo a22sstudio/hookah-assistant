@@ -106,118 +106,105 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
         </div>
       </header>
 
-      {/* Main */}
-      <main className="flex-1 mx-auto max-w-[1400px] w-full px-4 sm:px-6 py-6">
-        <div className="grid lg:grid-cols-[1fr_440px] gap-6">
-          {/* Левая колонка */}
-          <div className="min-w-0">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-4 sm:grid-cols-10 h-auto mb-6">
-                <TabsTrigger value="today" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
-                  <Home className="h-4 w-4" />
-                  <span>Сегодня</span>
-                </TabsTrigger>
-                <TabsTrigger value="schedule" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
-                  <CalendarRange className="h-4 w-4" />
-                  <span>График</span>
-                </TabsTrigger>
-                <TabsTrigger value="salary" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
-                  <Wallet className="h-4 w-4" />
-                  <span>Зарплата</span>
-                </TabsTrigger>
-                <TabsTrigger value="stock" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
-                  <LayoutDashboard className="h-4 w-4" />
-                  <span>Склад</span>
-                </TabsTrigger>
-                <TabsTrigger value="consumables" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
-                  <Layers className="h-4 w-4" />
-                  <span>Расход</span>
-                </TabsTrigger>
-                <TabsTrigger value="supply" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
-                  <Truck className="h-4 w-4" />
-                  <span>Поставки</span>
-                </TabsTrigger>
-                <TabsTrigger value="mixes" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
-                  <Beaker className="h-4 w-4" />
-                  <span>Миксы</span>
-                </TabsTrigger>
-                <TabsTrigger value="income" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
-                  <Wallet className="h-4 w-4" />
-                  <span>Доход</span>
-                </TabsTrigger>
-                <TabsTrigger value="wishes" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
-                  <Star className="h-4 w-4" />
-                  <span>Хотелки</span>
-                </TabsTrigger>
-                <TabsTrigger value="masters" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
-                  <Users className="h-4 w-4" />
-                  <span>Мастера</span>
-                </TabsTrigger>
-              </TabsList>
+      {/* Main — full width, no sidebar */}
+      <main className="flex-1 mx-auto max-w-[1280px] w-full px-4 sm:px-6 py-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-4 sm:grid-cols-10 h-auto mb-6">
+            <TabsTrigger value="today" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
+              <Home className="h-4 w-4" />
+              <span>Сегодня</span>
+            </TabsTrigger>
+            <TabsTrigger value="schedule" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
+              <CalendarRange className="h-4 w-4" />
+              <span>График</span>
+            </TabsTrigger>
+            <TabsTrigger value="salary" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
+              <Wallet className="h-4 w-4" />
+              <span>Зарплата</span>
+            </TabsTrigger>
+            <TabsTrigger value="stock" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
+              <LayoutDashboard className="h-4 w-4" />
+              <span>Склад</span>
+            </TabsTrigger>
+            <TabsTrigger value="consumables" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
+              <Layers className="h-4 w-4" />
+              <span>Расход</span>
+            </TabsTrigger>
+            <TabsTrigger value="supply" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
+              <Truck className="h-4 w-4" />
+              <span>Поставки</span>
+            </TabsTrigger>
+            <TabsTrigger value="mixes" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
+              <Beaker className="h-4 w-4" />
+              <span>Миксы</span>
+            </TabsTrigger>
+            <TabsTrigger value="income" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
+              <Wallet className="h-4 w-4" />
+              <span>Доход</span>
+            </TabsTrigger>
+            <TabsTrigger value="wishes" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
+              <Star className="h-4 w-4" />
+              <span>Хотелки</span>
+            </TabsTrigger>
+            <TabsTrigger value="masters" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
+              <Users className="h-4 w-4" />
+              <span>Мастера</span>
+            </TabsTrigger>
+          </TabsList>
 
-              <TabsContent value="today">
-                <HomeDashboard refreshKey={refreshKey} onNavigate={navigate} />
-              </TabsContent>
-              <TabsContent value="schedule">
-                <ScheduleCalendar canEdit refreshKey={refreshKey} onRefresh={refresh} />
-              </TabsContent>
-              <TabsContent value="salary">
-                <SalaryCalculator refreshKey={refreshKey} onRefresh={refresh} />
-              </TabsContent>
-              <TabsContent value="stock">
-                <Dashboard refreshKey={refreshKey} onRefresh={refresh} />
-              </TabsContent>
-              <TabsContent value="consumables">
-                <ConsumablesPanel refreshKey={refreshKey} onRefresh={refresh} />
-              </TabsContent>
-              <TabsContent value="supply">
-                <SupplyPanel refreshKey={refreshKey} onRefresh={refresh} />
-              </TabsContent>
-              <TabsContent value="mixes">
-                <MixesPanel
-                  role="SENIOR"
-                  masterId={master.id}
-                  refreshKey={refreshKey}
-                  onRefresh={refresh}
-                />
-              </TabsContent>
-              <TabsContent value="income">
-                <MyIncomePanel
-                  masterName={master.name}
-                  masterColor={master.color}
-                  refreshKey={refreshKey}
-                  onRefresh={refresh}
-                />
-              </TabsContent>
-              <TabsContent value="wishes">
-                <WishesPanel
-                  role="SENIOR"
-                  refreshKey={refreshKey}
-                  onRefresh={refresh}
-                />
-              </TabsContent>
-              <TabsContent value="masters">
-                <MastersManager refreshKey={refreshKey} onRefresh={refresh} />
-              </TabsContent>
-            </Tabs>
-          </div>
-
-          {/* Правая колонка — чат (десктоп) */}
-          <aside className="hidden lg:block">
-            <div className="sticky top-[76px] h-[calc(100vh-100px)]">
-              <AIChat onAction={refresh} />
-            </div>
-          </aside>
-        </div>
+          <TabsContent value="today">
+            <HomeDashboard refreshKey={refreshKey} onNavigate={navigate} />
+          </TabsContent>
+          <TabsContent value="schedule">
+            <ScheduleCalendar canEdit refreshKey={refreshKey} onRefresh={refresh} />
+          </TabsContent>
+          <TabsContent value="salary">
+            <SalaryCalculator refreshKey={refreshKey} onRefresh={refresh} />
+          </TabsContent>
+          <TabsContent value="stock">
+            <Dashboard refreshKey={refreshKey} onRefresh={refresh} />
+          </TabsContent>
+          <TabsContent value="consumables">
+            <ConsumablesPanel refreshKey={refreshKey} onRefresh={refresh} />
+          </TabsContent>
+          <TabsContent value="supply">
+            <SupplyPanel refreshKey={refreshKey} onRefresh={refresh} />
+          </TabsContent>
+          <TabsContent value="mixes">
+            <MixesPanel
+              role="SENIOR"
+              masterId={master.id}
+              refreshKey={refreshKey}
+              onRefresh={refresh}
+            />
+          </TabsContent>
+          <TabsContent value="income">
+            <MyIncomePanel
+              masterName={master.name}
+              masterColor={master.color}
+              refreshKey={refreshKey}
+              onRefresh={refresh}
+            />
+          </TabsContent>
+          <TabsContent value="wishes">
+            <WishesPanel
+              role="SENIOR"
+              refreshKey={refreshKey}
+              onRefresh={refresh}
+            />
+          </TabsContent>
+          <TabsContent value="masters">
+            <MastersManager refreshKey={refreshKey} onRefresh={refresh} />
+          </TabsContent>
+        </Tabs>
       </main>
 
-      {/* Мобильный чат */}
+      {/* AI Chat — floating button + Sheet for ALL screen sizes */}
       <Sheet open={mobileChatOpen} onOpenChange={setMobileChatOpen}>
         <SheetTrigger asChild>
           <Button
-            className="lg:hidden fixed bottom-20 right-4 z-40 h-12 w-12"
+            className="fixed bottom-20 right-4 z-40 h-12 w-12 rounded-full"
             size="icon"
-            variant="destructive"
           >
             <MessageCircle className="h-5 w-5" />
           </Button>
@@ -231,7 +218,7 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
 
       {/* Footer */}
       <footer className="mt-auto border-t border-border bg-background">
-        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 py-3 flex items-center justify-between label-mono-sm">
+        <div className="mx-auto max-w-[1280px] px-4 sm:px-6 py-3 flex items-center justify-between label-mono-sm">
           <span>
             Кальянный ассистент · <span className="font-bold text-foreground">Senior: {master.name}</span>
           </span>
