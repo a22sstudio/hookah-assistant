@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useCallback } from 'react'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useState, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
-import { ThemeToggle } from '@/components/theme-toggle'
+import { Sidebar, MobileNav, type NavItem } from '@/components/hookah/sidebar'
+import { ThemeToggleButton } from '@/components/hookah/theme-toggle-button'
 import { HomeDashboard } from '@/components/hookah/home-dashboard'
 import { Dashboard } from '@/components/hookah/dashboard'
 import { ConsumablesPanel } from '@/components/hookah/consumables-panel'
@@ -24,6 +24,7 @@ import {
   Home,
   Beaker,
   Wallet,
+  Flame,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Tobacco } from '@/lib/types'
@@ -33,22 +34,10 @@ interface MasterViewProps {
   onLogout: () => void
 }
 
-interface PrefillItem {
-  itemType: string
-  brand?: string
-  line?: string
-  flavor?: string
-  name: string
-  packGrams?: number | null
-  quantity: number
-  unit: string
-}
-
 export function MasterView({ master, onLogout }: MasterViewProps) {
   const [refreshKey, setRefreshKey] = useState(0)
   const [mobileChatOpen, setMobileChatOpen] = useState(false)
   const [activeTab, setActiveTab] = useState('today')
-  const [prefillItem, setPrefillItem] = useState<PrefillItem | null>(null)
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), [])
 
   const handleLogout = async () => {
@@ -61,39 +50,60 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
     onLogout()
   }
 
-  const navigate = (tab: string) => {
-    setActiveTab(tab)
-  }
+  const navigate = (tab: string) => setActiveTab(tab)
 
-  // Обработчик "Заказ" из Склада → сообщить мастеру
   const handleOrderItem = useCallback((t: Tobacco) => {
     const itemName = `${t.brand} ${t.line ? t.line + ' ' : ''}${t.flavor}`.trim()
     toast.info(`Напиши боту: «закажи ${itemName}» или обратись к старшему`)
   }, [])
 
-  const handlePrefillConsumed = useCallback(() => {
-    setPrefillItem(null)
-  }, [])
+  const navItems: NavItem[] = useMemo(
+    () => [
+      { value: 'today', label: 'Сегодня', icon: Home },
+      { value: 'schedule', label: 'График', icon: CalendarRange },
+      { value: 'stock', label: 'Склад', icon: Package },
+      { value: 'consumables', label: 'Расход', icon: Layers },
+      { value: 'mixes', label: 'Миксы', icon: Beaker },
+      { value: 'income', label: 'Доход', icon: Wallet },
+      { value: 'wishes', label: 'Хотелки', icon: Star },
+    ],
+    [],
+  )
+
+  const activeLabel = navItems.find((i) => i.value === activeTab)?.label ?? 'Сегодня'
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      {/* Header — sticky, opaque, z-40 */}
-      <header className="sticky top-0 z-40 border-b border-border bg-background">
-        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 h-[60px] flex items-center gap-4">
-          <div
-            className={`h-9 w-9 shrink-0 ${masterAvatarClass(
-              master.color,
-            )} flex items-center justify-center text-xs font-mono font-bold text-white rounded-md`}
-          >
-            {initials(master.name)}
+    <div className="min-h-screen flex bg-background theme-transition">
+      {/* Sidebar (desktop) */}
+      <Sidebar
+        items={navItems}
+        active={activeTab}
+        onNavigate={navigate}
+        masterName={master.name}
+        masterInitials={initials(master.name)}
+        masterColor={master.color}
+        role="REGULAR"
+      />
+
+      {/* Mobile bottom nav */}
+      <MobileNav items={navItems} active={activeTab} onNavigate={navigate} />
+
+      {/* Main area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Top header bar */}
+        <header className="sticky top-0 z-30 h-[60px] border-b border-border bg-background/95 backdrop-blur-md flex items-center gap-3 px-4 sm:px-6">
+          <div className="md:hidden h-9 w-9 rounded-md gradient-ember flex items-center justify-center">
+            <Flame className="h-5 w-5 text-ember-foreground" />
           </div>
           <div className="flex-1 min-w-0">
-            <span className="label-mono">Привет,</span>
-            <h1 className="font-mono font-bold tracking-tight text-sm sm:text-base leading-tight truncate text-foreground">
-              {master.name}
+            <p className="label-mono leading-none">Привет,</p>
+            <h1 className="font-mono font-bold text-[15px] leading-tight truncate text-foreground mt-0.5">
+              {master.name} · {activeLabel}
             </h1>
           </div>
-          <ThemeToggle />
+
+          <ThemeToggleButton />
+
           <Button
             variant="outline"
             size="icon"
@@ -103,100 +113,66 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
           >
             <LogOut className="h-4 w-4" />
           </Button>
-        </div>
-      </header>
+        </header>
 
-      {/* Main — full width, no sidebar */}
-      <main className="flex-1 mx-auto max-w-[1280px] w-full px-4 sm:px-6 py-6">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-7 h-auto">
-            <TabsTrigger value="today" className="flex flex-col gap-1 py-2.5">
-              <Home className="h-4 w-4" />
-              <span>Сегодня</span>
-            </TabsTrigger>
-            <TabsTrigger value="schedule" className="flex flex-col gap-1 py-2.5">
-              <CalendarRange className="h-4 w-4" />
-              <span>График</span>
-            </TabsTrigger>
-            <TabsTrigger value="stock" className="flex flex-col gap-1 py-2.5">
-              <Package className="h-4 w-4" />
-              <span>Склад</span>
-            </TabsTrigger>
-            <TabsTrigger value="consumables" className="flex flex-col gap-1 py-2.5">
-              <Layers className="h-4 w-4" />
-              <span>Расход</span>
-            </TabsTrigger>
-            <TabsTrigger value="mixes" className="flex flex-col gap-1 py-2.5">
-              <Beaker className="h-4 w-4" />
-              <span>Миксы</span>
-            </TabsTrigger>
-            <TabsTrigger value="income" className="flex flex-col gap-1 py-2.5">
-              <Wallet className="h-4 w-4" />
-              <span>Доход</span>
-            </TabsTrigger>
-            <TabsTrigger value="wishes" className="flex flex-col gap-1 py-2.5">
-              <Star className="h-4 w-4" />
-              <span>Хотелки</span>
-            </TabsTrigger>
-          </TabsList>
+        {/* Page content */}
+        <main className="flex-1 min-h-0 overflow-y-auto pb-[80px] md:pb-6">
+          <div className="mx-auto max-w-[1280px] w-full px-4 sm:px-6 py-6 fade-in">
+            {/* Greeting banner — only on Today tab */}
+            {activeTab === 'today' && (
+              <div className="mb-6">
+                <p className="label-mono-ember mb-2">Смена · {master.name}</p>
+                <h2 className="heading-display text-3xl sm:text-4xl text-foreground">
+                  Обзор смены
+                </h2>
+              </div>
+            )}
 
-          <TabsContent value="today" className="pt-6">
-            <HomeDashboard refreshKey={refreshKey} onNavigate={navigate} />
-          </TabsContent>
-          <TabsContent value="schedule" className="pt-6">
-            <ScheduleCalendar
-              canEdit={false}
-              refreshKey={refreshKey}
-              onRefresh={refresh}
-            />
-          </TabsContent>
-          <TabsContent value="stock" className="pt-6">
-            <Dashboard
-              readOnly
-              refreshKey={refreshKey}
-              onRefresh={refresh}
-              onOrderItem={handleOrderItem}
-            />
-          </TabsContent>
-          <TabsContent value="consumables" className="pt-6">
-            <ConsumablesPanel
-              readOnly
-              refreshKey={refreshKey}
-              onRefresh={refresh}
-            />
-          </TabsContent>
-          <TabsContent value="mixes" className="pt-6">
-            <MixesPanel
-              role="REGULAR"
-              masterId={master.id}
-              refreshKey={refreshKey}
-              onRefresh={refresh}
-            />
-          </TabsContent>
-          <TabsContent value="income" className="pt-6">
-            <MyIncomePanel
-              masterName={master.name}
-              masterColor={master.color}
-              refreshKey={refreshKey}
-              onRefresh={refresh}
-            />
-          </TabsContent>
-          <TabsContent value="wishes" className="pt-6">
-            <WishesPanel
-              role="REGULAR"
-              refreshKey={refreshKey}
-              onRefresh={refresh}
-            />
-          </TabsContent>
-        </Tabs>
-      </main>
+            {activeTab === 'today' && <HomeDashboard refreshKey={refreshKey} onNavigate={navigate} />}
+            {activeTab === 'schedule' && (
+              <ScheduleCalendar canEdit={false} refreshKey={refreshKey} onRefresh={refresh} />
+            )}
+            {activeTab === 'stock' && (
+              <Dashboard
+                readOnly
+                refreshKey={refreshKey}
+                onRefresh={refresh}
+                onOrderItem={handleOrderItem}
+              />
+            )}
+            {activeTab === 'consumables' && (
+              <ConsumablesPanel readOnly refreshKey={refreshKey} onRefresh={refresh} />
+            )}
+            {activeTab === 'mixes' && (
+              <MixesPanel
+                role="REGULAR"
+                masterId={master.id}
+                refreshKey={refreshKey}
+                onRefresh={refresh}
+              />
+            )}
+            {activeTab === 'income' && (
+              <MyIncomePanel
+                masterName={master.name}
+                masterColor={master.color}
+                refreshKey={refreshKey}
+                onRefresh={refresh}
+              />
+            )}
+            {activeTab === 'wishes' && (
+              <WishesPanel role="REGULAR" refreshKey={refreshKey} onRefresh={refresh} />
+            )}
+          </div>
+        </main>
+      </div>
 
-      {/* AI Chat — floating button + Sheet for ALL screen sizes */}
+      {/* AI Chat — floating button + Sheet */}
       <Sheet open={mobileChatOpen} onOpenChange={setMobileChatOpen}>
         <SheetTrigger asChild>
           <Button
-            className="fixed bottom-20 right-4 z-40 h-12 w-12 rounded-full"
+            className="fixed bottom-[80px] md:bottom-6 right-4 z-40 h-12 w-12 rounded-full gradient-ember ember-glow hover:opacity-90 transition-base"
             size="icon"
+            aria-label="AI ассистент"
           >
             <MessageCircle className="h-5 w-5" />
           </Button>
@@ -207,16 +183,6 @@ export function MasterView({ master, onLogout }: MasterViewProps) {
           </div>
         </SheetContent>
       </Sheet>
-
-      {/* Footer */}
-      <footer className="mt-auto border-t border-border bg-background">
-        <div className="mx-auto max-w-[1280px] px-4 sm:px-6 py-3 flex items-center justify-between label-mono-sm">
-          <span>
-            Кальянный ассистент · <span className="font-bold text-foreground">{master.name}</span>
-          </span>
-          <span className="hidden sm:inline">удачной смены</span>
-        </div>
-      </footer>
     </div>
   )
 }

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ThemeToggle } from '@/components/theme-toggle'
-import { Lock, Loader2, ArrowRight, Send } from 'lucide-react'
+import { Lock, Loader2, ArrowRight, Send, Flame } from 'lucide-react'
 import { Master } from '@/lib/types'
 import { toast } from 'sonner'
 
@@ -31,11 +31,8 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     if (digit && i < 3) {
       inputsRef.current[i + 1]?.focus()
     }
-    // Если все 4 цифры введены — автосабмит
     if (digit && next.every((d) => d !== '') && i === 3) {
       void submit(next.join(''))
-    } else if (digit && next.every((d) => d !== '') && i < 3) {
-      // Завершение, если пользователь ввёл последнюю через middle-paste — никогда. ОК.
     }
   }
 
@@ -98,119 +95,147 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   const filled = pin.every((d) => d !== '')
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-background px-4 py-8 relative">
-      {/* Тонкая разметка-сетка на фоне — адаптивная к тёмной теме через rgba foreground */}
+    <div className="min-h-screen flex flex-col bg-background relative overflow-hidden">
+      {/* Ambient ember glow background */}
+      <div
+        className="pointer-events-none absolute inset-0 opacity-60"
+        style={{
+          background:
+            'radial-gradient(ellipse 80% 50% at 50% -20%, rgba(220, 47, 2, 0.18), transparent), radial-gradient(ellipse 60% 40% at 80% 100%, rgba(245, 158, 11, 0.10), transparent)',
+        }}
+      />
+      {/* Grid pattern */}
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.04] dark:opacity-[0.06]"
         style={{
           backgroundImage:
             'linear-gradient(to right, var(--foreground) 1px, transparent 1px), linear-gradient(to bottom, var(--foreground) 1px, transparent 1px)',
           backgroundSize: '48px 48px',
+          maskImage: 'radial-gradient(ellipse at center, black 30%, transparent 80%)',
+          WebkitMaskImage: 'radial-gradient(ellipse at center, black 30%, transparent 80%)',
         }}
       />
 
-      {/* Theme toggle в углу */}
+      {/* Top-right theme toggle */}
       <div className="absolute top-4 right-4 z-10">
         <ThemeToggle />
       </div>
 
-      <div className="relative w-full max-w-sm flex flex-col fade-in">
-        {/* Label-маркер */}
-        <div className="flex items-center justify-center gap-2 mb-8">
-          <span className="h-px w-8 bg-border" />
-          <span className="label-mono">Кальянная CRM</span>
-          <span className="h-px w-8 bg-border" />
-        </div>
+      {/* Center content */}
+      <div className="flex-1 flex items-center justify-center px-4 py-8 relative">
+        <div className="w-full max-w-sm flex flex-col fade-in">
+          {/* Brand mark with flame icon */}
+          <div className="flex flex-col items-center mb-10">
+            <div className="relative mb-6">
+              <div className="h-16 w-16 rounded-xl gradient-ember flex items-center justify-center shadow-2xl glow-ember">
+                <Flame className="h-8 w-8 text-ember-foreground" />
+              </div>
+            </div>
 
-        {/* Заголовок */}
-        <h1
-          className="heading-mono text-center text-foreground leading-[0.95]"
-          style={{ fontSize: 'clamp(32px, 7vw, 56px)' }}
-        >
-          HOOKAH
-          <br />
-          ASSISTANT
-        </h1>
+            {/* Label-маркер */}
+            <div className="flex items-center justify-center gap-2 mb-5">
+              <span className="h-px w-8 bg-border" />
+              <span className="label-mono">Кальянная CRM</span>
+              <span className="h-px w-8 bg-border" />
+            </div>
 
-        <p className="body-sans text-center text-muted-foreground mt-4 text-sm">
-          Учёт табака, смены мастеров, заявки.
-          <br />
-          Вход по PIN-коду.
-        </p>
+            {/* Title */}
+            <h1
+              className="heading-display text-center text-foreground"
+              style={{ fontSize: 'clamp(34px, 7vw, 54px)' }}
+            >
+              HOOKAH
+              <br />
+              <span className="ember-text">ASSISTANT</span>
+            </h1>
 
-        {/* PIN-форма */}
-        <div className="mt-10 flex flex-col items-center gap-5">
-          <div className="label-mono flex items-center gap-2">
-            <Lock className="h-3 w-3" />
-            Enter PIN
-          </div>
-
-          <div
-            className="flex gap-3 justify-center"
-            onPaste={handlePaste}
-          >
-            {pin.map((d, i) => (
-              <Input
-                key={i}
-                ref={(el) => {
-                  inputsRef.current[i] = el
-                }}
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={1}
-                value={d}
-                disabled={loading}
-                onChange={(e) => handleChange(i, e.target.value)}
-                onKeyDown={(e) => handleKeyDown(i, e)}
-                className={`h-16 w-14 text-center text-3xl font-mono font-bold ${
-                  error
-                    ? 'border-destructive text-destructive'
-                    : d
-                      ? 'border-foreground text-foreground'
-                      : ''
-                }`}
-                aria-label={`Цифра ${i + 1}`}
-              />
-            ))}
-          </div>
-
-          {error && (
-            <p className="text-sm text-destructive font-mono tracking-tight fade-in">
-              {error}
+            <p className="body-sans text-center text-muted-foreground mt-4 text-[14px] leading-relaxed max-w-[280px]">
+              Учёт табака, смены мастеров, заявки и поставки.
+              <br />
+              <span className="text-foreground/70">Вход по PIN-коду.</span>
             </p>
-          )}
+          </div>
 
-          <Button
-            className="w-full h-12 text-sm"
-            disabled={!filled || loading}
-            onClick={() => filled && void submit(pin.join(''))}
-          >
-            {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" /> Вход...
-              </>
-            ) : (
-              <>
-                Войти <ArrowRight className="h-4 w-4" />
-              </>
+          {/* PIN-форма */}
+          <div className="flex flex-col items-center gap-5">
+            <div className="label-mono flex items-center gap-2">
+              <Lock className="h-3 w-3" />
+              Enter PIN
+            </div>
+
+            <div className="flex gap-3 justify-center" onPaste={handlePaste}>
+              {pin.map((d, i) => (
+                <Input
+                  key={i}
+                  ref={(el) => {
+                    inputsRef.current[i] = el
+                  }}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={1}
+                  value={d}
+                  disabled={loading}
+                  onChange={(e) => handleChange(i, e.target.value)}
+                  onKeyDown={(e) => handleKeyDown(i, e)}
+                  className={`h-16 w-14 text-center text-3xl font-mono font-bold transition-base ${
+                    error
+                      ? 'border-destructive text-destructive animate-pulse'
+                      : d
+                        ? 'border-ember text-foreground ember-glow'
+                        : ''
+                  }`}
+                  aria-label={`Цифра ${i + 1}`}
+                />
+              ))}
+            </div>
+
+            {error && (
+              <p className="text-sm text-destructive font-mono tracking-tight fade-in flex items-center gap-2">
+                <span className="h-1 w-1 rounded-full bg-destructive" />
+                {error}
+              </p>
             )}
-          </Button>
-        </div>
 
-        <div className="mt-8 flex items-center justify-center gap-1.5 label-mono-sm">
-          <Send className="h-3 w-3" />
-          <span>
-            Или через{' '}
-            <span className="text-foreground font-bold">@Defowork_bot</span>{' '}
-            → <span className="font-mono">/claim PIN</span>
-          </span>
+            <Button
+              className="w-full h-12 text-sm gradient-ember text-ember-foreground ember-glow hover:opacity-90 transition-base"
+              disabled={!filled || loading}
+              onClick={() => filled && void submit(pin.join(''))}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Вход...
+                </>
+              ) : (
+                <>
+                  Войти <ArrowRight className="h-4 w-4" />
+                </>
+              )}
+            </Button>
+          </div>
+
+          {/* Telegram hint */}
+          <div className="mt-8 flex items-center justify-center gap-1.5 label-mono-sm">
+            <Send className="h-3 w-3" />
+            <span>
+              Или через{' '}
+              <span className="text-foreground font-bold">@Defowork_bot</span>{' '}
+              → <span className="font-mono text-ember">/claim PIN</span>
+            </span>
+          </div>
         </div>
       </div>
 
-      <p className="absolute bottom-4 left-0 right-0 text-center label-mono-sm">
-        v1.0 · powered by z.ai
-      </p>
+      {/* Bottom version */}
+      <div className="relative z-10 pb-6 px-4">
+        <div className="mx-auto max-w-sm flex items-center justify-between label-mono-sm">
+          <span>v2.0 · Ember Studio</span>
+          <span className="flex items-center gap-1.5">
+            powered by
+            <span className="ember-text font-bold">z.ai</span>
+          </span>
+        </div>
+      </div>
     </div>
   )
 }

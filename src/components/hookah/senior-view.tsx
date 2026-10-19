@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useState, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
+import { Sidebar, MobileNav, type NavItem } from '@/components/hookah/sidebar'
 import { HomeDashboard } from '@/components/hookah/home-dashboard'
 import { Dashboard } from '@/components/hookah/dashboard'
 import { ConsumablesPanel } from '@/components/hookah/consumables-panel'
@@ -17,7 +17,7 @@ import { SalaryCalculator } from '@/components/hookah/salary-calculator'
 import { MixesPanel } from '@/components/hookah/mixes-panel'
 import { MyIncomePanel } from '@/components/hookah/my-income-panel'
 import { ThemeToggle } from '@/components/theme-toggle'
-import { Leaf } from 'lucide-react'
+import { ThemeToggleButton } from '@/components/hookah/theme-toggle-button'
 import {
   MessageCircle,
   LayoutDashboard,
@@ -26,11 +26,12 @@ import {
   Users,
   CalendarRange,
   Wallet,
-  Package,
   Layers,
   Home,
   Truck,
   Beaker,
+  Flame,
+  Bell,
 } from 'lucide-react'
 import { masterAvatarClass, initials } from '@/lib/master-utils'
 import { toast } from 'sonner'
@@ -57,43 +58,63 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
     onLogout()
   }
 
-  const navigate = (tab: string) => {
-    setActiveTab(tab)
-  }
+  const navigate = (tab: string) => setActiveTab(tab)
+
+  const navItems: NavItem[] = useMemo(
+    () => [
+      { value: 'today', label: 'Сегодня', icon: Home },
+      { value: 'schedule', label: 'График', icon: CalendarRange },
+      { value: 'salary', label: 'Зарплата', icon: Wallet },
+      { value: 'stock', label: 'Склад', icon: LayoutDashboard },
+      { value: 'consumables', label: 'Расход', icon: Layers },
+      { value: 'supply', label: 'Поставки', icon: Truck },
+      { value: 'mixes', label: 'Миксы', icon: Beaker },
+      { value: 'income', label: 'Доход', icon: Wallet },
+      { value: 'wishes', label: 'Хотелки', icon: Star },
+      { value: 'masters', label: 'Мастера', icon: Users },
+    ],
+    [],
+  )
+
+  const activeLabel = navItems.find((i) => i.value === activeTab)?.label ?? 'Сегодня'
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      {/* Header — sticky, opaque, z-40 */}
-      <header className="sticky top-0 z-40 border-b border-border bg-background">
-        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 h-[60px] flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Leaf className="h-5 w-5 text-ember" />
-            <span className="label-mono hidden sm:inline">Кальянная CRM</span>
+    <div className="min-h-screen flex bg-background theme-transition">
+      {/* Sidebar (desktop) */}
+      <Sidebar
+        items={navItems}
+        active={activeTab}
+        onNavigate={navigate}
+        masterName={master.name}
+        masterInitials={initials(master.name)}
+        masterColor={master.color}
+        role="SENIOR"
+      />
+
+      {/* Mobile bottom nav */}
+      <MobileNav items={navItems} active={activeTab} onNavigate={navigate} />
+
+      {/* Main area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Top header bar */}
+        <header className="sticky top-0 z-30 h-[60px] border-b border-border bg-background/95 backdrop-blur-md flex items-center gap-3 px-4 sm:px-6">
+          <div className="md:hidden h-9 w-9 rounded-md gradient-ember flex items-center justify-center">
+            <Flame className="h-5 w-5 text-ember-foreground" />
           </div>
-          <div className="h-6 w-px bg-border hidden sm:block" />
           <div className="flex-1 min-w-0">
-            <span className="label-mono">Senior /</span>
-            <h1 className="font-mono font-bold tracking-tight text-sm sm:text-base leading-tight truncate text-foreground">
-              {master.name}
+            <p className="label-mono leading-none">Старший мастер</p>
+            <h1 className="font-mono font-bold text-[15px] leading-tight truncate text-foreground mt-0.5">
+              {activeLabel}
             </h1>
           </div>
 
           {/* Theme toggle */}
-          <ThemeToggle />
+          <ThemeToggleButton />
 
-          {/* Уведомления */}
+          {/* Notifications */}
           <NotificationsBell refreshKey={refreshKey} />
 
-          {/* Аватар старшего */}
-          <div
-            className={`h-9 w-9 shrink-0 ${masterAvatarClass(
-              master.color,
-            )} flex items-center justify-center text-xs font-mono font-bold text-white rounded-md`}
-            title={master.name}
-          >
-            {initials(master.name)}
-          </div>
-
+          {/* Quick logout */}
           <Button
             variant="outline"
             size="icon"
@@ -103,108 +124,72 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
           >
             <LogOut className="h-4 w-4" />
           </Button>
-        </div>
-      </header>
+        </header>
 
-      {/* Main — full width, no sidebar */}
-      <main className="flex-1 mx-auto max-w-[1280px] w-full px-4 sm:px-6 py-6">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 sm:grid-cols-10 h-auto mb-6">
-            <TabsTrigger value="today" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
-              <Home className="h-4 w-4" />
-              <span>Сегодня</span>
-            </TabsTrigger>
-            <TabsTrigger value="schedule" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
-              <CalendarRange className="h-4 w-4" />
-              <span>График</span>
-            </TabsTrigger>
-            <TabsTrigger value="salary" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
-              <Wallet className="h-4 w-4" />
-              <span>Зарплата</span>
-            </TabsTrigger>
-            <TabsTrigger value="stock" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
-              <LayoutDashboard className="h-4 w-4" />
-              <span>Склад</span>
-            </TabsTrigger>
-            <TabsTrigger value="consumables" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
-              <Layers className="h-4 w-4" />
-              <span>Расход</span>
-            </TabsTrigger>
-            <TabsTrigger value="supply" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
-              <Truck className="h-4 w-4" />
-              <span>Поставки</span>
-            </TabsTrigger>
-            <TabsTrigger value="mixes" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
-              <Beaker className="h-4 w-4" />
-              <span>Миксы</span>
-            </TabsTrigger>
-            <TabsTrigger value="income" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
-              <Wallet className="h-4 w-4" />
-              <span>Доход</span>
-            </TabsTrigger>
-            <TabsTrigger value="wishes" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
-              <Star className="h-4 w-4" />
-              <span>Хотелки</span>
-            </TabsTrigger>
-            <TabsTrigger value="masters" className="flex flex-col gap-1 py-2.5 text-[10px] sm:text-[11px]">
-              <Users className="h-4 w-4" />
-              <span>Мастера</span>
-            </TabsTrigger>
-          </TabsList>
+        {/* Page content */}
+        <main className="flex-1 min-h-0 overflow-y-auto pb-[80px] md:pb-6">
+          <div className="mx-auto max-w-[1280px] w-full px-4 sm:px-6 py-6 fade-in">
+            {/* Greeting banner — only on Today tab */}
+            {activeTab === 'today' && (
+              <div className="mb-6 flex items-end justify-between gap-4 flex-wrap">
+                <div>
+                  <p className="label-mono-ember mb-2">Старший · {master.name}</p>
+                  <h2 className="heading-display text-3xl sm:text-4xl text-foreground">
+                    Обзор смены
+                  </h2>
+                </div>
+                <div className="flex items-center gap-2 label-mono-sm">
+                  <span className="h-1.5 w-1.5 rounded-full bg-success live-pulse" />
+                  Live · синхронизация каждые 10с
+                </div>
+              </div>
+            )}
 
-          <TabsContent value="today">
-            <HomeDashboard refreshKey={refreshKey} onNavigate={navigate} />
-          </TabsContent>
-          <TabsContent value="schedule">
-            <ScheduleCalendar canEdit refreshKey={refreshKey} onRefresh={refresh} />
-          </TabsContent>
-          <TabsContent value="salary">
-            <SalaryCalculator refreshKey={refreshKey} onRefresh={refresh} />
-          </TabsContent>
-          <TabsContent value="stock">
-            <Dashboard refreshKey={refreshKey} onRefresh={refresh} />
-          </TabsContent>
-          <TabsContent value="consumables">
-            <ConsumablesPanel refreshKey={refreshKey} onRefresh={refresh} />
-          </TabsContent>
-          <TabsContent value="supply">
-            <SupplyPanel refreshKey={refreshKey} onRefresh={refresh} />
-          </TabsContent>
-          <TabsContent value="mixes">
-            <MixesPanel
-              role="SENIOR"
-              masterId={master.id}
-              refreshKey={refreshKey}
-              onRefresh={refresh}
-            />
-          </TabsContent>
-          <TabsContent value="income">
-            <MyIncomePanel
-              masterName={master.name}
-              masterColor={master.color}
-              refreshKey={refreshKey}
-              onRefresh={refresh}
-            />
-          </TabsContent>
-          <TabsContent value="wishes">
-            <WishesPanel
-              role="SENIOR"
-              refreshKey={refreshKey}
-              onRefresh={refresh}
-            />
-          </TabsContent>
-          <TabsContent value="masters">
-            <MastersManager refreshKey={refreshKey} onRefresh={refresh} />
-          </TabsContent>
-        </Tabs>
-      </main>
+            {activeTab === 'today' && <HomeDashboard refreshKey={refreshKey} onNavigate={navigate} />}
+            {activeTab === 'schedule' && (
+              <ScheduleCalendar canEdit refreshKey={refreshKey} onRefresh={refresh} />
+            )}
+            {activeTab === 'salary' && (
+              <SalaryCalculator refreshKey={refreshKey} onRefresh={refresh} />
+            )}
+            {activeTab === 'stock' && <Dashboard refreshKey={refreshKey} onRefresh={refresh} />}
+            {activeTab === 'consumables' && (
+              <ConsumablesPanel refreshKey={refreshKey} onRefresh={refresh} />
+            )}
+            {activeTab === 'supply' && <SupplyPanel refreshKey={refreshKey} onRefresh={refresh} />}
+            {activeTab === 'mixes' && (
+              <MixesPanel
+                role="SENIOR"
+                masterId={master.id}
+                refreshKey={refreshKey}
+                onRefresh={refresh}
+              />
+            )}
+            {activeTab === 'income' && (
+              <MyIncomePanel
+                masterName={master.name}
+                masterColor={master.color}
+                refreshKey={refreshKey}
+                onRefresh={refresh}
+              />
+            )}
+            {activeTab === 'wishes' && (
+              <WishesPanel role="SENIOR" refreshKey={refreshKey} onRefresh={refresh} />
+            )}
+            {activeTab === 'masters' && (
+              <MastersManager refreshKey={refreshKey} onRefresh={refresh} />
+            )}
+          </div>
+        </main>
+      </div>
 
-      {/* AI Chat — floating button + Sheet for ALL screen sizes */}
+      {/* AI Chat — floating button + Sheet (no full-width block) */}
       <Sheet open={mobileChatOpen} onOpenChange={setMobileChatOpen}>
         <SheetTrigger asChild>
           <Button
-            className="fixed bottom-20 right-4 z-40 h-12 w-12 rounded-full"
+            className="fixed bottom-[80px] md:bottom-6 right-4 z-40 h-12 w-12 rounded-full gradient-ember ember-glow hover:opacity-90 transition-base"
             size="icon"
+            aria-label="AI ассистент"
           >
             <MessageCircle className="h-5 w-5" />
           </Button>
@@ -215,18 +200,6 @@ export function SeniorView({ master, onLogout }: SeniorViewProps) {
           </div>
         </SheetContent>
       </Sheet>
-
-      {/* Footer */}
-      <footer className="mt-auto border-t border-border bg-background">
-        <div className="mx-auto max-w-[1280px] px-4 sm:px-6 py-3 flex items-center justify-between label-mono-sm">
-          <span>
-            Кальянный ассистент · <span className="font-bold text-foreground">Senior: {master.name}</span>
-          </span>
-          <span className="hidden sm:inline">
-            AI-учёт табака · powered by z.ai
-          </span>
-        </div>
-      </footer>
     </div>
   )
 }

@@ -4,10 +4,9 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ═══════════════════════════════════════════════════════════
-   HOOKAH ASSISTANT — Design System
-   Based on GSAP style: near-black canvas, cream text,
-   outlined pill buttons, no filled CTAs, no box-shadows.
-   Dark theme is native; light theme is inverted.
+   EMBER STUDIO — Hookah Assistant CRM
+   Inspired by: Twenty CRM, Frappe CRM, Linear
+   Dark canvas with warm ember accent, sidebar-first layout.
    ═══════════════════════════════════════════════════════════ */
 
 @theme inline {
@@ -47,42 +46,55 @@
   --color-card: var(--card);
   --color-ember: var(--ember);
   --color-ember-foreground: var(--ember-foreground);
+  --color-ember-soft: var(--ember-soft);
+  --color-gold: var(--gold);
   --color-success: var(--success);
   --color-warning: var(--warning);
   --radius-sm: 4px;
   --radius-md: 8px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
 }
 
 /* ═══════════════════════════════════════════════════════════
-   TIER 1: PRIMITIVE — GSAP palette
+   TIER 1: PRIMITIVE — Ember Studio palette
    ═══════════════════════════════════════════════════════════ */
 :root {
-  /* GSAP core colors */
-  --just-black: #0e100f;
-  --surface-cream: #fffce1;
-  --surface-50: #7c7c6f;
-  --surface-25: #42433d;
-  --off-black: #191919;
-  --shockingly-green: #0ae448;
-  --light-green: #abff84;
-  --orangey: #ff8709;
-  --pink: #fec5fb;
-  --lilac: #9d95ff;
-  --blue: #00bae2;
-  --core-green: #dfffd1;
+  /* Ember core palette — warm dark canvas */
+  --ember: #dc2f02;
+  --ember-foreground: #ffeed5;
+  --ember-soft: rgba(220, 47, 2, 0.12);
+  --gold: #f59e0b;
+
+  /* Cool grays for depth contrast */
+  --charcoal-900: #0a0a0b;
+  --charcoal-800: #131316;
+  --charcoal-700: #1c1d21;
+  --charcoal-600: #26282d;
+  --charcoal-500: #3a3d44;
+
+  /* Warm text tints (against dark canvas) */
+  --cream: #faf7f2;
+  --cream-dim: #c9c5be;
+  --cream-muted: #8a8782;
+  --cream-faint: #5a5854;
+
+  /* Status colors */
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --info: #0ea5e9;
 
   /* Motion */
   --duration-instant: 0ms;
-  --duration-fast: 100ms;
-  --duration-base: 200ms;
-  --duration-moderate: 300ms;
-  --duration-slow: 500ms;
+  --duration-fast: 120ms;
+  --duration-base: 220ms;
+  --duration-moderate: 350ms;
+  --duration-slow: 550ms;
   --ease-linear: linear;
-  --ease-out: cubic-bezier(0, 0, 0.2, 1);
-  --ease-in: cubic-bezier(0.4, 0, 1, 1);
-  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
   /* Spacing — 4px base */
@@ -99,135 +111,154 @@
   --space-16: 64px;
   --space-20: 80px;
 
-  /* Radii — GSAP: 8px cards, 100px buttons, 9999px pills */
+  /* Radii */
   --radius: 8px;
   --radius-pill: 9999px;
-  --radius-button: 100px;
+  --radius-button: 8px;
   --radius-circle: 50%;
 
   /* ═══════════════════════════════════════════════════════════
-     TIER 2: SEMANTIC — DARK THEME (native, default)
-     Near-black canvas, cream text, no shadows
+     TIER 2: SEMANTIC — DARK THEME (native)
      ═══════════════════════════════════════════════════════════ */
 
-  /* Surfaces */
-  --background: #0e100f;
-  --foreground: #fffce1;
-  --card: #0e100f;
-  --card-foreground: #fffce1;
-  --popover: #191919;
-  --popover-foreground: #fffce1;
+  /* Surfaces — luminance stacking */
+  --background: #0a0a0b;
+  --foreground: #faf7f2;
+  --card: #131316;
+  --card-foreground: #faf7f2;
+  --popover: #1c1d21;
+  --popover-foreground: #faf7f2;
 
-  /* Muted/secondary */
-  --muted: rgba(255, 252, 225, 0.04);
-  --muted-foreground: #7c7c6f;
-  --secondary: rgba(255, 252, 225, 0.06);
-  --secondary-foreground: #fffce1;
+  /* Muted/secondary — subtle elevated layers */
+  --muted: rgba(250, 247, 242, 0.04);
+  --muted-foreground: #8a8782;
+  --secondary: rgba(250, 247, 242, 0.06);
+  --secondary-foreground: #faf7f2;
 
-  /* Brand — ember accent (terracotta, for status/warnings only) */
+  /* Brand */
   --ember: #dc2f02;
-  --ember-foreground: #fffce1;
-  --accent: #0ae448;
-  --accent-foreground: #0e100f;
+  --ember-foreground: #ffeed5;
+  --ember-soft: rgba(220, 47, 2, 0.12);
+  --gold: #f59e0b;
+  --accent: #dc2f02;
+  --accent-foreground: #ffeed5;
 
   /* Status */
-  --success: #0ae448;
-  --success-foreground: #0e100f;
-  --warning: #ff8709;
-  --warning-foreground: #0e100f;
+  --success: #10b981;
+  --success-foreground: #0a0a0b;
+  --warning: #f59e0b;
+  --warning-foreground: #0a0a0b;
   --destructive: #ef4444;
-  --destructive-foreground: #fffce1;
+  --destructive-foreground: #ffeed5;
+  --info: #0ea5e9;
+  --info-foreground: #0a0a0b;
 
   /* Borders — hairline cream, semi-transparent */
-  --border: rgba(255, 252, 225, 0.08);
-  --input: rgba(255, 252, 225, 0.12);
-  --ring: #0ae448;
+  --border: rgba(250, 247, 242, 0.08);
+  --border-strong: rgba(250, 247, 242, 0.14);
+  --input: rgba(250, 247, 242, 0.12);
+  --ring: #dc2f02;
 
-  /* Primary (cream = primary text/action) */
-  --primary: #fffce1;
-  --primary-foreground: #0e100f;
+  /* Primary */
+  --primary: #faf7f2;
+  --primary-foreground: #0a0a0b;
 
   /* Sidebar */
-  --sidebar: #0e100f;
-  --sidebar-foreground: #fffce1;
-  --sidebar-primary: #fffce1;
-  --sidebar-primary-foreground: #0e100f;
-  --sidebar-accent: rgba(255, 252, 225, 0.06);
-  --sidebar-accent-foreground: #fffce1;
-  --sidebar-border: var(--border);
-  --sidebar-ring: #0ae448;
+  --sidebar: #0a0a0b;
+  --sidebar-foreground: #faf7f2;
+  --sidebar-primary: #dc2f02;
+  --sidebar-primary-foreground: #ffeed5;
+  --sidebar-accent: rgba(220, 47, 2, 0.10);
+  --sidebar-accent-foreground: #ffeed5;
+  --sidebar-border: rgba(250, 247, 242, 0.06);
+  --sidebar-ring: #dc2f02;
 
   /* Charts */
-  --chart-1: #0ae448;
-  --chart-2: #fffce1;
-  --chart-3: #7c7c6f;
-  --chart-4: #00bae2;
-  --chart-5: #ff8709;
+  --chart-1: #dc2f02;
+  --chart-2: #f59e0b;
+  --chart-3: #10b981;
+  --chart-4: #0ea5e9;
+  --chart-5: #8b5cf6;
 
-  /* Shadows — GSAP: NO shadows, depth via gradients only */
-  --shadow-sm: none;
-  --shadow-md: none;
-  --shadow-lg: none;
-  --shadow-xl: none;
-  --shadow-2xl: none;
+  /* Shadows — subtle, multi-layer */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.30);
+  --shadow-md: 0 4px 8px -2px rgba(0, 0, 0, 0.35), 0 2px 4px -1px rgba(0, 0, 0, 0.20);
+  --shadow-lg: 0 12px 24px -4px rgba(0, 0, 0, 0.45), 0 4px 8px -2px rgba(0, 0, 0, 0.25);
+  --shadow-xl: 0 20px 40px -8px rgba(0, 0, 0, 0.50), 0 8px 16px -4px rgba(0, 0, 0, 0.30);
+  --shadow-2xl: 0 32px 64px -12px rgba(0, 0, 0, 0.60);
+  --shadow-ember: 0 8px 24px -6px rgba(220, 47, 2, 0.45);
 }
 
 /* ═══════════════════════════════════════════════════════════
-   LIGHT THEME — inverted GSAP
-   Cream canvas, near-black text, same outlined buttons
+   LIGHT THEME — warm cream canvas with ember accents
    ═══════════════════════════════════════════════════════════ */
 .light {
-  --background: #fffce1;
-  --foreground: #0e100f;
-  --card: #fffce1;
-  --card-foreground: #0e100f;
-  --popover: #f5f3d8;
-  --popover-foreground: #0e100f;
+  /* Surfaces */
+  --background: #faf7f2;
+  --foreground: #0a0a0b;
+  --card: #ffffff;
+  --card-foreground: #0a0a0b;
+  --popover: #ffffff;
+  --popover-foreground: #0a0a0b;
 
-  --muted: rgba(14, 16, 15, 0.04);
-  --muted-foreground: #7c7c6f;
-  --secondary: rgba(14, 16, 15, 0.06);
-  --secondary-foreground: #0e100f;
+  /* Muted/secondary */
+  --muted: rgba(10, 10, 11, 0.04);
+  --muted-foreground: #6a6862;
+  --secondary: rgba(10, 10, 11, 0.05);
+  --secondary-foreground: #0a0a0b;
 
+  /* Brand */
   --ember: #dc2f02;
-  --ember-foreground: #fffce1;
-  --accent: #0ae448;
-  --accent-foreground: #0e100f;
+  --ember-foreground: #ffeed5;
+  --ember-soft: rgba(220, 47, 2, 0.08);
+  --gold: #ea580c;
+  --accent: #dc2f02;
+  --accent-foreground: #ffeed5;
 
-  --success: #0ae448;
-  --success-foreground: #fffce1;
-  --warning: #ff8709;
-  --warning-foreground: #fffce1;
+  /* Status */
+  --success: #059669;
+  --success-foreground: #faf7f2;
+  --warning: #d97706;
+  --warning-foreground: #faf7f2;
   --destructive: #dc2626;
-  --destructive-foreground: #fffce1;
+  --destructive-foreground: #faf7f2;
+  --info: #0284c7;
+  --info-foreground: #faf7f2;
 
-  --border: rgba(14, 16, 15, 0.08);
-  --input: rgba(14, 16, 15, 0.12);
-  --ring: #0ae448;
+  /* Borders */
+  --border: rgba(10, 10, 11, 0.08);
+  --border-strong: rgba(10, 10, 11, 0.14);
+  --input: rgba(10, 10, 11, 0.12);
+  --ring: #dc2f02;
 
-  --primary: #0e100f;
-  --primary-foreground: #fffce1;
+  /* Primary */
+  --primary: #0a0a0b;
+  --primary-foreground: #faf7f2;
 
-  --sidebar: #fffce1;
-  --sidebar-foreground: #0e100f;
-  --sidebar-primary: #0e100f;
-  --sidebar-primary-foreground: #fffce1;
-  --sidebar-accent: rgba(14, 16, 15, 0.04);
-  --sidebar-accent-foreground: #0e100f;
-  --sidebar-border: var(--border);
-  --sidebar-ring: #0ae448;
+  /* Sidebar */
+  --sidebar: #faf7f2;
+  --sidebar-foreground: #0a0a0b;
+  --sidebar-primary: #dc2f02;
+  --sidebar-primary-foreground: #ffeed5;
+  --sidebar-accent: rgba(220, 47, 2, 0.06);
+  --sidebar-accent-foreground: #dc2f02;
+  --sidebar-border: rgba(10, 10, 11, 0.06);
+  --sidebar-ring: #dc2f02;
 
-  --chart-1: #0ae448;
-  --chart-2: #0e100f;
-  --chart-3: #7c7c6f;
-  --chart-4: #00bae2;
-  --chart-5: #ff8709;
+  /* Charts */
+  --chart-1: #dc2f02;
+  --chart-2: #d97706;
+  --chart-3: #059669;
+  --chart-4: #0284c7;
+  --chart-5: #7c3aed;
 
-  --shadow-sm: none;
-  --shadow-md: none;
-  --shadow-lg: none;
-  --shadow-xl: none;
-  --shadow-2xl: none;
+  /* Shadows — softer on light */
+  --shadow-sm: 0 1px 2px 0 rgba(10, 10, 11, 0.06);
+  --shadow-md: 0 4px 8px -2px rgba(10, 10, 11, 0.08), 0 2px 4px -1px rgba(10, 10, 11, 0.04);
+  --shadow-lg: 0 12px 24px -4px rgba(10, 10, 11, 0.10), 0 4px 8px -2px rgba(10, 10, 11, 0.06);
+  --shadow-xl: 0 20px 40px -8px rgba(10, 10, 11, 0.14), 0 8px 16px -4px rgba(10, 10, 11, 0.08);
+  --shadow-2xl: 0 32px 64px -12px rgba(10, 10, 11, 0.18);
+  --shadow-ember: 0 8px 24px -6px rgba(220, 47, 2, 0.30);
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -252,7 +283,32 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.011em;
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: var(--cream-faint);
+    border-radius: var(--radius-pill);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--muted-foreground);
+    background-clip: padding-box;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--cream-faint) transparent;
+  }
+
+  /* Selection */
+  ::selection {
+    background: var(--ember-soft);
+    color: var(--ember-foreground);
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -267,15 +323,14 @@
 
 /* ═══════════════════════════════════════════════════════════
    TIER 3: COMPONENT-LEVEL UTILITIES
-   GSAP-inspired: outlined pills, no shadows, hairline borders
    ═══════════════════════════════════════════════════════════ */
 @layer utilities {
-  /* Type utilities — monospace labels preserved */
+  /* Type utilities */
   .label-mono {
     font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
     text-transform: uppercase;
-    letter-spacing: 0.02em;
-    font-size: var(--text-xs);
+    letter-spacing: 0.08em;
+    font-size: 10.5px;
     font-weight: 500;
     color: var(--muted-foreground);
     line-height: 1.4;
@@ -283,10 +338,19 @@
   .label-mono-sm {
     font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
     text-transform: uppercase;
-    letter-spacing: 0.02em;
-    font-size: 10px;
+    letter-spacing: 0.08em;
+    font-size: 9.5px;
     font-weight: 500;
     color: var(--muted-foreground);
+    line-height: 1.4;
+  }
+  .label-mono-ember {
+    font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--ember);
     line-height: 1.4;
   }
   .heading-mono {
@@ -294,10 +358,22 @@
     text-transform: none;
     letter-spacing: -0.02em;
     font-weight: 700;
-    line-height: 1.1;
+    line-height: 1.05;
+  }
+  .heading-display {
+    font-family: var(--font-inter), system-ui, sans-serif;
+    letter-spacing: -0.03em;
+    font-weight: 700;
+    line-height: 1.0;
+    font-feature-settings: "ss01", "cv11";
   }
   .body-sans {
     font-family: var(--font-inter), system-ui, sans-serif;
+  }
+  .body-sans-relaxed {
+    font-family: var(--font-inter), system-ui, sans-serif;
+    line-height: 1.65;
+    letter-spacing: -0.005em;
   }
   .tabular {
     font-variant-numeric: tabular-nums;
@@ -309,8 +385,9 @@
   .ember-bg { background: var(--ember); color: var(--ember-foreground); }
   .ember-border { border-color: var(--ember); }
   .ember-frame { border: 1px solid var(--ember); }
+  .ember-glow { box-shadow: var(--shadow-ember); }
 
-  /* Surface utilities — GSAP: no shadows */
+  /* Surface utilities — layered elevation */
   .surface-card {
     background: var(--card);
     border: 1px solid var(--border);
@@ -318,43 +395,72 @@
   .surface-elevated {
     background: var(--popover);
     border: 1px solid var(--border);
+    box-shadow: var(--shadow-md);
   }
   .surface-flat {
     background: var(--muted);
   }
+  .surface-glass {
+    background: color-mix(in srgb, var(--card) 70%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
 
   /* Frame utilities — hairline borders */
   .frame { border: 1px solid var(--border); }
-  .frame-strong { border: 1px solid var(--foreground); }
+  .frame-strong { border: 1px solid var(--border-strong); }
   .frame-ember { border: 1px solid var(--ember); }
 
-  /* Shadows — GSAP: disabled, kept for compatibility */
-  .shadow-sm-soft { box-shadow: none; }
-  .shadow-md-soft { box-shadow: none; }
-  .shadow-lg-soft { box-shadow: none; }
-  .shadow-xl-soft { box-shadow: none; }
+  /* Gradient utilities */
+  .gradient-ember {
+    background: linear-gradient(135deg, var(--ember) 0%, #b32502 100%);
+  }
+  .gradient-canvas {
+    background: radial-gradient(ellipse at top, var(--charcoal-800) 0%, var(--background) 70%);
+  }
+  .gradient-surface {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--card) 100%, transparent) 0%, color-mix(in srgb, var(--popover) 100%, transparent) 100%);
+  }
+
+  /* Shadows — multi-layer, ember-tinted for accents */
+  .shadow-sm-soft { box-shadow: var(--shadow-sm); }
+  .shadow-md-soft { box-shadow: var(--shadow-md); }
+  .shadow-lg-soft { box-shadow: var(--shadow-lg); }
+  .shadow-xl-soft { box-shadow: var(--shadow-xl); }
+  .shadow-2xl-soft { box-shadow: var(--shadow-2xl); }
 
   /* Motion presets */
   .transition-fast { transition-duration: var(--duration-fast); transition-timing-function: var(--ease-out); }
   .transition-base { transition-duration: var(--duration-base); transition-timing-function: var(--ease-out); }
   .transition-moderate { transition-duration: var(--duration-moderate); transition-timing-function: var(--ease-out); }
-}
 
-/* ═══════════════════════════════════════════════════════════
-   SCROLLBAR — minimal, themed
-   ═══════════════════════════════════════════════════════════ */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: var(--muted-foreground);
-  border-radius: var(--radius-pill);
-  opacity: 0.3;
-}
-::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+  /* Active nav indicator */
+  .nav-active {
+    background: var(--sidebar-accent);
+    color: var(--ember);
+    position: relative;
+  }
+  .nav-active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 24px;
+    background: var(--ember);
+    border-radius: 0 2px 2px 0;
+  }
 
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--muted-foreground) transparent;
+  /* Hover lift effect */
+  .hover-lift {
+    transition: transform var(--duration-base) var(--ease-out),
+                box-shadow var(--duration-base) var(--ease-out);
+  }
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -372,6 +478,10 @@
   from { opacity: 0; transform: translateX(20px); }
   to { opacity: 1; transform: translateX(0); }
 }
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
 @keyframes blink {
   50% { opacity: 0; }
 }
@@ -379,31 +489,49 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
 }
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 20px -8px rgba(220, 47, 2, 0.4); }
+  50% { box-shadow: 0 0 32px -4px rgba(220, 47, 2, 0.7); }
+}
 
 .fade-in { animation: fadeIn var(--duration-moderate) var(--ease-out) both; }
 .fade-in-scale { animation: fadeInScale var(--duration-moderate) var(--ease-spring) both; }
 .slide-in-right { animation: slideInRight var(--duration-moderate) var(--ease-out) both; }
+.slide-in-left { animation: slideInLeft var(--duration-moderate) var(--ease-out) both; }
 .cursor-blink { animation: blink 1s step-end infinite; }
 .live-pulse { animation: pulse 2s var(--ease-in-out) infinite; }
+.shimmer {
+  background: linear-gradient(90deg, var(--muted) 0%, var(--secondary) 50%, var(--muted) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s var(--ease-linear) infinite;
+}
+.glow-ember { animation: glow 3s var(--ease-in-out) infinite; }
 
 .stagger-children > * {
   animation: fadeIn var(--duration-moderate) var(--ease-out) both;
 }
 .stagger-children > *:nth-child(1) { animation-delay: 0ms; }
-.stagger-children > *:nth-child(2) { animation-delay: 40ms; }
-.stagger-children > *:nth-child(3) { animation-delay: 80ms; }
-.stagger-children > *:nth-child(4) { animation-delay: 120ms; }
-.stagger-children > *:nth-child(5) { animation-delay: 160ms; }
-.stagger-children > *:nth-child(6) { animation-delay: 200ms; }
-.stagger-children > *:nth-child(7) { animation-delay: 240ms; }
-.stagger-children > *:nth-child(8) { animation-delay: 280ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 50ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 100ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 150ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 200ms; }
+.stagger-children > *:nth-child(6) { animation-delay: 250ms; }
+.stagger-children > *:nth-child(7) { animation-delay: 300ms; }
+.stagger-children > *:nth-child(8) { animation-delay: 350ms; }
 
 @media (prefers-reduced-motion: reduce) {
   .fade-in,
   .fade-in-scale,
   .slide-in-right,
+  .slide-in-left,
   .cursor-blink,
   .live-pulse,
+  .shimmer,
+  .glow-ember,
   .stagger-children > * {
     animation: none !important;
   }
